@@ -22,7 +22,7 @@ public class MagnetControler {
 	public static void main(String[] args) {
 		 MagnetControler mc = MagnetControler.getInstance();
 		 try {
-			mc.moveMagnet(100);
+			mc.moveMagnet(1000);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -130,9 +130,9 @@ public class MagnetControler {
 		deviceIsBusy = true;
 
 		if(z<0){
-			serialPort.setRTS(true);//BLUE
-		}else{
 			serialPort.setRTS(false);//BLUE
+		}else{
+			serialPort.setRTS(true);//BLUE
 		}
 		TimeUnit.MILLISECONDS.sleep(50);
 		double distance = Math.abs(z);

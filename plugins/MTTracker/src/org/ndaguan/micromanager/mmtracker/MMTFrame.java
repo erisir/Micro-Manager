@@ -26,7 +26,7 @@ public class MMTFrame extends JFrame {
 
 	private static final long serialVersionUID = 1L;
 	final String[] PARALIST  = new String[]{"BallRadius","DNALength","ZCalScale_","ZCalStep","RinterStep","HalfCorrWin","MagnetStep","Frame2Acq","FrameCalcF","ITEM0","ITEM1","ITEM2"};
-
+	public JRadioButtonMenuItem MagnetCirculate;
 	private final int DEFAULT_WIDTH = 720;
 	private final int DEFAULT_HEIGHT =150;
 	private final int DEFAULT_LOCATION_X = 0;
@@ -166,12 +166,18 @@ public class MMTFrame extends JFrame {
 		Option = new JMenu("Option");//Option		
 		final JMenuItem Preferences = new JMenuItem("Preferences");		
 		final JMenu Magnet = new JMenu("Magnet");
-		MagnetAuto = new JRadioButtonMenuItem("Auto");		
+		MagnetAuto = new JRadioButtonMenuItem("Auto");	
+		MagnetAuto.setToolTipText("Magnet(MP285) increase by the stepsize");
+		MagnetCirculate = new JRadioButtonMenuItem("Circulate");		
+		MagnetCirculate.setToolTipText("Magnet(MP285) produce square wave");		
 		MagnetManual = new JRadioButtonMenuItem("Manual");
 		buttonGroup_0.add(MagnetAuto);
+		buttonGroup_0.add(MagnetCirculate);
 		buttonGroup_0.add(MagnetManual);
 
 		Magnet.add(MagnetAuto);
+		Magnet.addSeparator();
+		Magnet.add(MagnetCirculate);
 		Magnet.addSeparator();
 		Magnet.add(MagnetManual);	
 		
@@ -406,7 +412,10 @@ public class MMTFrame extends JFrame {
 		butCalibration.setEnabled(flag);
 		butLiveView.setEnabled(flag);
 	}
-
+public boolean isMagnetCirculate() {
+ 
+ 		return MagnetCirculate.isSelected();
+ 	}
 
 
 }

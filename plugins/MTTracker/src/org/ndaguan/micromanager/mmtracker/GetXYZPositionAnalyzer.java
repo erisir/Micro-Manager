@@ -63,10 +63,10 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 			Function.getInstance().dataReset();
 			frameNum_ = 0;
 			elapsed = 0;
-			if(!update){
-				reCalculateXYZ();
-				timeStamp.clear();
-			}
+//			if(!update){
+//				reCalculateXYZ();
+//				timeStamp.clear();
+//			}
 			return;
 		}
 
@@ -129,14 +129,12 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 				frameNum_ ++;
 			}
 			
-			if(MMTFrame.getInstance().isMagnetAuto() && (frameNum_ % (int)(MMT.VariablesNUPD.frameToCalcForce.value()) == 0)){
-				Function.getInstance().PullMagnet();
-			}
+			Function.getInstance().PullMagnet(frameNum_);
 			//storage timestamp
-			timeStamp.put(frameNum_,elapsed);
-			if(!update && (frameNum_%MMT.VariablesNUPD.frameToRefreshChart.value() != 0)){
-				return;
-			}
+			//timeStamp.put(frameNum_,elapsed);
+			//if(!update && (frameNum_%MMT.VariablesNUPD.frameToRefreshChart.value() != 0)){
+			//	return;
+			//}
 			
 			synchronized(MMT.Acqlock){
 				if(kernel_.roiList_.size()<=0){

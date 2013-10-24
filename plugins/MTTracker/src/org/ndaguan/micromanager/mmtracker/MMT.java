@@ -14,7 +14,8 @@ public class MMT {
 
 	public static String xyStage_ = null;
 	public static String zStage_ = null;
-
+	public static boolean magnetCurrentStage= false;
+	protected static double magnetCurrentPosition = 0;
 	public static boolean isAnalyzerBusy_ = false;
 	public static boolean isCalibrationRunning_ = false;
 	public static boolean isTestingRunning_ = false;
