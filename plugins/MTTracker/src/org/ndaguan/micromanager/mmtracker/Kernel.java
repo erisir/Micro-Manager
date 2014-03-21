@@ -288,7 +288,7 @@ public class Kernel {
 		double S00 = 0, S01 =0, S10 = 0, S11 =0;				 
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
 		double rInterStep = MMT.VariablesNUPD.rInterStep.value();
-		double skipRadius = MMT.VariablesNUPD.skipRadius.value();
+		double skipRadius = MMT.VariablesNUPD.skipRadius.value()+1;
 		int skipStart  = (int) (skipRadius/rInterStep);
 		double xFactor = MMT.VariablesNUPD.xFactor.value();
 		double yFactor = MMT.VariablesNUPD.yFactor.value();
