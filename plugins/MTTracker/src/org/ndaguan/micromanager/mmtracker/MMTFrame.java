@@ -44,7 +44,8 @@ public class MMTFrame extends JFrame {
 	public  JRadioButtonMenuItem MagnetManual;
 	private static Listener listener_;
 	public PreferDailog preferDailog;
-	public StageControlFrame myStageControlFrame_;
+	public StageControlFrame magnetControlFrame_;
+	public StageControlFrame stageControlFrame_;
 
 
 	public JMenuItem LiveView;
@@ -98,8 +99,17 @@ public class MMTFrame extends JFrame {
 	public MMTFrame(MMStudioMainFrame app, Listener listener) {
 
 		listener_ = listener;
-		if (myStageControlFrame_ == null)
-			myStageControlFrame_ = new StageControlFrame(app);
+		if (magnetControlFrame_ == null)
+			{
+			magnetControlFrame_ = new StageControlFrame(app,MMT.magnetZStage_,MMT.magnetXYstage_);
+			magnetControlFrame_.setTitle(String.format("[--%s--]", MMT.magnetZStage_));
+			}
+
+		if (stageControlFrame_ == null)
+			{
+			stageControlFrame_ = new StageControlFrame(app,MMT.zStage_,MMT.xyStage_);
+			stageControlFrame_.setTitle(String.format("[--%s--]", MMT.zStage_));
+			}
 
 		preferDailog = new PreferDailog();
 		initialize();
@@ -112,7 +122,7 @@ public class MMTFrame extends JFrame {
 		ij.ImageJ.getFrames()[0].setBounds(DEFAULT_WIDTH+5,DEFAULT_LOCATION_Y,560,120);
 		//		ij.ImageJ.getFrames()[0].setVisible(false);
 		setBounds(DEFAULT_LOCATION_X,DEFAULT_LOCATION_Y,DEFAULT_WIDTH,DEFAULT_HEIGHT);
-		app.setBounds(DEFAULT_LOCATION_X,DEFAULT_LOCATION_Y+DEFAULT_HEIGHT+5,DEFAULT_WIDTH,DEFAULT_WIDTH);
+		//app.setBounds(DEFAULT_LOCATION_X,DEFAULT_LOCATION_Y+DEFAULT_HEIGHT+5,DEFAULT_WIDTH,DEFAULT_WIDTH);
 
 	}
 
@@ -162,7 +172,8 @@ public class MMTFrame extends JFrame {
 
 
 		Option = new JMenu("Option");//Option		
-		final JMenuItem Preferences = new JMenuItem("Preferences");		
+		final JMenuItem Preferences = new JMenuItem("Preferences");	
+		final JMenuItem StageControl = new JMenuItem("StageControl");	
 		final JMenu Magnet = new JMenu("Magnet");
 		MagnetAuto = new JRadioButtonMenuItem("Auto");	
 		MagnetAuto.setToolTipText("Magnet(MP285) increase by the stepsize");
@@ -207,14 +218,18 @@ public class MMTFrame extends JFrame {
 
 
 		Preferences.addActionListener(listener_);
+		StageControl.addActionListener(listener_);
 		MagnetManual.addActionListener(listener_);
 		TCPIPClient.addActionListener(listener_);
 		TCPIPServer.addActionListener(listener_);
+		
 		Preferences.setToolTipText("Preferences");
+		StageControl.setToolTipText("StageControl");
 		MagnetManual.setToolTipText("MagnetManual");
 		TCPIPServer.setToolTipText("TCPIPServer");
 		TCPIPClient.setToolTipText("TCPIPClient");
 		Option.add(Preferences);
+		Option.add(StageControl);
 		Option.addSeparator();			
 		Option.add(Magnet);
 		Option.addSeparator();	

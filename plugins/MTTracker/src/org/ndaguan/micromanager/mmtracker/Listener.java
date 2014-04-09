@@ -203,6 +203,9 @@ public class Listener implements MouseListener, MouseMotionListener,KeyListener,
 		case "Preferences":
 			showPreferencesDialog();
 			break;
+		case "StageControl":
+			showStageControl();
+			break;
 		case "Auto Contrast":
 			setAutoContrast();
 			break;
@@ -298,6 +301,12 @@ public class Listener implements MouseListener, MouseMotionListener,KeyListener,
 	private void showPreferencesDialog() {
 		(new Thread(new Runnable() { @Override public void run() {
 			Function.getInstance().showPreferencesDialog();
+		}
+		})).start();
+	}
+	private void showStageControl() {
+		(new Thread(new Runnable() { @Override public void run() {
+			Function.getInstance().showStageControl();
 		}
 		})).start();
 	}

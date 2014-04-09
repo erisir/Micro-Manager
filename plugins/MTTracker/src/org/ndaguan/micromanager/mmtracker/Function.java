@@ -787,7 +787,10 @@ public class Function {
 
 	public void ShowMagnetManualDialBox() {
 		MMTFrame.getInstance().MagnetAuto.setSelected(false);
-		MMTFrame.getInstance().myStageControlFrame_.setVisible(true);
+		MMTFrame.getInstance().magnetControlFrame_.setVisible(true);
+	}
+	public void showStageControl() {
+		MMTFrame.getInstance().stageControlFrame_.setVisible(true);		
 	}
 	@SuppressWarnings("unused")
 	private void whataday() throws Exception{
@@ -1098,5 +1101,6 @@ public class Function {
 		}
 
 	}
+	
 
 }

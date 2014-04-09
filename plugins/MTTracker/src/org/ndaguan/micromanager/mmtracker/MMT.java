@@ -62,7 +62,8 @@ public class MMT {
 	public static boolean isFeedbackRunning_ = false;
 	protected static String currentUser = "n~daguan";
 	public static boolean magnetCurrentStage= false;
-	protected static double magnetCurrentPosition = 0;
+	public static double magnetCurrentPosition = 0;
+	public static double stageCurrentPosition = 0;
 	public static enum VariablesClassify{
 		General,
 		DataSheet,
@@ -171,5 +172,12 @@ public class MMT {
 			return -1;
 		}
 		
+	}
+	public static void SetCurrentStagePosition(String stageZLabel_,
+			double target) {
+			if(stageZLabel_.equals(magnetZStage_))
+				magnetCurrentPosition = target;
+			else
+				stageCurrentPosition = target;
 	};
 }

@@ -1,4 +1,4 @@
-package org.ndaguan.micromanager.mmtracker;
+
 /**
  * StageControlFrame.java
  *
@@ -17,10 +17,11 @@ package org.ndaguan.micromanager.mmtracker;
  *               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
  */
 
+package org.ndaguan.micromanager.mmtracker;
 
 import mmcorej.CMMCore;
 
-import java.awt.Toolkit;
+import java.awt.Color;
 import java.text.NumberFormat;
 import java.text.ParseException;
 
@@ -30,14 +31,9 @@ import org.micromanager.api.ScriptInterface;
 
 /**
  *
- * @author Nico
- * Control the stage device 
+ * @author nico
  */
 public class StageControlFrame extends javax.swing.JFrame {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
 	private final ScriptInterface gui_;
 	private final CMMCore core_;
 	private Preferences prefs_;
@@ -51,6 +47,8 @@ public class StageControlFrame extends javax.swing.JFrame {
 
 	private int frameXPos_ = 100;
 	private int frameYPos_ = 100;
+	private String stageZLabel_;
+	private String stageXYLabel_;
 
 	private static final String FRAMEXPOS = "FRAMEXPOS";
 	private static final String FRAMEYPOS = "FRAMEYPOS";
@@ -63,9 +61,11 @@ public class StageControlFrame extends javax.swing.JFrame {
 
 
 	/** Creates new form StageControlFrame */
-	public StageControlFrame(ScriptInterface gui) {
+	public StageControlFrame(ScriptInterface gui,String StageZLabel,String StageXYLabel) {
 		gui_ = gui;
 		core_ = gui_.getMMCore();
+		stageZLabel_ = StageZLabel;
+		stageXYLabel_ = StageXYLabel;
 		nf_ = NumberFormat.getInstance();
 		prefs_ = Preferences.userNodeForPackage(this.getClass());
 
@@ -92,6 +92,41 @@ public class StageControlFrame extends javax.swing.JFrame {
 		jTextField3.setText(nf_.format(largeMovement_));
 		jTextField4.setText(nf_.format(smallMovementZ_));
 		jTextField5.setText(nf_.format(mediumMovementZ_));
+	}
+	/** Creates new form StageControlFrame */
+	public StageControlFrame() {
+		gui_ = null;
+		core_ = null;
+		nf_ = NumberFormat.getInstance();
+		prefs_ = Preferences.userNodeForPackage(this.getClass());
+ 
+		// Read values from PREFS
+		frameXPos_ = prefs_.getInt(FRAMEXPOS, frameXPos_);
+		frameYPos_ = prefs_.getInt(FRAMEYPOS, frameYPos_);
+		double pixelSize = 50;
+		long nrPixelsX = 20;
+		smallMovement_ = prefs_.getDouble(SMALLMOVEMENT, pixelSize);
+		mediumMovement_ = prefs_.getDouble(MEDIUMMOVEMENT, pixelSize * nrPixelsX * 0.1);
+		largeMovement_ = prefs_.getDouble(LARGEMOVEMENT, pixelSize * nrPixelsX);
+		smallMovementZ_ = prefs_.getDouble(SMALLMOVEMENTZ, smallMovementZ_);
+		mediumMovementZ_ = prefs_.getDouble(MEDIUMMOVEMENTZ, mediumMovementZ_);
+
+		initComponents();
+
+		setLocation(frameXPos_, frameYPos_);
+
+
+		jTextField1.setText(nf_.format(smallMovement_));
+		jTextField2.setText(nf_.format(mediumMovement_));
+		jTextField3.setText(nf_.format(largeMovement_));
+		jTextField4.setText(nf_.format(smallMovementZ_));
+		jTextField5.setText(nf_.format(mediumMovementZ_));
+	}
+	public  static void main(String[] args) 
+	{
+		StageControlFrame frame = new  StageControlFrame() ;
+		frame.setVisible(true);
+		
 	}
 
 	/** This method is called from within the constructor to
@@ -138,8 +173,9 @@ public class StageControlFrame extends javax.swing.JFrame {
 		jLabel8 = new javax.swing.JLabel();
 		jLabel9 = new javax.swing.JLabel();
 		jLabel10 = new javax.swing.JLabel();
-		Toolkit kit = Toolkit.getDefaultToolkit();
-		setTitle("MP285 !!! Stage Control");
+		msg = new javax.swing.JLabel();
+		
+		setTitle("Stage Control");
 		setLocationByPlatform(true);
 		setResizable(false);
 		addWindowListener(new java.awt.event.WindowAdapter() {
@@ -148,108 +184,108 @@ public class StageControlFrame extends javax.swing.JFrame {
 			}
 		});
 
-		jButton1.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sl.png"))); // NOI18N
+		jButton1.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sl.png"))); // NOI18N
 		jButton1.setBorderPainted(false);
-		jButton1.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-slp.png"))); // NOI18N
+		jButton1.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-slp.png"))); // NOI18N
 		jButton1.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton1ActionPerformed(evt);
 			}
 		});
 
-		jButton10.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sd.png"))); // NOI18N
+		jButton10.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sd.png"))); // NOI18N
 		jButton10.setBorderPainted(false);
-		jButton10.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sdp.png"))); // NOI18N
+		jButton10.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sdp.png"))); // NOI18N
 		jButton10.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton10ActionPerformed(evt);
 			}
 		});
 
-		jButton2.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-tl.png"))); // NOI18N
+		jButton2.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-tl.png"))); // NOI18N
 		jButton2.setBorderPainted(false);
-		jButton2.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-tlp.png"))); // NOI18N
+		jButton2.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-tlp.png"))); // NOI18N
 		jButton2.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton2ActionPerformed(evt);
 			}
 		});
 
-		jButton3.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dl.png"))); // NOI18N
+		jButton3.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-dl.png"))); // NOI18N
 		jButton3.setBorderPainted(false);
-		jButton3.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dlp.png"))); // NOI18N
+		jButton3.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-dlp.png"))); // NOI18N
 		jButton3.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton3ActionPerformed(evt);
 			}
 		});
 
-		jButton7.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-su.png"))); // NOI18N
+		jButton7.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-su.png"))); // NOI18N
 		jButton7.setBorderPainted(false);
-		jButton7.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sup.png"))); // NOI18N
+		jButton7.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sup.png"))); // NOI18N
 		jButton7.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton7ActionPerformed(evt);
 			}
 		});
 
-		jButton11.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dd.png"))); // NOI18N
+		jButton11.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-dd.png"))); // NOI18N
 		jButton11.setBorderPainted(false);
-		jButton11.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-ddp.png"))); // NOI18N
+		jButton11.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-ddp.png"))); // NOI18N
 		jButton11.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton11ActionPerformed(evt);
 			}
 		});
 
-		jButton8.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-tu.png"))); // NOI18N
+		jButton8.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-tu.png"))); // NOI18N
 		jButton8.setBorderPainted(false);
-		jButton8.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-tup.png"))); // NOI18N
+		jButton8.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-tup.png"))); // NOI18N
 		jButton8.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton8ActionPerformed(evt);
 			}
 		});
 
-		jButton4.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sr.png"))); // NOI18N
+		jButton4.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sr.png"))); // NOI18N
 		jButton4.setBorderPainted(false);
-		jButton4.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-srp.png"))); // NOI18N
+		jButton4.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-srp.png"))); // NOI18N
 		jButton4.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton4ActionPerformed(evt);
 			}
 		});
 
-		jButton12.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-td.png"))); // NOI18N
+		jButton12.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-td.png"))); // NOI18N
 		jButton12.setBorderPainted(false);
-		jButton12.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-tdp.png"))); // NOI18N
+		jButton12.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-tdp.png"))); // NOI18N
 		jButton12.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton12ActionPerformed(evt);
 			}
 		});
 
-		jButton5.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-tr.png"))); // NOI18N
+		jButton5.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-tr.png"))); // NOI18N
 		jButton5.setBorderPainted(false);
-		jButton5.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-trp.png"))); // NOI18N
+		jButton5.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-trp.png"))); // NOI18N
 		jButton5.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton5ActionPerformed(evt);
 			}
 		});
 
-		jButton9.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-du.png"))); // NOI18N
+		jButton9.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-du.png"))); // NOI18N
 		jButton9.setBorderPainted(false);
-		jButton9.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dup.png"))); // NOI18N
+		jButton9.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-dup.png"))); // NOI18N
 		jButton9.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton9ActionPerformed(evt);
 			}
 		});
 
-		jButton6.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dr.png"))); // NOI18N
+		jButton6.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-dr.png"))); // NOI18N
 		jButton6.setBorderPainted(false);
-		jButton6.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-drp.png"))); // NOI18N
+		jButton6.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-drp.png"))); // NOI18N
 		jButton6.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton6ActionPerformed(evt);
@@ -341,19 +377,18 @@ public class StageControlFrame extends javax.swing.JFrame {
 			}
 		});
 
-		jLabel1.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sr.png"))); // NOI18N
+		jLabel1.setIcon(new javax.swing.ImageIcon("/Users/nico/svn/micromanager1.4/plugins/StageControl/src/org/micromanager/stagecontrol/icons/arrowhead-sr.png")); // NOI18N
 
-		jLabel2.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dr.png"))); // NOI18N
+		jLabel2.setIcon(new javax.swing.ImageIcon("/Users/nico/svn/micromanager1.4/plugins/StageControl/src/org/micromanager/stagecontrol/icons/arrowhead-dr.png")); // NOI18N
 
-		jLabel3.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-tr.png"))); // NOI18N
+		jLabel3.setIcon(new javax.swing.ImageIcon("/Users/nico/svn/micromanager1.4/plugins/StageControl/src/org/micromanager/stagecontrol/icons/arrowhead-tr.png")); // NOI18N
 
 		jLabel4.setText("μm");
 
 		jLabel5.setText("μm");
 
 		jLabel6.setText("μm");
-
-		jButton13.setFont(new java.awt.Font("Arial", 0, 10));
+			jButton13.setFont(new java.awt.Font("Arial", 0, 10));
 		jButton13.setText("1 pixel");
 		jButton13.setIconTextGap(6);
 		jButton13.setMaximumSize(new java.awt.Dimension(0, 0));
@@ -390,36 +425,36 @@ public class StageControlFrame extends javax.swing.JFrame {
 		jLabel7.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
 		jLabel7.setText("XY Stage");
 
-		jButton16.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-du.png"))); // NOI18N
+		jButton16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-du.png"))); // NOI18N
 		jButton16.setBorderPainted(false);
-		jButton16.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dup.png"))); // NOI18N
+		jButton16.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-dup.png"))); // NOI18N
 		jButton16.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton16ActionPerformed(evt);
 			}
 		});
 
-		jButton17.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-su.png"))); // NOI18N
+		jButton17.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-su.png"))); // NOI18N
 		jButton17.setBorderPainted(false);
-		jButton17.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sup.png"))); // NOI18N
+		jButton17.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sup.png"))); // NOI18N
 		jButton17.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton17ActionPerformed(evt);
 			}
 		});
 
-		jButton18.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sd.png"))); // NOI18N
+		jButton18.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sd.png"))); // NOI18N
 		jButton18.setBorderPainted(false);
-		jButton18.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-sdp.png"))); // NOI18N
+		jButton18.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-sdp.png"))); // NOI18N
 		jButton18.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton18ActionPerformed(evt);
 			}
 		});
 
-		jButton19.setIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-dd.png"))); // NOI18N
+		jButton19.setIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-dd.png"))); // NOI18N
 		jButton19.setBorderPainted(false);
-		jButton19.setPressedIcon(new javax.swing.ImageIcon(kit.getImage("icons/arrowhead-ddp.png"))); // NOI18N
+		jButton19.setPressedIcon(new javax.swing.ImageIcon(getClass().getResource("/org/micromanager/stagecontrol/icons/arrowhead-ddp.png"))); // NOI18N
 		jButton19.addActionListener(new java.awt.event.ActionListener() {
 			public void actionPerformed(java.awt.event.ActionEvent evt) {
 				jButton19ActionPerformed(evt);
@@ -566,17 +601,16 @@ public class StageControlFrame extends javax.swing.JFrame {
 																								.add(jButton15, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE))
 																								.add(26, 26, 26))
 				);
-
+		msg.setBounds(20,335, 300, 20);
+		msg.setForeground(new Color(255,1,1));
+	    this.getContentPane().add(msg);
 		pack();
 	}// </editor-fold>//GEN-END:initComponents
 
 	private void setRelativeXYStagePosition(double x, double y) {
 		try {
-			String xyStage = MMT.magnetXYstage_;
-			double[] xpos = new double[1];
-			double[] ypos = new double[1];
-			core_.getXYPosition(xyStage, xpos, ypos);
-			core_.setXYPosition(xyStage, xpos[0] + x, ypos[0] + y);
+			if (!core_.deviceBusy(stageXYLabel_))
+				core_.setRelativeXYPosition(stageXYLabel_, x, y);
 		} catch(Exception e) {
 			gui_.logError(e);
 		}
@@ -585,16 +619,18 @@ public class StageControlFrame extends javax.swing.JFrame {
 	private void setRelativeStagePosition(double z)
 	{
 		try {
-			String zStage = MMT.magnetZStage_;
-			double zpos = core_.getPosition(zStage);
-			double target = zpos - z;
-			if(target >0)
-				target = 0;
-			MMT.magnetCurrentPosition = target;
-			core_.setPosition(zStage,target);
+			if (!core_.deviceBusy(stageZLabel_)){
+				double from = core_.getPosition(stageZLabel_);
+				core_.setRelativePosition(stageZLabel_, z);
+				double target = core_.getPosition(stageZLabel_);
+				MMT.SetCurrentStagePosition(stageZLabel_,target);
+				double delta = target - from;
+				msg.setText(String.format("ZPos:  to-from = %.3f-%.3f=%.3f(μm)",target,from,delta));
+			}
 		} catch (Exception e) {
 			gui_.logError(e);
 		}
+		
 	}
 
 	private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
@@ -792,6 +828,7 @@ public class StageControlFrame extends javax.swing.JFrame {
 	private javax.swing.JButton jButton9;
 	private javax.swing.JLabel jLabel1;
 	private javax.swing.JLabel jLabel10;
+	private javax.swing.JLabel msg;
 	private javax.swing.JLabel jLabel2;
 	private javax.swing.JLabel jLabel3;
 	private javax.swing.JLabel jLabel4;
