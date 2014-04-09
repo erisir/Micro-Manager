@@ -6,8 +6,16 @@ import ij.WindowManager;
 
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -15,6 +23,8 @@ import javax.swing.SwingUtilities;
 
 import mmcorej.CMMCore;
 
+import org.jfree.chart.ChartUtilities;
+import org.jfree.chart.JFreeChart;
 import org.micromanager.MMStudioMainFrame;
 import org.micromanager.utils.MMScriptException;
 
@@ -656,11 +666,22 @@ public class Function {
 			setProgressBarValue(i);
 		}//for end
 		WHATISLOVE("TestingTrue");
+		try {
+			saveTestingChart();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 		installAnalyzer("XYACQ");
 		liveView();
 	}
 
 
+	private void saveTestingChart() throws IOException {
+		for(int i = 0;i<roiList_.size();i++)
+		{
+			roiList_.get(i).saveTestingChart();
+		}	
+	}
 	public void calibrate() {
 		if(roiList_ ==null ||roiList_.size() <= 0){
 			MMT.logError("No roi in the image,Try ctrl+A");

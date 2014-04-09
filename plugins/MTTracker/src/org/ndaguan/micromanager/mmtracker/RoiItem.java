@@ -3,6 +3,8 @@ package org.ndaguan.micromanager.mmtracker;
 import java.awt.Color;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
@@ -14,6 +16,8 @@ import java.util.GregorianCalendar;
 import javax.swing.SwingUtilities;
 
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.jfree.chart.ChartUtilities;
+import org.jfree.chart.JFreeChart;
 import org.jfree.data.xy.XYSeries;
 
 /**
@@ -424,6 +428,23 @@ public  class RoiItem {
 			feedbackXYZStatis_[i].clear();		
 			feedbackIntergStatis_[i].clear();		
 		}
+	}
+	public void saveTestingChart() throws IOException {
+		Calendar cal = new GregorianCalendar();
+		DateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
+		File dir = new File(new File(MMTFrame.getInstance().preferDailog.userDataDir_, "MTTracker"),
+				dateFormat.format(cal.getTime()));
+		dir.mkdirs();
+		dateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss");
+
+		String path = dir.getAbsolutePath() +"/"+ dateFormat.format(cal.getTime()) + String.format("_TestingResult_%d_", index_)+".png";
+		FileOutputStream out = new FileOutputStream(path );
+
+		ChartUtilities.writeChartAsPNG(out, chart_.getChartSeries().get("Chart-Testing") , 640, 480);
+		System.out.print("Save chart");
+		System.out.print(path);
+		out.flush();
+		out.close();
 	}
 
 }
