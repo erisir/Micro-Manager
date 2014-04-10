@@ -12,8 +12,8 @@ public class MMT {
 	public static  String magnetZStage_ = "MP285 Z Stage";
 	public static  boolean debug = true;
 	
-	public static  String xyStage_ = null; 
-	public static  String zStage_ = null;
+	public static  String xyStage_ = ""; 
+	public static  String zStage_ = "";
 	
 	public static boolean isAnalyzerBusy_ = false;
 	public static boolean isCalibrationRunning_ = false;

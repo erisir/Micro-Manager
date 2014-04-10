@@ -105,7 +105,7 @@ public class MMTFrame extends JFrame {
 			magnetControlFrame_.setTitle(String.format("[--%s--]", MMT.magnetZStage_));
 			}
 
-		if (stageControlFrame_ == null)
+		if (stageControlFrame_ == null && !MMT.zStage_.isEmpty())
 			{
 			stageControlFrame_ = new StageControlFrame(app,MMT.zStage_,MMT.xyStage_);
 			stageControlFrame_.setTitle(String.format("[--%s--]", MMT.zStage_));
