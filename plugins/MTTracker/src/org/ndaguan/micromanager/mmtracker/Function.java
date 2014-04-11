@@ -1,5 +1,6 @@
 package org.ndaguan.micromanager.mmtracker;
 
+import ij.IJ;
 import ij.ImagePlus;
 import ij.ImageStack;
 import ij.WindowManager;
@@ -1098,7 +1099,32 @@ public class Function {
 	}
 
 	public void runDebug() {
-		gaussionCenterlization();		
+		//gaussionCenterlization();	
+		try {
+			MMT.logMessage("TESTING");
+			xmtStageDebug();
+		} catch (Exception e) {
+			MMT.logError("run debug error"+e.toString());
+		}
+	}
+	private void xmtStageDebug() throws Exception {
+		String lable = core_.getFocusDevice();
+		double start = MMT.VariablesNUPD.beanRadius.value();
+		double end = start+MMT.VariablesNUPD.calRange.value();
+		for(double i = start;i<end;i+=MMT.VariablesNUPD.calStepSize.value())
+		{
+			core_.setPosition(lable, i);
+			TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+			double ret = 0;
+			MMT.logMessage(String.format("current\ti:%f", i));
+			for(int j=0;j<20;j++){
+				ret += core_.getPosition(lable);
+				TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.frameToFeedBack.value());
+			}
+			ret = ret/20;
+			IJ.log(String.format("%f,%f", i,ret));
+		}
+		
 	}
 	public void gaussionCenterlization(){
 		final ImagePlus currentImage = WindowManager.getCurrentImage();
