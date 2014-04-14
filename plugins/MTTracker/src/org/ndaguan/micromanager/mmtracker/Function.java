@@ -1112,18 +1112,20 @@ public class Function {
 		double start = MMT.VariablesNUPD.beanRadius.value();
 		double end = start+MMT.VariablesNUPD.calRange.value();
 		int takeTime = (int) MMT.VariablesNUPD.AutoRange.value();
+		long sleepTime = (long) MMT.VariablesNUPD.stageMoveSleepTime.value();
 		for(double i = start;i<end;i+=MMT.VariablesNUPD.calStepSize.value())
 		{
 			core_.setPosition(lable, i);
-			TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+			MMT.logMessage(String.format("Working on:%d", i));
+			TimeUnit.MILLISECONDS.sleep(sleepTime);
 			double ret = 0;
-			MMT.logMessage(String.format("current\ti:%f", i));
+			IJ.log(String.format("SetPoint,GetPoint,Delta,start:%.1f,end:%.1f,takeTime:%d,sleepTime:%d",start,end,takeTime,sleepTime));
 			for(int j=0;j<takeTime;j++){
 				ret += core_.getPosition(lable);
-				TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.frameToFeedBack.value());
+				TimeUnit.MILLISECONDS.sleep(sleepTime);
 			}
 			ret = ret/takeTime;
-			IJ.log(String.format("%f,%f", i,ret));
+			IJ.log(String.format("%.3f,%.3f,%.3f", i,ret,i-ret));
 		}
 		
 	}
