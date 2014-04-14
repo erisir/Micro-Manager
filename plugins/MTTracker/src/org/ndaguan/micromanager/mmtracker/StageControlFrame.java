@@ -602,7 +602,7 @@ public class StageControlFrame extends javax.swing.JFrame {
 																								.add(jButton15, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE))
 																								.add(26, 26, 26))
 				);
-		msg.setBounds(20,365, 300, 20);
+		msg.setBounds(20,365, 330, 20);
 		msg.setText("dfadsfadsfasdffdsafdsfads");
 		msg.setForeground(new Color(255,1,1));
 		this.getContentPane().add(msg);
@@ -622,12 +622,25 @@ public class StageControlFrame extends javax.swing.JFrame {
 	{
 		try {
 			if (!core_.deviceBusy(stageZLabel_)){
+				double target=0;
 				double from = core_.getPosition(stageZLabel_);
-				core_.setRelativePosition(stageZLabel_, z);
-				double target = core_.getPosition(stageZLabel_);
-				MMT.SetCurrentStagePosition(stageZLabel_,target);
-				double delta = target - from;
-				msg.setText(String.format("ZPos:  to-from = %.3f-%.3f=%.3f(μm)",target,from,delta));
+
+				if(stageZLabel_.equals(MMT.magnetZStage_)){
+					target= from - z;
+					if(target >0)
+						target = 0;
+					MMT.magnetCurrentPosition = target;
+					core_.setPosition(stageZLabel_,target);
+				}
+				else{
+					core_.setRelativePosition(stageZLabel_, z);
+					target = core_.getPosition(stageZLabel_);
+					MMT.SetCurrentStagePosition(stageZLabel_,target);
+				}
+				double delta = from -target ;
+				msg.setText(String.format("ZPos:  FROM -> TO= [%.3f] -> [%.3f]=%.3f(μm)",from,target,delta));
+
+
 			}
 		} catch (Exception e) {
 			gui_.logError(e);
