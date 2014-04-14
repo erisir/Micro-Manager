@@ -60,9 +60,15 @@ public class MMTracker implements MMPlugin{
 		}
 	}
 	public void initialize(){
-		MMT.xyStage_ = core_.getXYStageDevice();
-		MMT.zStage_ = core_.getFocusDevice();
-		
+		try {
+			MMT.xyStage_ = core_.getXYStageDevice();
+			MMT.zStage_ = core_.getFocusDevice();
+			MMT.stageCurrentPosition = core_.getPosition(MMT.zStage_);
+			MMT.magnetCurrentPosition = core_.getPosition(MMT.magnetZStage_);
+		} catch (Exception e) {
+			e.printStackTrace();
+			MMT.logError(e.toString());
+		}
 		roiList_ = Collections.synchronizedList(new ArrayList<RoiItem>());
 		//operation
 		render_ = OverlayRender.getInstance(app_);
@@ -77,12 +83,7 @@ public class MMTracker implements MMPlugin{
 		function_.installAnalyzer("XYACQ");
 		frame_.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);	
 		frame_.setVisible(true);
-		try {
-			MMT.stageCurrentPosition = core_.getPosition(MMT.zStage_);
-			MMT.magnetCurrentPosition = core_.getPosition(MMT.magnetZStage_);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		
 		if ((!app_.getAcquisitionEngine().isAcquisitionRunning())
 				&& (!app_.isLiveModeOn())) {
 			app_.enableLiveMode(true);

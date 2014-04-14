@@ -1111,17 +1111,18 @@ public class Function {
 		String lable = core_.getFocusDevice();
 		double start = MMT.VariablesNUPD.beanRadius.value();
 		double end = start+MMT.VariablesNUPD.calRange.value();
+		int takeTime = (int) MMT.VariablesNUPD.AutoRange.value();
 		for(double i = start;i<end;i+=MMT.VariablesNUPD.calStepSize.value())
 		{
 			core_.setPosition(lable, i);
 			TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 			double ret = 0;
 			MMT.logMessage(String.format("current\ti:%f", i));
-			for(int j=0;j<20;j++){
+			for(int j=0;j<takeTime;j++){
 				ret += core_.getPosition(lable);
 				TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.frameToFeedBack.value());
 			}
-			ret = ret/20;
+			ret = ret/takeTime;
 			IJ.log(String.format("%f,%f", i,ret));
 		}
 		

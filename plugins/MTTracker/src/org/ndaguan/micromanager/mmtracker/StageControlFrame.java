@@ -81,9 +81,9 @@ public class StageControlFrame extends javax.swing.JFrame {
 		mediumMovementZ_ = prefs_.getDouble(MEDIUMMOVEMENTZ, mediumMovementZ_);
 
 		initComponents();
-
+        if(!StageZLabel.isEmpty())
+		setTitle(String.format("[--%s--]",StageZLabel));
 		setLocation(frameXPos_, frameYPos_);
-
 		setBackground(gui_.getBackgroundColor());
 		gui_.addMMBackgroundListener(this);
 

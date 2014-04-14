@@ -102,13 +102,11 @@ public class MMTFrame extends JFrame {
 		if (magnetControlFrame_ == null)
 			{
 			magnetControlFrame_ = new StageControlFrame(app,MMT.magnetZStage_,MMT.magnetXYstage_);
-			magnetControlFrame_.setTitle(String.format("[--%s--]", MMT.magnetZStage_));
 			}
 
-		if (stageControlFrame_ == null && !MMT.zStage_.isEmpty())
+		if (stageControlFrame_ == null)
 			{
 			stageControlFrame_ = new StageControlFrame(app,MMT.zStage_,MMT.xyStage_);
-			stageControlFrame_.setTitle(String.format("[--%s--]", MMT.zStage_));
 			}
 
 		preferDailog = new PreferDailog();
