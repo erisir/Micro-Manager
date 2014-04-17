@@ -1116,7 +1116,6 @@ public class Function {
 		for(double i = start;i<end;i+=MMT.VariablesNUPD.calStepSize.value())
 		{
 			core_.setPosition(lable, i);
-			MMT.logMessage(String.format("Working on:%d", i));
 			TimeUnit.MILLISECONDS.sleep(sleepTime);
 			double ret = 0;
 			IJ.log(String.format("SetPoint,GetPoint,Delta,start:%.1f,end:%.1f,takeTime:%d,sleepTime:%d",start,end,takeTime,sleepTime));

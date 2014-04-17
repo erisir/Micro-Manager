@@ -603,7 +603,6 @@ public class StageControlFrame extends javax.swing.JFrame {
 																								.add(26, 26, 26))
 				);
 		msg.setBounds(20,365, 330, 20);
-		msg.setText("dfadsfadsfasdffdsafdsfads");
 		msg.setForeground(new Color(255,1,1));
 		this.getContentPane().add(msg);
 		pack();

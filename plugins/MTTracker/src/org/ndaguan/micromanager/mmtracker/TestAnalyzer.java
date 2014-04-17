@@ -29,7 +29,6 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 		if (!MMT.isTestingRunning_ || taggedImage == null || taggedImage == TaggedImageQueue.POISON)return;
 		//Testing start
 		try {
-			double[] pos = Function.getInstance().getStagePosition();
 			boolean ret = kernel_.getXYZPosition(taggedImage.pix);
 			Function.getInstance().reDraw(MMStudioMainFrame.SIMPLE_ACQ,MMT.testingIndex_, true,true);
 			if(!ret){
@@ -38,9 +37,8 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 				MMT.isAnalyzerBusy_ = false;
 				return;
 			}
-			Function.getInstance().updateTestingChart(pos[2]);
+			Function.getInstance().updateTestingChart(kernel_.zTestingPosProfiles[MMT.testingIndex_]);
 			MMT.logMessage(String.format("Testing:\t\t%d/%d",MMT.testingIndex_,kernel_.zTestingPosProfiles.length));
-			MMT.debugMessage((String.format("Testing:\tZ\t%d/%d\tXP\t%f\tYP\t%f\tZP\t%f\n",MMT.testingIndex_,kernel_.zTestingPosProfiles.length,pos[0],pos[1],pos[2])));
 		} catch (Exception e) {
 			MMT.isTestingRunning_  = false;
 			MMT.lastError_ = e.toString();
