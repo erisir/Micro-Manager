@@ -145,14 +145,14 @@ int AVTCamera::Initialize()
 
 	FGPINFO info;
 	//	assert(cam.SetParameter(FGP_IMAGEFORMAT, MAKEIMAGEFORMAT(RES_SCALABLE, CM_Y8, 0)) == FCE_NOERROR);
-	assert(cam.SetParameter(FGP_IMAGEFORMAT, MAKEDCAMFORMAT(7,1, CM_Y8)) == FCE_NOERROR);
-	assert(cam.SetParameter(FGP_XPOSITION, 0) == FCE_NOERROR);
-	assert(cam.SetParameter(FGP_YPOSITION, 0) == FCE_NOERROR);
-	assert(cam.GetParameterInfo(FGP_XSIZE, &info) == FCE_NOERROR);
-	assert(cam.SetParameter(FGP_XSIZE, info.MaxValue) == FCE_NOERROR);
+	cam.SetParameter(FGP_IMAGEFORMAT, MAKEDCAMFORMAT(7,1, CM_Y8));
+	cam.SetParameter(FGP_XPOSITION, 0);
+	cam.SetParameter(FGP_YPOSITION, 0) ;
+	cam.GetParameterInfo(FGP_XSIZE, &info);
+	cam.SetParameter(FGP_XSIZE, info.MaxValue);
 	fullFrameX_ = info.MaxValue;
-	assert(cam.GetParameterInfo(FGP_YSIZE, &info) == FCE_NOERROR);
-	assert(cam.SetParameter(FGP_YSIZE, info.MaxValue) == FCE_NOERROR);
+	cam.GetParameterInfo(FGP_YSIZE, &info) ;
+	cam.SetParameter(FGP_YSIZE, info.MaxValue) ;
 	fullFrameY_ = info.MaxValue;
 	roi_.x = 0;
 	roi_.y = 0;
