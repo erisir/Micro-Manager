@@ -4,8 +4,10 @@
 #include "stdafx.h"
 #include <Windows.h>
 #include "AVTCamera.h"
-
+#include <VimbaCPP/Include/VimbaSystem.h>
+#include "AVT_Guppy_F146BCamera.h"
 using namespace std;
+using namespace AVT::VmbAPI;
 
 /////////////////////////// START HERE /////////////////////////////////
 
@@ -72,17 +74,17 @@ DriverGuard::~DriverGuard()
 }
 
 AVTCamera::AVTCamera() :
-				binSize_(1),
-				depth_(8),
-				initialized_(false),
-				fullFrameX_(0),
-				fullFrameY_(0),
-				fullFrameBufferSize_(0),
-				sequenceRunning_(false),
-				timeout_(1000),
-				thd_(0),
-				exposure_(20),
-				deinterlace_(0)
+						binSize_(1),
+						depth_(8),
+						initialized_(false),
+						fullFrameX_(0),
+						fullFrameY_(0),
+						fullFrameBufferSize_(0),
+						sequenceRunning_(false),
+						timeout_(1000),
+						thd_(0),
+						exposure_(20),
+						deinterlace_(0)
 {
 	InitializeDefaultErrorMessages();
 	// add custom messages
@@ -109,7 +111,6 @@ AVTCamera::~AVTCamera()
 		if (initialized_) {
 			Shutdown();
 		}
-		FGExitModule();
 
 		// clear the instance pointer
 		instance_ = NULL;
@@ -129,83 +130,67 @@ int AVTCamera::Initialize()
 {
 	if (initialized_)
 		return DEVICE_OK;
+	VimbaSystem& sys = VimbaSystem::GetInstance();  // Get a reference to the VimbaSystem singleton
+	VmbErrorType err = sys.Startup();               // Initialize the Vimba API
+	CameraPtrVector cameras;                        // A vector of std::shared_ptr<AVT::VmbAPI::Camera> objects
 
-	unsigned long ret;
-	FGInitModule(NULL);
-	initialized_ = true;
+	std::string strID;                              // The ID of the cam
+	std::string strName;                            // The name of the cam
+	std::string strModelname;                       // The model name of the cam
+	std::string strSerialNumber;                    // The serial number of the cam
+	std::string strInterfacaeID;                    // The ID of the interface the cam is connected to
 
-	// Find camera
-	FGNODEINFO nodeInfo[3];
-	unsigned long nodeCnt;
-	ret = FGGetNodeList(nodeInfo, 3, &nodeCnt);
-	if (ret != FCE_NOERROR || nodeCnt < 1)
-		return ret + g_Err_Offset;
 
-	assert(cam.Connect(&nodeInfo[0].Guid) == FCE_NOERROR);
+	if ( VmbErrorSuccess == sys.GetCameras( cameras ) )
+	{
+		LogMessage(" system.GetCameras");
+		for ( CameraPtrVector :: iterator iter = cameras.begin ();cameras.end() != iter;++iter )
+		{
+			err = (*iter)->GetID( strID );
+			if ( VmbErrorSuccess != err )
+				return err;
 
-	FGPINFO info;
-	//	assert(cam.SetParameter(FGP_IMAGEFORMAT, MAKEIMAGEFORMAT(RES_SCALABLE, CM_Y8, 0)) == FCE_NOERROR);
-	cam.SetParameter(FGP_IMAGEFORMAT, MAKEDCAMFORMAT(7,1, CM_Y8));
-	cam.SetParameter(FGP_XPOSITION, 0);
-	cam.SetParameter(FGP_YPOSITION, 0) ;
-	cam.GetParameterInfo(FGP_XSIZE, &info);
-	cam.SetParameter(FGP_XSIZE, info.MaxValue);
-	fullFrameX_ = info.MaxValue;
-	cam.GetParameterInfo(FGP_YSIZE, &info) ;
-	cam.SetParameter(FGP_YSIZE, info.MaxValue) ;
-	fullFrameY_ = info.MaxValue;
+			err = (*iter)->GetName( strName );
+			if ( VmbErrorSuccess != err )
+				return err;
+
+			err = (*iter)->GetModel( strModelname );
+			if ( VmbErrorSuccess != err )
+				return err;
+
+			err = (*iter)->GetSerialNumber( strSerialNumber );
+			if ( VmbErrorSuccess != err )
+				return err;
+
+			err = (*iter)->GetInterfaceID( strInterfacaeID );
+			if ( VmbErrorSuccess != err )
+				return err;
+
+			if(strcmp(strName.c_str(),"GE680") != 0){
+				cam_ = new AVT_Guppy_F146BCamera(strID.c_str(),strName.c_str(),strModelname.c_str(),strSerialNumber.c_str(),strInterfacaeID.c_str(),VmbInterfaceEthernet,"GigE","GigE",VmbAccessModeFull);
+			}
+
+		}
+	}
+
+
+	cam_->Open(VmbAccessModeFull);
+	VmbInt64_t height,width,bufferSize;
+	cam_->GetHeight(height);
+	cam_->GetWidth(width);
+	fullFrameX_ = width;
+	fullFrameY_ = height;
+	cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
+	depth_ = 16;
+	binSize_ = 1;
 	roi_.x = 0;
 	roi_.y = 0;
 	roi_.xSize = fullFrameX_;
 	roi_.ySize = fullFrameY_;
-
-	// Description
-	if (!HasProperty(MM::g_Keyword_Description))
-	{
-		ret = CreateProperty(MM::g_Keyword_Description, "AVT Guppy camera adapter", MM::String, true);
-		if (ret != DEVICE_OK)
-			return ret;
-	}
-
-	// Camera name
-	{
-		char str[1024];
-		assert(cam.GetDeviceName(str, 1024) == FCE_NOERROR);
-		camName_ = str;
-	}
-	if (!HasProperty(g_CameraName))
-	{
-		ret = CreateProperty(g_CameraName, camName_.c_str(), MM::String, true);
-		if (ret != DEVICE_OK)
-			return ret;
-	}
-
-	// Dummy property for getPixelSizeUm
-	if (!HasProperty(g_Label))
-	{
-		ret = CreateProperty(g_Label, "Dummy", MM::String, false);
-		assert(ret == DEVICE_OK);
-	}
-
-	// De-interlace
-	if (!HasProperty(g_DeInterlace))
-	{
-		CPropertyAction* pAct = new CPropertyAction(this, &AVTCamera::OnDeInterlace);
-		ret = CreateProperty(g_DeInterlace, "0", MM::Integer, false, pAct);
-		if (ret != DEVICE_OK)
-			return ret;
-	}
-
-	if (!HasProperty(g_Binning))
-	{
-		CPropertyAction* pAct = new CPropertyAction(this, &AVTCamera::OnBinning);
-		ret = CreateProperty(g_Binning, "", MM::Integer, false, pAct);
-		if (ret != DEVICE_OK)
-			return ret;
-	}
-
-	fullFrameBufferSize_ = fullFrameX_ * fullFrameY_ * (depth_ / 8 + 1) * 3;
+	fullFrameBufferSize_ = fullFrameX_ * fullFrameY_ * (depth_ / 8 ) ;
 	fullFrameBuffer_ = new unsigned char[fullFrameBufferSize_];
+	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
+	cam_->Close();
 	ResizeImageBuffer();
 	return DEVICE_OK;
 }
@@ -227,7 +212,7 @@ int AVTCamera::Shutdown()
 	if (initialized_)
 	{
 		StopCamera();
-		cam.Disconnect();
+		cam_->Close();
 
 		delete fullFrameBuffer_;
 	}
@@ -239,12 +224,8 @@ int AVTCamera::Shutdown()
 void AVTCamera::StopCamera()
 {
 	DriverGuard dg(this);
-	unsigned long ret = cam.StopDevice();
-	if (ret != FCE_NOERROR)
-		return;
-	ret = cam.CloseCapture();
-	if (ret != FCE_NOERROR)
-		return;
+	cam_->EndCapture();
+	cam_->Close();
 }
 
 //added to use RTA
@@ -257,69 +238,34 @@ void AVTCamera::StopCamera()
 int AVTCamera::SnapImage()
 {
 	DriverGuard dg(this);
+		std::ostringstream osMessage;
+		if (sequenceRunning_)   // If we are in the middle of a SequenceAcquisition
+			return ERR_BUSY_ACQUIRING;
+		cam_->Open(VmbAccessModeFull);
 
-	if (sequenceRunning_)   // If we are in the middle of a SequenceAcquisition
-		return ERR_BUSY_ACQUIRING;
-
-	unsigned long ret = cam.OpenCapture();
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-	ret = cam.StartDevice();
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-
-	FGFRAME frame;
-	ret = cam.GetFrame(&frame, timeout_);
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-
-	int bpp = GetImageBytesPerPixel();
-	int w = GetImageWidth();
-	int h = GetImageHeight();
-	switch (deinterlace_)
-	{
-	case 0:
-		memcpy_s(fullFrameBuffer_, fullFrameBufferSize_, frame.pData, frame.Length);
-		break;
-	case 1:
-		for (int i=0; i<GetImageHeight(); i++)
+		FramePtr frame;
+		//cam_->StartCapture();
+		cam_->AcquireSingleImage(frame,1000);
+		// See if it is not corrupt
+		VmbFrameStatusType eReceiveStatus;
+		VmbErrorType err;
+		err = frame->GetReceiveStatus( eReceiveStatus );
+		if ( VmbErrorSuccess == err && VmbFrameStatusComplete == eReceiveStatus )
 		{
-			if (i % 2 == 0)
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + (i/2) * w, w);
-			}
-			else
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + ((i-1)/2 + h/2) * w, w);
-			}
+			VmbUchar_t *pBuffer;
+			frame->GetImage(pBuffer);
+			VmbUint32_t bufferSize_ = 0;
+			frame->GetBufferSize(bufferSize_);
+			memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
 		}
-		break;
-	case 2:
-		for (int i=0; i<GetImageHeight(); i++)
-		{
-			if (i % 2 == 0)
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + (i/2) * w, w);
-			}
-			else
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + ((i+1)/2 + h/2) * w, w);
-			}
+		else{
+			osMessage.str("");
+			osMessage << "snap image error:err code["<< err<<"]eReceiveStatus[" <<eReceiveStatus<<"]";
+			this->LogMessage(osMessage.str().c_str());
 		}
-		break;
-	default:
-		return ERR_INCOMPLETE_SNAP_IMAGE_CYCLE;
-	}
+		cam_->Close();
 
-	ret = cam.PutFrame(&frame);
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-
-	ret = cam.CloseCapture();
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-
-	return DEVICE_OK;
+		return DEVICE_OK;
 }
 
 void AVTCamera::GetName(char* name) const 
@@ -352,59 +298,7 @@ double AVTCamera::GetExposure() const
 
 int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize)
 {
-	DriverGuard dg(this);
-	if (Busy())
-		return ERR_BUSY_ACQUIRING;
 
-	//added to use RTA
-	StopCamera();
-
-	ROI oldRoi = roi_;
-
-	uX = 0;
-	uY = 0;
-	roi_.x = uX * binSize_;
-	roi_.y = uY * binSize_;
-	roi_.xSize = uXSize * binSize_;
-	roi_.ySize = uYSize * binSize_;
-
-	if (roi_.x + roi_.xSize > fullFrameX_ || roi_.y + roi_.ySize > fullFrameY_)
-	{
-		roi_ = oldRoi;
-		return ERR_INVALID_ROI;
-	}
-
-	// adjust image extent to conform to the bin size
-	roi_.xSize -= roi_.xSize % binSize_;
-	roi_.ySize -= roi_.ySize % binSize_;
-
-	unsigned long ret = cam.SetParameter(FGP_XPOSITION, roi_.x);
-	if (ret != FCE_NOERROR)
-	{
-		roi_ = oldRoi;
-		return ret + g_Err_Offset;
-	}
-	ret = cam.SetParameter(FGP_YPOSITION, roi_.y);
-	if (ret != FCE_NOERROR)
-	{
-		roi_ = oldRoi;
-		return ret + g_Err_Offset;
-	}
-	ret = cam.SetParameter(FGP_XSIZE, roi_.xSize);
-	if (ret != FCE_NOERROR)
-	{
-		roi_ = oldRoi;
-		return ret + g_Err_Offset;
-	}
-	ret = cam.SetParameter(FGP_YSIZE, roi_.ySize);
-	if (ret != FCE_NOERROR)
-	{
-		roi_ = oldRoi;
-		return ret + g_Err_Offset;
-	}
-
-	ResizeImageBuffer();
-	OnPropertiesChanged();
 
 	return DEVICE_OK;
 }
@@ -421,19 +315,6 @@ int AVTCamera::GetROI(unsigned& uX, unsigned& uY, unsigned& uXSize, unsigned& uY
 
 int AVTCamera::ClearROI()
 {
-	DriverGuard dg(this);
-
-	FGPINFO info;
-	roi_.x = 0;
-	roi_.y = 0;
-	unsigned ret = cam.GetParameterInfo(FGP_XSIZE, &info);
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-	roi_.xSize = (int)info.MaxValue;
-	ret = cam.GetParameterInfo(FGP_YSIZE, &info);
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-	roi_.ySize = (int)info.MaxValue;
 
 	return SetROI(roi_.x, roi_.y, roi_.xSize, roi_.ySize);
 }
@@ -584,65 +465,22 @@ int  AVTCamera::ThreadRun (MM::MMTime startTime)
 };
 int AVTCamera::GenerateImage(ImgBuffer& img, double exp)
 {
-	static int index = 0;
-	if(index>img_.Width()*img_.Height()-1)
-		index = 0;
-	//std::string pixelType;
-	char buf[MM::MaxStrLength];
-	GetProperty(MM::g_Keyword_PixelType, buf);
-	std::string pixelType(buf);
-
-	if (img_.Height() == 0 || img_.Width() == 0 || img_.Depth() == 0)
-		return DEVICE_ERR;
-
-	unsigned char* pBuf = fullFrameBuffer_;
-	FGFRAME frame;
-	int ret = cam.GetFrame(&frame,exp);
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-
-	int bpp = GetImageBytesPerPixel();
-	int w = GetImageWidth();
-	int h = GetImageHeight();
-	switch (deinterlace_)
-	{
-	case 0:
-		memcpy_s(fullFrameBuffer_, fullFrameBufferSize_, frame.pData, frame.Length);
-		break;
-	case 1:
-		for (int i=0; i<GetImageHeight(); i++)
+	FramePtr frame;
+		//cam_->StartCapture();
+		cam_->AcquireSingleImage(frame,1000);
+		// See if it is not corrupt
+		VmbFrameStatusType eReceiveStatus;
+		VmbErrorType err;
+		err = frame->GetReceiveStatus( eReceiveStatus );
+		if ( VmbErrorSuccess == err && VmbFrameStatusComplete == eReceiveStatus )
 		{
-			if (i % 2 == 0)
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + (i/2) * w, w);
-			}
-			else
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + ((i-1)/2 + h/2) * w, w);
-			}
+			VmbUchar_t *pBuffer;
+			frame->GetImage(pBuffer);
+			VmbUint32_t bufferSize_ = 0;
+			frame->GetBufferSize(bufferSize_);
+			memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
 		}
-		break;
-	case 2:
-		for (int i=0; i<GetImageHeight(); i++)
-		{
-			if (i % 2 == 0)
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + (i/2) * w, w);
-			}
-			else
-			{
-				memcpy_s(fullFrameBuffer_ + i * w, fullFrameBufferSize_, frame.pData + ((i+1)/2 + h/2) * w, w);
-			}
-		}
-		break;
-	default:
-		return ERR_INCOMPLETE_SNAP_IMAGE_CYCLE;
-	}
-
-	ret = cam.PutFrame(&frame);
-	if (ret != FCE_NOERROR)
-		return ret + g_Err_Offset;
-	return DEVICE_OK;
+		return DEVICE_OK;
 }
 double AVTCamera::GetSequenceExposure()
 {

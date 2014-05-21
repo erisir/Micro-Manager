@@ -15,8 +15,12 @@
 #include "../../MMDevice/ImgBuffer.h"
 #include "../../MMDevice/DeviceUtils.h"
 
-#include "FGCamera.h"
+#include "AVT_Guppy_F146BCamera.h"
 #include <string>
+#include <VimbaCPP/Include/VimbaSystem.h>
+#include <VimbaCPP/Include/Camera.h>
+using namespace std;
+using namespace AVT::VmbAPI;
 
 // error codes
 #define ERR_BUFFER_ALLOCATION_FAILED 101
@@ -108,7 +112,7 @@ private:
 	static unsigned int refCount_;
 	static AVTCamera* instance_;
 	bool initialized_;
-	CFGCamera cam;
+	AVT_Guppy_F146BCamera *cam_;
 
 	struct ROI {
 		int x;

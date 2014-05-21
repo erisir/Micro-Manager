@@ -81,19 +81,13 @@ void SequenceThread::Resume() {
 	suspend_ = false;
 }
 
-int SequenceThread::svc(void) throw()
-		{
+int SequenceThread::svc(void) throw(){
 	int ret=DEVICE_ERR;
-
-	ret = camera_->cam.OpenCapture();
-	if (ret != FCE_NOERROR)
-		return ret ;
-	ret = camera_->cam.StartDevice();
-	if (ret != FCE_NOERROR)
-		return ret;
+	camera_->cam_->Open(VmbAccessModeFull);
 	do
 	{
 		ret=camera_->ThreadRun(startTime_);
+
 	} while (DEVICE_OK == ret && !IsStopped() && imageCounter_++ < numImages_-1);
 	if (IsStopped())
 		camera_->LogMessage("SeqAcquisition interrupted by the user\n");
@@ -101,9 +95,7 @@ int SequenceThread::svc(void) throw()
 	stop_=true;
 	actualDuration_ = camera_->GetCurrentMMTime() - startTime_;
 	camera_->OnThreadExiting();
-	ret = camera_->cam.CloseCapture();
-		if (ret != FCE_NOERROR)
-			return ret ;
+	ret = camera_->cam_->Close();
 	return ret;
-		}
+}
 
