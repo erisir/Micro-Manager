@@ -15,7 +15,6 @@
 #include "../../MMDevice/ImgBuffer.h"
 #include "../../MMDevice/DeviceUtils.h"
 #include "GE680Camera.h"
-#include "AVT_Guppy_F146BCamera.h"
 #include <VimbaCPP/Include/VimbaSystem.h>
 #include <VimbaCPP/Include/Camera.h>
 #include <string>
@@ -38,13 +37,13 @@ class  SequenceThread;
 class AVTCamera : public CCameraBase<AVTCamera>
 {
 public:
+
 	static AVTCamera* GetInstance();
 	~AVTCamera();
 
 	// MMDevice API
 	int Initialize();
 	int Shutdown();
-
 	void GetName(char* pszName) const;
 	bool Busy() { return false; }
 
@@ -84,6 +83,7 @@ private:
 	int OnDeInterlace(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
 
+
 	double GetSequenceExposure();
 	std::vector<double> exposureSequence_;
 	MM::MMTime sequenceStartTime_;
@@ -111,7 +111,7 @@ private:
 	static unsigned int refCount_;
 	static AVTCamera* instance_;
 	bool initialized_;
-	AVT::VmbAPI::Camera *cam_;
+	GE680Camera *cam_;
 
 	struct ROI {
 		int x;
@@ -170,3 +170,4 @@ public:
 	DriverGuard(const AVTCamera * cam);
 	~DriverGuard();
 };
+
