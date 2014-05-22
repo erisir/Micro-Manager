@@ -749,6 +749,9 @@ public class Kernel {
 		}
 		normalization(sumXY[0], sumX_);
 		normalization(sumXY[1], sumY_);
+		int width = (int) MMT.VariablesNUPD.iTerm_z.value();
+		smooth(sumXY[0],10);
+		smooth(sumXY[1],10);
 		sumXY[2][0] = sumGrayValue;
 		return sumXY;
 	}
@@ -759,6 +762,19 @@ public class Kernel {
 		std = std*std;
 		for (int i = 0; i < data.length; i++) {
 			data[i] = (data[i] - mean)/std;
+		}
+	} 
+	private void smooth(double[] data,int width){
+		 int len = data.length;
+		 for (int i=0;i<width;i++){
+			 for(int j=0;j<i;j++){
+				 data[i] += data[j]/(i+1);
+			 }
+		 }
+		 for (int i = width; i < len; i++) {
+			 for(int j=0;j<width;j++){
+				 data[i] += data[i-j]/width;
+			 }
 		}
 	} 
 
