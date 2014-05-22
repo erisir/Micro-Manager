@@ -83,7 +83,7 @@ void SequenceThread::Resume() {
 
 int SequenceThread::svc(void) throw(){
 	int ret=DEVICE_ERR;
-	camera_->cam_->Open(VmbAccessModeFull);
+	//camera_->cam_->Open(VmbAccessModeFull);
 	do
 	{
 		ret=camera_->ThreadRun(startTime_);
@@ -95,7 +95,7 @@ int SequenceThread::svc(void) throw(){
 	stop_=true;
 	actualDuration_ = camera_->GetCurrentMMTime() - startTime_;
 	camera_->OnThreadExiting();
-	ret = camera_->cam_->Close();
+	//ret = camera_->cam_->Close();
 	return ret;
 }
 

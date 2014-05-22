@@ -33,6 +33,7 @@ using namespace AVT::VmbAPI;
 #define ERR_OPEN_OR_CLOSE_SHUTTER_IN_ACQUISITION_NOT_ALLOWEDD 110
 #define ERR_NO_AVAIL_AMPS 111
 #define ERR_SOFTWARE_TRIGGER_IN_USE 112
+
 class  SequenceThread;
 class AVTCamera : public CCameraBase<AVTCamera>
 {

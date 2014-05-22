@@ -74,17 +74,17 @@ DriverGuard::~DriverGuard()
 }
 
 AVTCamera::AVTCamera() :
-						binSize_(1),
-						depth_(8),
-						initialized_(false),
-						fullFrameX_(0),
-						fullFrameY_(0),
-						fullFrameBufferSize_(0),
-						sequenceRunning_(false),
-						timeout_(1000),
-						thd_(0),
-						exposure_(20),
-						deinterlace_(0)
+binSize_(1),
+depth_(8),
+initialized_(false),
+fullFrameX_(0),
+fullFrameY_(0),
+fullFrameBufferSize_(0),
+sequenceRunning_(false),
+timeout_(1000),
+thd_(0),
+exposure_(20),
+deinterlace_(0)
 {
 	InitializeDefaultErrorMessages();
 	// add custom messages
@@ -95,6 +95,7 @@ AVTCamera::AVTCamera() :
 	SetErrorText(ERR_INVALID_PREAMPGAIN, "Invalid Pre-Amp Gain.");
 	SetErrorText(ERR_CAMERA_DOES_NOT_EXIST, "No Camera Found.  Make sure it is connected and switched on, and try again.");
 	SetErrorText(ERR_SOFTWARE_TRIGGER_IN_USE, "Only one camera can use software trigger.");
+	SetErrorText(ERR_SETROI_ERROR, "setting roi error");
 
 	// Find cameras
 	thd_ = new SequenceThread(this);
@@ -172,15 +173,20 @@ int AVTCamera::Initialize()
 
 		}
 	}
-
-
 	cam_->Open(VmbAccessModeFull);
 	VmbInt64_t height,width,bufferSize;
-	cam_->GetHeight(height);
-	cam_->GetWidth(width);
+	cam_->GetHeightMax(height);
+	cam_->GetWidthMax(width);
+	cam_->SetOffsetX(0);
+	cam_->SetOffsetY(0);
+	cam_->SetHeight(height);
+	cam_->SetWidth(width);
+
 	fullFrameX_ = width;
 	fullFrameY_ = height;
-	cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
+	VmbErrorType ret;
+
+	ret = cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
 	depth_ = 16;
 	binSize_ = 1;
 	roi_.x = 0;
@@ -190,7 +196,7 @@ int AVTCamera::Initialize()
 	fullFrameBufferSize_ = fullFrameX_ * fullFrameY_ * (depth_ / 8 ) ;
 	fullFrameBuffer_ = new unsigned char[fullFrameBufferSize_];
 	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
-	cam_->Close();
+	//cam_->Close();
 	ResizeImageBuffer();
 	return DEVICE_OK;
 }
@@ -213,7 +219,7 @@ int AVTCamera::Shutdown()
 	{
 		StopCamera();
 		cam_->Close();
-
+		VimbaSystem::GetInstance().Shutdown();
 		delete fullFrameBuffer_;
 	}
 
@@ -224,8 +230,8 @@ int AVTCamera::Shutdown()
 void AVTCamera::StopCamera()
 {
 	DriverGuard dg(this);
-	cam_->EndCapture();
-	cam_->Close();
+	thd_->Stop();
+	//cam_->Close();
 }
 
 //added to use RTA
@@ -238,34 +244,34 @@ void AVTCamera::StopCamera()
 int AVTCamera::SnapImage()
 {
 	DriverGuard dg(this);
-		std::ostringstream osMessage;
-		if (sequenceRunning_)   // If we are in the middle of a SequenceAcquisition
-			return ERR_BUSY_ACQUIRING;
-		cam_->Open(VmbAccessModeFull);
+	std::ostringstream osMessage;
+	if (sequenceRunning_)   // If we are in the middle of a SequenceAcquisition
+		return ERR_BUSY_ACQUIRING;
+	//cam_->Open(VmbAccessModeFull);
 
-		FramePtr frame;
-		//cam_->StartCapture();
-		cam_->AcquireSingleImage(frame,1000);
-		// See if it is not corrupt
-		VmbFrameStatusType eReceiveStatus;
-		VmbErrorType err;
-		err = frame->GetReceiveStatus( eReceiveStatus );
-		if ( VmbErrorSuccess == err && VmbFrameStatusComplete == eReceiveStatus )
-		{
-			VmbUchar_t *pBuffer;
-			frame->GetImage(pBuffer);
-			VmbUint32_t bufferSize_ = 0;
-			frame->GetBufferSize(bufferSize_);
-			memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
-		}
-		else{
-			osMessage.str("");
-			osMessage << "snap image error:err code["<< err<<"]eReceiveStatus[" <<eReceiveStatus<<"]";
-			this->LogMessage(osMessage.str().c_str());
-		}
-		cam_->Close();
+	FramePtr frame;
+	//cam_->StartCapture();
+	cam_->AcquireSingleImage(frame,1000);
+	// See if it is not corrupt
+	VmbFrameStatusType eReceiveStatus;
+	VmbErrorType err;
+	err = frame->GetReceiveStatus( eReceiveStatus );
+	if ( VmbErrorSuccess == err && VmbFrameStatusComplete == eReceiveStatus )
+	{
+		VmbUchar_t *pBuffer;
+		frame->GetImage(pBuffer);
+		VmbUint32_t bufferSize_ = 0;
+		frame->GetBufferSize(bufferSize_);
+		memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
+	}
+	else{
+		osMessage.str("");
+		osMessage << "snap image error:err code["<< err<<"]eReceiveStatus[" <<eReceiveStatus<<"]";
+		this->LogMessage(osMessage.str().c_str());
+	}
+	//cam_->Close();
 
-		return DEVICE_OK;
+	return DEVICE_OK;
 }
 
 void AVTCamera::GetName(char* name) const 
@@ -298,8 +304,98 @@ double AVTCamera::GetExposure() const
 
 int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize)
 {
+	DriverGuard dg(this);
+	if (Busy())
+		return ERR_BUSY_ACQUIRING;
+
+	//added to use RTA
+	StopCamera();
+	ROI oldRoi = roi_;
+
+	roi_.x = uX * binSize_;
+	roi_.xSize = uXSize * binSize_;
+	roi_.y = uY * binSize_;
+	roi_.ySize = uYSize * binSize_;
+
+	// adjust image extent to conform to the bin size
+	roi_.xSize -= roi_.xSize % binSize_;
+	roi_.ySize -= roi_.ySize % binSize_;
+	if (roi_.x + roi_.xSize > fullFrameX_ || roi_.y + roi_.ySize > fullFrameY_)
+	{
+		roi_ = oldRoi;
+		return ERR_INVALID_ROI;
+	}
+	std::ostringstream osMessage;
+	osMessage.str("");
+	VmbErrorType ret;
+
+	//	ret = cam_->Open(VmbAccessModeFull);
+	int timeTrys = 5;
+	int cnt = 0;
+	//	osMessage << "***************\r\nOpen Value[" <<VmbAccessModeFull<<"]"<<"ret=["<<ret<<"]\r\n";
+	if(oldRoi.ySize <=roi_.ySize){
+		do{
+			ret =cam_->SetOffsetY(roi_.y);
+			Sleep(10);
+			osMessage << "SetOffsetY Value[" <<uY<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		cnt = 0;
+		do{
+			ret =cam_->SetHeight(roi_.ySize);
+			Sleep(10);
+			osMessage << "SetHeight Value[" <<uYSize<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		cnt = 0;
+
+	}else{
+		do{
+			ret =cam_->SetHeight(roi_.ySize);
+			osMessage << "SetHeight Value[" <<uYSize<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		cnt = 0;
+		do{
+			ret =cam_->SetOffsetY(roi_.y);
+			osMessage << "SetOffsetY Value[" <<uY<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		cnt = 0;
+	}
+
+	if(oldRoi.xSize >=roi_.xSize){
+		do{
+			ret =cam_->SetWidth(roi_.xSize);
+			osMessage << "SetWidth Value[" <<uXSize<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		cnt = 0;
+		do{
+			ret = cam_->SetOffsetX(roi_.x);
+			osMessage << "SetOffsetX Value[" <<uX<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		cnt = 0;
+
+	}else{
+		do{
+			ret = cam_->SetOffsetX(roi_.x);
+			osMessage << "SetOffsetX Value[" <<uX<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		cnt = 0;
+		do{
+			ret =cam_->SetWidth(roi_.xSize);
+			osMessage << "SetWidth Value[" <<uXSize<<"]"<<"ret=["<<ret<<"]\r\n";
+		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
+		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+	}
 
 
+
+	ResizeImageBuffer();
+	OnPropertiesChanged();
 	return DEVICE_OK;
 }
 
@@ -316,7 +412,7 @@ int AVTCamera::GetROI(unsigned& uX, unsigned& uY, unsigned& uXSize, unsigned& uY
 int AVTCamera::ClearROI()
 {
 
-	return SetROI(roi_.x, roi_.y, roi_.xSize, roi_.ySize);
+	return SetROI(0,0, fullFrameX_, fullFrameY_);
 }
 
 int AVTCamera::OnDeInterlace(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -466,21 +562,21 @@ int  AVTCamera::ThreadRun (MM::MMTime startTime)
 int AVTCamera::GenerateImage(ImgBuffer& img, double exp)
 {
 	FramePtr frame;
-		//cam_->StartCapture();
-		cam_->AcquireSingleImage(frame,1000);
-		// See if it is not corrupt
-		VmbFrameStatusType eReceiveStatus;
-		VmbErrorType err;
-		err = frame->GetReceiveStatus( eReceiveStatus );
-		if ( VmbErrorSuccess == err && VmbFrameStatusComplete == eReceiveStatus )
-		{
-			VmbUchar_t *pBuffer;
-			frame->GetImage(pBuffer);
-			VmbUint32_t bufferSize_ = 0;
-			frame->GetBufferSize(bufferSize_);
-			memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
-		}
-		return DEVICE_OK;
+	//cam_->StartCapture();
+	cam_->AcquireSingleImage(frame,1000);
+	// See if it is not corrupt
+	VmbFrameStatusType eReceiveStatus;
+	VmbErrorType err;
+	err = frame->GetReceiveStatus( eReceiveStatus );
+	if ( VmbErrorSuccess == err && VmbFrameStatusComplete == eReceiveStatus )
+	{
+		VmbUchar_t *pBuffer;
+		frame->GetImage(pBuffer);
+		VmbUint32_t bufferSize_ = 0;
+		frame->GetBufferSize(bufferSize_);
+		memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
+	}
+	return DEVICE_OK;
 }
 double AVTCamera::GetSequenceExposure()
 {
