@@ -16,6 +16,7 @@
 #include "../../MMDevice/DeviceUtils.h"
 
 #include "AVT_Guppy_F146BCamera.h"
+#include <queue>
 #include <string>
 #include <VimbaCPP/Include/VimbaSystem.h>
 #include <VimbaCPP/Include/Camera.h>
@@ -37,6 +38,7 @@ using namespace AVT::VmbAPI;
 #define ERR_SOFTWARE_TRIGGER_IN_USE 112
 #define ERR_SETROI_ERROR 113
 class  SequenceThread;
+class  FrameObserver;
 class AVTCamera : public CCameraBase<AVTCamera>
 {
 public:
@@ -49,7 +51,7 @@ public:
 
 	void GetName(char* pszName) const;
 	bool Busy() { return false; }
-
+	FrameObserver* m_pFrameObserver;
 	// MMCamera API
 	int SnapImage();
 	const unsigned char* GetImageBuffer();
@@ -70,11 +72,12 @@ public:
 	int StartSequenceAcquisition(double interval);
 	int StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow);
 	int StopSequenceAcquisition();
-	void GenerateImage();
 	int InsertImage();
 	bool IsCapturing();
+	int ThreadRun(FramePtr frame);
 private:
 	friend class  SequenceThread;
+	friend class  FrameObserver;
 	AVTCamera();
 
 	// Update the image buffer information
@@ -94,8 +97,8 @@ private:
 	bool sequenceRunning_;
 	long sequenceIndex_;
 	long imageCounter_;
-	int ThreadRun(MM::MMTime startTime);
-	int GenerateImage(ImgBuffer& img, double exp);
+
+	int GenerateImage(FramePtr frame,ImgBuffer& img, double exp);
 	SequenceThread* thd_;
 	// Camera information
 	ImgBuffer img_;
@@ -114,7 +117,7 @@ private:
 	static AVTCamera* instance_;
 	bool initialized_;
 	AVT_Guppy_F146BCamera *cam_;
-
+	bool m_isbusy;
 	struct ROI {
 		int x;
 		int y;
@@ -171,4 +174,28 @@ class DriverGuard
 public:
 	DriverGuard(const AVTCamera * cam);
 	~DriverGuard();
+};
+
+
+class FrameObserver : virtual public IFrameObserver
+{
+	friend class AVTCamera;
+
+public:
+	FrameObserver(AVTCamera* pCam,  CameraPtr pCamera );
+//	AVTCamera *cam_ ;
+	// This is our callback routine that will be executed on every received frame
+	virtual void FrameReceived( const FramePtr pFrame );
+	// After the view has been notified about a new frame it can pick it up
+	FramePtr GetFrame();
+	AVTCamera* cam_;
+	// Clears the double buffer frame queue
+	void ClearFrameQueue();
+	bool hasNewFrame();
+private:
+	// Since a MFC message cannot contain a whole frame
+	// the frame observer stores all FramePtr
+	std::queue<FramePtr> m_Frames;
+	AVT::VmbAPI::Mutex m_FramesMutex;
+	bool m_newFrameArrive;
 };

@@ -55,7 +55,7 @@ void SequenceThread::Start(long numImages, double intervalMs)
 	imageCounter_=0;
 	stop_ = false;
 	suspend_=false;
-	activate();
+	//activate();
 	actualDuration_ = 0;
 	startTime_= camera_->GetCurrentMMTime();
 	lastFrameTime_ = 0;
@@ -68,6 +68,7 @@ bool SequenceThread::IsStopped(){
 
 void SequenceThread::Suspend() {
 	MMThreadGuard(this->suspendLock_);
+	camera_->LogMessage("StopCamera Suspend");
 	suspend_ = true;
 }
 
@@ -78,24 +79,27 @@ bool SequenceThread::IsSuspended() {
 
 void SequenceThread::Resume() {
 	MMThreadGuard(this->suspendLock_);
+	camera_->LogMessage("StopCamera Resume");
 	suspend_ = false;
 }
 
 int SequenceThread::svc(void) throw(){
-	int ret=DEVICE_ERR;
-	//camera_->cam_->Open(VmbAccessModeFull);
-	do
-	{
-		ret=camera_->ThreadRun(startTime_);
-
-	} while (DEVICE_OK == ret && !IsStopped() && imageCounter_++ < numImages_-1);
-	if (IsStopped())
-		camera_->LogMessage("SeqAcquisition interrupted by the user\n");
-
-	stop_=true;
-	actualDuration_ = camera_->GetCurrentMMTime() - startTime_;
-	camera_->OnThreadExiting();
-	//ret = camera_->cam_->Close();
+	int ret=DEVICE_OK;
+//	do
+//	{
+//		while(!IsStopped() && imageCounter_++ < numImages_-1 && !camera_->m_pFrameObserver->hasNewFrame()){
+//			Sleep(100);
+//			camera_->LogMessage("no frame");
+//		}
+//		ret=camera_->ThreadRun(startTime_);
+//	} while (DEVICE_OK == ret && !IsStopped() && imageCounter_++ < numImages_-1);
+//	if (IsStopped())
+//		camera_->LogMessage("SeqAcquisition interrupted by the user\n");
+//
+//	stop_=true;
+//	actualDuration_ = camera_->GetCurrentMMTime() - startTime_;
+//	camera_->OnThreadExiting();
+//	camera_->cam_->StopContinuousImageAcquisition();
 	return ret;
 }
 

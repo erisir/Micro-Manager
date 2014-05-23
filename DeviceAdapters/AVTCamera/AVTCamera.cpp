@@ -74,17 +74,17 @@ DriverGuard::~DriverGuard()
 }
 
 AVTCamera::AVTCamera() :
-binSize_(1),
-depth_(8),
-initialized_(false),
-fullFrameX_(0),
-fullFrameY_(0),
-fullFrameBufferSize_(0),
-sequenceRunning_(false),
-timeout_(1000),
-thd_(0),
-exposure_(20),
-deinterlace_(0)
+																																						binSize_(1),
+																																						depth_(8),
+																																						initialized_(false),
+																																						fullFrameX_(0),
+																																						fullFrameY_(0),
+																																						fullFrameBufferSize_(0),
+																																						sequenceRunning_(false),
+																																						timeout_(1000),
+																																						thd_(0),
+																																						exposure_(20),
+																																						deinterlace_(0)
 {
 	InitializeDefaultErrorMessages();
 	// add custom messages
@@ -99,6 +99,7 @@ deinterlace_(0)
 
 	// Find cameras
 	thd_ = new SequenceThread(this);
+
 
 }
 
@@ -121,9 +122,10 @@ AVTCamera::~AVTCamera()
 
 AVTCamera* AVTCamera::GetInstance()
 {
-	instance_ = new AVTCamera();
+	if(!instance_)
+		instance_ = new AVTCamera();
 
-	refCount_++;
+	//refCount_++;
 	return instance_;
 }
 
@@ -174,9 +176,11 @@ int AVTCamera::Initialize()
 		}
 	}
 	cam_->Open(VmbAccessModeFull);
+	m_pFrameObserver = new FrameObserver(this,(CameraPtr) cam_ );
 	VmbInt64_t height,width,bufferSize;
 	cam_->GetHeightMax(height);
 	cam_->GetWidthMax(width);
+
 	cam_->SetOffsetX(0);
 	cam_->SetOffsetY(0);
 	cam_->SetHeight(height);
@@ -184,10 +188,9 @@ int AVTCamera::Initialize()
 
 	fullFrameX_ = width;
 	fullFrameY_ = height;
-	VmbErrorType ret;
 
-	ret = cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
-	depth_ = 16;
+	cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono8);
+	depth_ = 8;
 	binSize_ = 1;
 	roi_.x = 0;
 	roi_.y = 0;
@@ -196,7 +199,7 @@ int AVTCamera::Initialize()
 	fullFrameBufferSize_ = fullFrameX_ * fullFrameY_ * (depth_ / 8 ) ;
 	fullFrameBuffer_ = new unsigned char[fullFrameBufferSize_];
 	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
-	//cam_->Close();
+	//	cam_->Close();
 	ResizeImageBuffer();
 	return DEVICE_OK;
 }
@@ -230,6 +233,8 @@ int AVTCamera::Shutdown()
 void AVTCamera::StopCamera()
 {
 	DriverGuard dg(this);
+	LogMessage("StopCamera");
+	cam_->StopContinuousImageAcquisition();
 	thd_->Stop();
 	//cam_->Close();
 }
@@ -250,7 +255,6 @@ int AVTCamera::SnapImage()
 	//cam_->Open(VmbAccessModeFull);
 
 	FramePtr frame;
-	//cam_->StartCapture();
 	cam_->AcquireSingleImage(frame,1000);
 	// See if it is not corrupt
 	VmbFrameStatusType eReceiveStatus;
@@ -310,16 +314,29 @@ int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize
 
 	//added to use RTA
 	StopCamera();
+	Sleep(500);
+	if(uX >0){
+		cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
+		depth_ = 16;
+	}else{
+		cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono8);
+		depth_ = 8;
+	}
 	ROI oldRoi = roi_;
+	//F146B Roi设置说明：uX/uY/uYSize 为偶数,uXSize为4的倍数
+
+	uX -= uX%2;
+	uY -= uY%2;
+	uYSize -= uYSize%2;
+	uXSize -= uXSize%4;
+
+	binSize_ = 1;
 
 	roi_.x = uX * binSize_;
 	roi_.xSize = uXSize * binSize_;
 	roi_.y = uY * binSize_;
 	roi_.ySize = uYSize * binSize_;
 
-	// adjust image extent to conform to the bin size
-	roi_.xSize -= roi_.xSize % binSize_;
-	roi_.ySize -= roi_.ySize % binSize_;
 	if (roi_.x + roi_.xSize > fullFrameX_ || roi_.y + roi_.ySize > fullFrameY_)
 	{
 		roi_ = oldRoi;
@@ -329,71 +346,33 @@ int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize
 	osMessage.str("");
 	VmbErrorType ret;
 
-	//	ret = cam_->Open(VmbAccessModeFull);
-	int timeTrys = 5;
-	int cnt = 0;
-	//	osMessage << "***************\r\nOpen Value[" <<VmbAccessModeFull<<"]"<<"ret=["<<ret<<"]\r\n";
-	if(oldRoi.ySize <=roi_.ySize){
-		do{
-			ret =cam_->SetOffsetY(roi_.y);
-			Sleep(10);
-			osMessage << "SetOffsetY Value[" <<uY<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
-		cnt = 0;
-		do{
-			ret =cam_->SetHeight(roi_.ySize);
-			Sleep(10);
-			osMessage << "SetHeight Value[" <<uYSize<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
-		cnt = 0;
+	//	cam_->Open(VmbAccessModeFull);
 
+	ret = cam_->SetOffsetY(roi_.y);
+	osMessage << "SetOffsetY Value[" <<roi_.y<<"]"<<"ret=["<<ret<<"]\r\n";
+	if(VmbErrorSuccess != ret){
+		ret = cam_->SetHeight(roi_.ySize);
+		osMessage << "SetHeight Value[" <<roi_.ySize<<"]"<<"ret=["<<ret<<"]\r\n";
+		ret = cam_->SetOffsetY(roi_.y);
+		osMessage << "SetOffsetY Value[" <<roi_.y<<"]"<<"ret=["<<ret<<"]\r\n";
 	}else{
-		do{
-			ret =cam_->SetHeight(roi_.ySize);
-			osMessage << "SetHeight Value[" <<uYSize<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
-		cnt = 0;
-		do{
-			ret =cam_->SetOffsetY(roi_.y);
-			osMessage << "SetOffsetY Value[" <<uY<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
-		cnt = 0;
+		ret = cam_->SetHeight(roi_.ySize);
+		osMessage << "SetHeight Value[" <<roi_.ySize<<"]"<<"ret=["<<ret<<"]\r\n";
 	}
 
-	if(oldRoi.xSize >=roi_.xSize){
-		do{
-			ret =cam_->SetWidth(roi_.xSize);
-			osMessage << "SetWidth Value[" <<uXSize<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
-		cnt = 0;
-		do{
-			ret = cam_->SetOffsetX(roi_.x);
-			osMessage << "SetOffsetX Value[" <<uX<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
-		cnt = 0;
-
+	ret = cam_->SetOffsetX(roi_.x);
+	osMessage << "SetOffsetX Value[" <<roi_.x<<"]"<<"ret=["<<ret<<"]\r\n";
+	if(VmbErrorSuccess != ret){
+		ret = cam_->SetWidth(roi_.xSize);
+		osMessage << "SetWidth Value[" <<roi_.xSize<<"]"<<"ret=["<<ret<<"]\r\n";
+		ret = cam_->SetOffsetX(roi_.x);
+		osMessage << "SetOffsetX Value[" <<roi_.x<<"]"<<"ret=["<<ret<<"]\r\n";
 	}else{
-		do{
-			ret = cam_->SetOffsetX(roi_.x);
-			osMessage << "SetOffsetX Value[" <<uX<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
-		cnt = 0;
-		do{
-			ret =cam_->SetWidth(roi_.xSize);
-			osMessage << "SetWidth Value[" <<uXSize<<"]"<<"ret=["<<ret<<"]\r\n";
-		}while((ret !=VmbErrorSuccess) && (timeTrys>cnt++));
-		if(ret !=VmbErrorSuccess){roi_=oldRoi;this->LogMessage(osMessage.str().c_str());return ERR_SETROI_ERROR;}
+		ret = cam_->SetWidth(roi_.xSize);
+		osMessage << "SetWidth Value[" <<roi_.xSize<<"]"<<"ret=["<<ret<<"]\r\n";
 	}
-
-
-
+	this->LogMessage(osMessage.str());
+	//	cam_->Close();
 	ResizeImageBuffer();
 	OnPropertiesChanged();
 	return DEVICE_OK;
@@ -411,7 +390,6 @@ int AVTCamera::GetROI(unsigned& uX, unsigned& uY, unsigned& uXSize, unsigned& uY
 
 int AVTCamera::ClearROI()
 {
-
 	return SetROI(0,0, fullFrameX_, fullFrameY_);
 }
 
@@ -475,11 +453,17 @@ int AVTCamera::StartSequenceAcquisition(double interval) {
  */
 int AVTCamera::StopSequenceAcquisition()
 {
+	VmbErrorType reta;
 	if (!thd_->IsStopped()) {
 		thd_->Stop();
 		thd_->wait();
+		//cam_->StopContinuousImageAcquisition();
 	}
-
+	reta = cam_->StopContinuousImageAcquisition();
+	std::ostringstream osMessage;
+	osMessage.str("");
+	osMessage <<"\r\nStopContinuousImageAcquisition["<<reta<<"]";
+	LogMessage(osMessage.str());
 	return DEVICE_OK;
 }
 
@@ -496,6 +480,16 @@ int AVTCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool
 	int ret = GetCoreCallback()->PrepareForAcq(this);
 	if (ret != DEVICE_OK)
 		return ret;
+	// Start streaming
+	std::ostringstream osMessage;
+	osMessage.str("");
+	VmbErrorType reta;
+	//	reta = cam_->StopContinuousImageAcquisition();
+	//	osMessage <<"\r\n\r\nStopContinuousImageAcquisition["<<reta<<"]";
+	m_isbusy = true;
+	reta = cam_->StartContinuousImageAcquisition( 3, IFrameObserverPtr( m_pFrameObserver ));
+	osMessage <<"\r\n\r\nStartContinuousImageAcquisition["<<reta<<"]";
+	LogMessage(osMessage.str());
 	thd_->Start(numImages, interval_ms);
 	return DEVICE_OK;
 }
@@ -551,31 +545,29 @@ int AVTCamera::InsertImage()
  */
 
 bool AVTCamera::IsCapturing() {
-	return !thd_->IsStopped();
+	return !m_busy;//!thd_->IsStopped();
 }
-int  AVTCamera::ThreadRun (MM::MMTime startTime)
+int  AVTCamera::ThreadRun (FramePtr frame)
 {
 	int ret=DEVICE_ERR;
-	GenerateImage(img_, GetSequenceExposure());
-	return  InsertImage();
-};
-int AVTCamera::GenerateImage(ImgBuffer& img, double exp)
-{
-	FramePtr frame;
-	//cam_->StartCapture();
-	cam_->AcquireSingleImage(frame,1000);
-	// See if it is not corrupt
-	VmbFrameStatusType eReceiveStatus;
-	VmbErrorType err;
-	err = frame->GetReceiveStatus( eReceiveStatus );
-	if ( VmbErrorSuccess == err && VmbFrameStatusComplete == eReceiveStatus )
-	{
-		VmbUchar_t *pBuffer;
-		frame->GetImage(pBuffer);
-		VmbUint32_t bufferSize_ = 0;
-		frame->GetBufferSize(bufferSize_);
-		memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
+	//	if(thd_->IsStopped()){
+	//		cam_->StopContinuousImageAcquisition();
+	//		return DEVICE_ERR;
+	//	}
+	if(m_isbusy){
+		//GenerateImage(frame,img_, GetSequenceExposure());
+		return  InsertImage();
+	}else{
+		return ret;
 	}
+};
+int AVTCamera::GenerateImage(FramePtr frame,ImgBuffer& img, double exp)
+{
+	VmbUchar_t *pBuffer;
+	frame->GetImage(pBuffer);
+	VmbUint32_t bufferSize_ = 0;
+	frame->GetBufferSize(bufferSize_);
+	memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
 	return DEVICE_OK;
 }
 double AVTCamera::GetSequenceExposure()
@@ -591,4 +583,62 @@ double AVTCamera::GetSequenceExposure()
 		sequenceIndex_ = 0;
 	}
 	return exposure;
+}
+
+FrameObserver::FrameObserver(AVTCamera* pCam,  CameraPtr pCamera ): IFrameObserver( pCamera )
+{
+	cam_ = pCam;
+}
+void FrameObserver::FrameReceived( const FramePtr pFrame )
+{
+	bool bQueueDirectly = true;
+	VmbFrameStatusType eReceiveStatus;
+
+	if ( VmbErrorSuccess == pFrame->GetReceiveStatus( eReceiveStatus ))
+	{
+
+		//		// Lock the frame queue
+		//		m_FramesMutex.Lock();
+		//		// We store the FramePtr
+		//		m_Frames.push( pFrame );
+		//		// Unlock frame queue
+		//		m_FramesMutex.Unlock();
+		//		// And notify the view about it
+		//		m_newFrameArrive = true;
+		//		bQueueDirectly = false;
+		cam_->ThreadRun(pFrame);
+	}
+
+	// If any error occurred we queue the frame without notification
+	if ( true == bQueueDirectly )
+	{
+		m_pCamera->QueueFrame( pFrame );
+	}
+}
+bool FrameObserver::hasNewFrame()
+{
+	return m_newFrameArrive;
+}
+// Returns the oldest frame that has not been picked up yet
+FramePtr FrameObserver::GetFrame()
+{
+	// Lock frame queue
+	m_FramesMutex.Lock();
+	// Pop the frame from the queue
+	FramePtr res = m_Frames.front();
+	// Unlock the frame queue
+	m_FramesMutex.Unlock();
+	m_newFrameArrive = false;
+	return res;
+}
+
+void FrameObserver::ClearFrameQueue()
+{
+	// Lock the frame queue
+	m_FramesMutex.Lock();
+	// Clear the frame queue and release the memory
+	std::queue<FramePtr> empty;
+	std::swap( m_Frames, empty );
+	// Unlock the frame queue
+	m_FramesMutex.Unlock();
 }
