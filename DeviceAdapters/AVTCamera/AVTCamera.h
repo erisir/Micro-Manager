@@ -60,6 +60,7 @@ public:
 	unsigned int GetImageBytesPerPixel() const { return img_.Depth(); }
 	unsigned int GetBitDepth() const { return depth_; }
 	int GetBinning() const { return binSize_; }
+	int OnSetPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int SetBinning(int binSize);
 	double GetExposure() const;
 	void SetExposure(double dExp);
@@ -97,6 +98,7 @@ private:
 	ImgBuffer img_;
 	int depth_;
 	int binSize_;
+	int format_;
 	std::string camName_;
 	int fullFrameX_;
 	int fullFrameY_;

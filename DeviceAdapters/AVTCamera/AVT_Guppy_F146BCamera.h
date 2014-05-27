@@ -258,7 +258,9 @@ public:
 	typedef enum _PixelFormatEnum
 	{
 		PixelFormat_Mono8 = 17301505,
-		PixelFormat_Mono12Packed = 17563654,
+		PixelFormat_Mono10 = 17825795,//GE168
+		PixelFormat_Mono12 = 17825797,//GE168
+		PixelFormat_Mono14 = 17825829,//GE168
 		PixelFormat_Mono16 = 17825799
 	} PixelFormatEnum;
 

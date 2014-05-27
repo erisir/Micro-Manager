@@ -148,7 +148,7 @@ int AVTCamera::Initialize()
 		return DEVICE_OK;
 
 	VmbInt64_t height,width,bufferSize;
-	err = cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
+	err = cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono12);
 	err = cam_->GetHeightMax(height);
 	err = cam_->GetWidthMax(width);
 	err = cam_->SetOffsetX(0);
@@ -169,6 +169,10 @@ int AVTCamera::Initialize()
 	fullFrameBuffer_ = new unsigned char[fullFrameBufferSize_];
 	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
 	ResizeImageBuffer();
+	CPropertyAction* pActOnSetPixelFormat = new CPropertyAction(this, &AVTCamera::OnSetPixelFormat);
+	char format[20];
+	sprintf(format, "%d", 8);
+	CreateProperty("PixelFormat", format, MM::String, false, pActOnSetPixelFormat);
 	return DEVICE_OK;
 }
 
@@ -368,7 +372,36 @@ int AVTCamera::OnDeInterlace(MM::PropertyBase* pProp, MM::ActionType eAct)
 	}
 	return DEVICE_OK;
 }
-
+int AVTCamera::OnSetPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		long tmp = format_;
+		pProp->Set(tmp);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		long tmp;
+		pProp->Get(tmp);
+		format_ = tmp;
+		if(m_isbusy)
+			StopSequenceAcquisition();
+		if(format_ == 8 ){
+			cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono8);
+			depth_ = 8;
+		}
+		if(format_ == 12 ){
+			cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono12);
+			depth_ = 16;
+		}
+		if(format_ == 16 ){
+			cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
+			depth_ = 16;
+		}
+		ResizeImageBuffer();
+	}
+	return DEVICE_OK;
+}
 int AVTCamera::OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
