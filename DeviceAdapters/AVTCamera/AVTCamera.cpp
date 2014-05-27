@@ -43,7 +43,24 @@ const char g_Label[] = "Label";
  */
 MODULE_API void InitializeModuleData()
 {
-	AddAvailableDeviceName(g_AVTCameraDeviceName, "AVT Guppy Camera");
+	VimbaSystem& sys = VimbaSystem::GetInstance();  // Get a reference to the VimbaSystem singleton
+	VmbErrorType err = sys.Startup();               // Initialize the Vimba API
+	CameraPtrVector cameras;                        // A vector of std::shared_ptr<AVT::VmbAPI::Camera> objects
+
+	std::string strID;                              // The ID of the cam
+	std::string strName;                            // The name of the cam
+
+
+	if ( VmbErrorSuccess == sys.GetCameras( cameras ) )
+	{
+		for ( CameraPtrVector :: iterator iter = cameras.begin ();cameras.end() != iter;++iter )
+		{
+			(*iter)->GetID( strID );
+			(*iter)->GetName( strName );
+			AddAvailableDeviceName(strName.c_str(), "AVT  Camera");
+		}
+	}
+	sys.Shutdown();
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -51,10 +68,27 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
 	if (deviceName == 0)
 		return 0;
 
-	if (strcmp(deviceName, g_AVTCameraDeviceName) == 0)
-		return AVTCamera::GetInstance();
+	VimbaSystem& sys = VimbaSystem::GetInstance();  // Get a reference to the VimbaSystem singleton
+	VmbErrorType err = sys.Startup();               // Initialize the Vimba API
+	CameraPtrVector cameras;                        // A vector of std::shared_ptr<AVT::VmbAPI::Camera> objects
 
-	// ...supplied name not recognized
+	std::string strID;                              // The ID of the cam
+	std::string strName;                            // The name of the cam
+
+	if ( VmbErrorSuccess == sys.GetCameras( cameras ) )
+	{
+		for ( CameraPtrVector :: iterator iter = cameras.begin ();cameras.end() != iter;++iter )
+		{
+			(*iter)->GetID( strID );
+			(*iter)->GetName( strName );
+			if (strcmp(deviceName, strName.c_str()) == 0){
+				sys.Shutdown();
+				return new AVTCamera(strID.c_str());
+			}
+		}
+	}
+	sys.Shutdown();
+
 	return 0;
 }
 
@@ -63,28 +97,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 	delete pDevice;
 }
 
-DriverGuard::DriverGuard(const AVTCamera * cam)
-{
-	g_AVTCamDriverLock.Lock();
-}
-
-DriverGuard::~DriverGuard()
-{
-	g_AVTCamDriverLock.Unlock();
-}
-
-AVTCamera::AVTCamera() :
-																																						binSize_(1),
-																																						depth_(8),
-																																						initialized_(false),
-																																						fullFrameX_(0),
-																																						fullFrameY_(0),
-																																						fullFrameBufferSize_(0),
-																																						sequenceRunning_(false),
-																																						timeout_(1000),
-																																						thd_(0),
-																																						exposure_(20),
-																																						deinterlace_(0)
+AVTCamera::AVTCamera(const char * CameraId)
 {
 	InitializeDefaultErrorMessages();
 	// add custom messages
@@ -98,99 +111,55 @@ AVTCamera::AVTCamera() :
 	SetErrorText(ERR_SETROI_ERROR, "setting roi error");
 
 	// Find cameras
-	thd_ = new SequenceThread(this);
-
+	binSize_ = 1;
+	depth_ = 8;
+	initialized_ = false;
+	fullFrameX_ = 0;
+	fullFrameY_ = 0;
+	fullFrameBufferSize_ = 0;
+	timeout_ = 1000;
+	exposure_ = 20;
+	deinterlace_ = 0;
+	fullFrameBuffer_ = 0;
+	m_CameraId = CameraId;
+	VimbaSystem::GetInstance().Startup();
+	OpenCamera();
+	cam_ = new AVT_Guppy_F146BCamera(m_pCamera);
 
 }
 
 AVTCamera::~AVTCamera()
 {
-	DriverGuard dg(this);
-
-	refCount_--;
-	if (refCount_ == 0) {
-		// release resources
-		if (initialized_) {
-			Shutdown();
-		}
-
-		// clear the instance pointer
-		instance_ = NULL;
+	if (initialized_) {
+		Shutdown();
 	}
-	delete thd_;
+	instance_ = NULL;
 }
 
-AVTCamera* AVTCamera::GetInstance()
+
+int AVTCamera::OpenCamera()
 {
-	if(!instance_)
-		instance_ = new AVTCamera();
-
-	//refCount_++;
-	return instance_;
+	return VimbaSystem::GetInstance().OpenCameraByID(m_CameraId,VmbAccessModeFull, m_pCamera );
 }
-
 int AVTCamera::Initialize()
 {
+	VmbErrorType err;
 	if (initialized_)
 		return DEVICE_OK;
-	VimbaSystem& sys = VimbaSystem::GetInstance();  // Get a reference to the VimbaSystem singleton
-	VmbErrorType err = sys.Startup();               // Initialize the Vimba API
-	CameraPtrVector cameras;                        // A vector of std::shared_ptr<AVT::VmbAPI::Camera> objects
 
-	std::string strID;                              // The ID of the cam
-	std::string strName;                            // The name of the cam
-	std::string strModelname;                       // The model name of the cam
-	std::string strSerialNumber;                    // The serial number of the cam
-	std::string strInterfacaeID;                    // The ID of the interface the cam is connected to
-
-
-	if ( VmbErrorSuccess == sys.GetCameras( cameras ) )
-	{
-		LogMessage(" system.GetCameras");
-		for ( CameraPtrVector :: iterator iter = cameras.begin ();cameras.end() != iter;++iter )
-		{
-			err = (*iter)->GetID( strID );
-			if ( VmbErrorSuccess != err )
-				return err;
-
-			err = (*iter)->GetName( strName );
-			if ( VmbErrorSuccess != err )
-				return err;
-
-			err = (*iter)->GetModel( strModelname );
-			if ( VmbErrorSuccess != err )
-				return err;
-
-			err = (*iter)->GetSerialNumber( strSerialNumber );
-			if ( VmbErrorSuccess != err )
-				return err;
-
-			err = (*iter)->GetInterfaceID( strInterfacaeID );
-			if ( VmbErrorSuccess != err )
-				return err;
-
-			if(strcmp(strName.c_str(),"GE680") != 0){
-				cam_ = new AVT_Guppy_F146BCamera(strID.c_str(),strName.c_str(),strModelname.c_str(),strSerialNumber.c_str(),strInterfacaeID.c_str(),VmbInterfaceEthernet,"GigE","GigE",VmbAccessModeFull);
-			}
-
-		}
-	}
-	cam_->Open(VmbAccessModeFull);
-	m_pFrameObserver = new FrameObserver(this,(CameraPtr) cam_ );
 	VmbInt64_t height,width,bufferSize;
-	cam_->GetHeightMax(height);
-	cam_->GetWidthMax(width);
-
-	cam_->SetOffsetX(0);
-	cam_->SetOffsetY(0);
-	cam_->SetHeight(height);
-	cam_->SetWidth(width);
-
+	err = cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
+	err = cam_->GetHeightMax(height);
+	err = cam_->GetWidthMax(width);
+	err = cam_->SetOffsetX(0);
+	err = cam_->SetOffsetY(0);
+	err = cam_->SetHeight(height);
+	err = cam_->SetWidth(width);
 	fullFrameX_ = width;
 	fullFrameY_ = height;
 
-	cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono8);
-	depth_ = 8;
+	m_isbusy = false;
+	depth_ = 16;
 	binSize_ = 1;
 	roi_.x = 0;
 	roi_.y = 0;
@@ -199,17 +168,22 @@ int AVTCamera::Initialize()
 	fullFrameBufferSize_ = fullFrameX_ * fullFrameY_ * (depth_ / 8 ) ;
 	fullFrameBuffer_ = new unsigned char[fullFrameBufferSize_];
 	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
-	//	cam_->Close();
 	ResizeImageBuffer();
 	return DEVICE_OK;
 }
 
 int AVTCamera::ResizeImageBuffer()
 {
-	// resize internal buffers
-	// NOTE: we are assuming 16-bit pixel type
+	//	// resize internal buffers
+	//	// NOTE: we are assuming 16-bit pixel type
 	const int bpp = (int)ceil(depth_/8.0);
 	img_.Resize(roi_.xSize / binSize_, roi_.ySize / binSize_, bpp);
+	//	if(fullFrameBuffer_)
+	//		delete fullFrameBuffer_;
+	//	fullFrameBufferSize_ = roi_.xSize  * roi_.ySize * (depth_ / 8 ) ;
+	//	fullFrameBuffer_ = new unsigned char[fullFrameBufferSize_];
+	//	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
+
 	return DEVICE_OK;
 }
 
@@ -221,7 +195,7 @@ int AVTCamera::Shutdown()
 	if (initialized_)
 	{
 		StopCamera();
-		cam_->Close();
+		m_pCamera->Close();
 		VimbaSystem::GetInstance().Shutdown();
 		delete fullFrameBuffer_;
 	}
@@ -232,11 +206,10 @@ int AVTCamera::Shutdown()
 
 void AVTCamera::StopCamera()
 {
-	DriverGuard dg(this);
 	LogMessage("StopCamera");
-	cam_->StopContinuousImageAcquisition();
-	thd_->Stop();
-	//cam_->Close();
+	if(m_isbusy)
+		StopSequenceAcquisition();
+	m_pCamera->Close();
 }
 
 //added to use RTA
@@ -248,14 +221,11 @@ void AVTCamera::StopCamera()
  */
 int AVTCamera::SnapImage()
 {
-	DriverGuard dg(this);
 	std::ostringstream osMessage;
-	if (sequenceRunning_)   // If we are in the middle of a SequenceAcquisition
+	if (m_isbusy)   // If we are in the middle of a SequenceAcquisition
 		return ERR_BUSY_ACQUIRING;
-	//cam_->Open(VmbAccessModeFull);
-
 	FramePtr frame;
-	cam_->AcquireSingleImage(frame,1000);
+	m_pCamera->AcquireSingleImage(frame,1000);
 	// See if it is not corrupt
 	VmbFrameStatusType eReceiveStatus;
 	VmbErrorType err;
@@ -273,7 +243,6 @@ int AVTCamera::SnapImage()
 		osMessage << "snap image error:err code["<< err<<"]eReceiveStatus[" <<eReceiveStatus<<"]";
 		this->LogMessage(osMessage.str().c_str());
 	}
-	//cam_->Close();
 
 	return DEVICE_OK;
 }
@@ -285,8 +254,6 @@ void AVTCamera::GetName(char* name) const
 
 const unsigned char* AVTCamera::GetImageBuffer()
 {
-	DriverGuard dg(this);
-
 	return fullFrameBuffer_;
 }
 
@@ -302,26 +269,18 @@ void AVTCamera::SetExposure(double exp)
 
 double AVTCamera::GetExposure() const
 {
-	DriverGuard dg(this);
 	return exposure_;
 }
 
 int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize)
 {
-	DriverGuard dg(this);
 	if (Busy())
 		return ERR_BUSY_ACQUIRING;
-
-	//added to use RTA
-	StopCamera();
 	Sleep(500);
-	if(uX >0){
-		cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono16);
-		depth_ = 16;
-	}else{
-		cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono8);
-		depth_ = 8;
-	}
+	//added to use RTA
+	if(m_isbusy)
+		StopSequenceAcquisition();
+
 	ROI oldRoi = roi_;
 	//F146B Roi设置说明：uX/uY/uYSize 为偶数,uXSize为4的倍数
 
@@ -345,8 +304,6 @@ int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize
 	std::ostringstream osMessage;
 	osMessage.str("");
 	VmbErrorType ret;
-
-	//	cam_->Open(VmbAccessModeFull);
 
 	ret = cam_->SetOffsetY(roi_.y);
 	osMessage << "SetOffsetY Value[" <<roi_.y<<"]"<<"ret=["<<ret<<"]\r\n";
@@ -372,7 +329,6 @@ int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize
 		osMessage << "SetWidth Value[" <<roi_.xSize<<"]"<<"ret=["<<ret<<"]\r\n";
 	}
 	this->LogMessage(osMessage.str());
-	//	cam_->Close();
 	ResizeImageBuffer();
 	OnPropertiesChanged();
 	return DEVICE_OK;
@@ -390,6 +346,7 @@ int AVTCamera::GetROI(unsigned& uX, unsigned& uY, unsigned& uXSize, unsigned& uY
 
 int AVTCamera::ClearROI()
 {
+	SetROI(0,0, fullFrameX_, fullFrameY_);
 	return SetROI(0,0, fullFrameX_, fullFrameY_);
 }
 
@@ -454,12 +411,9 @@ int AVTCamera::StartSequenceAcquisition(double interval) {
 int AVTCamera::StopSequenceAcquisition()
 {
 	VmbErrorType reta;
-	if (!thd_->IsStopped()) {
-		thd_->Stop();
-		thd_->wait();
-		//cam_->StopContinuousImageAcquisition();
-	}
-	reta = cam_->StopContinuousImageAcquisition();
+
+	m_isbusy = false;
+	reta = m_pCamera->StopContinuousImageAcquisition();
 	std::ostringstream osMessage;
 	osMessage.str("");
 	osMessage <<"\r\nStopContinuousImageAcquisition["<<reta<<"]";
@@ -476,10 +430,10 @@ int AVTCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool
 {
 	if (IsCapturing())
 		return DEVICE_CAMERA_BUSY_ACQUIRING;
-
-	int ret = GetCoreCallback()->PrepareForAcq(this);
-	if (ret != DEVICE_OK)
-		return ret;
+	//
+	//	int ret = GetCoreCallback()->PrepareForAcq(this);
+	//	if (ret != DEVICE_OK)
+	//		return ret;
 	// Start streaming
 	std::ostringstream osMessage;
 	osMessage.str("");
@@ -487,10 +441,9 @@ int AVTCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool
 	//	reta = cam_->StopContinuousImageAcquisition();
 	//	osMessage <<"\r\n\r\nStopContinuousImageAcquisition["<<reta<<"]";
 	m_isbusy = true;
-	reta = cam_->StartContinuousImageAcquisition( 3, IFrameObserverPtr( m_pFrameObserver ));
-	osMessage <<"\r\n\r\nStartContinuousImageAcquisition["<<reta<<"]";
-	LogMessage(osMessage.str());
-	thd_->Start(numImages, interval_ms);
+
+	m_pFrameObserver = new FrameObserver(this,m_pCamera );
+	reta = m_pCamera->StartContinuousImageAcquisition( 3, IFrameObserverPtr( m_pFrameObserver ));
 	return DEVICE_OK;
 }
 
@@ -545,7 +498,7 @@ int AVTCamera::InsertImage()
  */
 
 bool AVTCamera::IsCapturing() {
-	return !m_busy;//!thd_->IsStopped();
+	return m_isbusy;//!thd_->IsStopped();
 }
 int  AVTCamera::ThreadRun (FramePtr frame)
 {
@@ -554,36 +507,21 @@ int  AVTCamera::ThreadRun (FramePtr frame)
 	//		cam_->StopContinuousImageAcquisition();
 	//		return DEVICE_ERR;
 	//	}
-	if(m_isbusy){
-		//GenerateImage(frame,img_, GetSequenceExposure());
-		return  InsertImage();
-	}else{
-		return ret;
-	}
+	GenerateImage(frame);
+	return  InsertImage();
 };
-int AVTCamera::GenerateImage(FramePtr frame,ImgBuffer& img, double exp)
+int AVTCamera::GenerateImage(FramePtr frame)
 {
 	VmbUchar_t *pBuffer;
 	frame->GetImage(pBuffer);
 	VmbUint32_t bufferSize_ = 0;
 	frame->GetBufferSize(bufferSize_);
 	memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
+	m_pCamera->QueueFrame( frame );
+	LogMessage("GenerateImage");
 	return DEVICE_OK;
 }
-double AVTCamera::GetSequenceExposure()
-{
-	if (exposureSequence_.size() == 0)
-		return this->GetExposure();
-	if (sequenceIndex_ > exposureSequence_.size() - 1)
-		sequenceIndex_ = 0;
-	double exposure = exposureSequence_[sequenceIndex_];
-	sequenceIndex_++;
-	if (sequenceIndex_ >= exposureSequence_.size())
-	{
-		sequenceIndex_ = 0;
-	}
-	return exposure;
-}
+
 
 FrameObserver::FrameObserver(AVTCamera* pCam,  CameraPtr pCamera ): IFrameObserver( pCamera )
 {
@@ -606,14 +544,15 @@ void FrameObserver::FrameReceived( const FramePtr pFrame )
 		//		// And notify the view about it
 		//		m_newFrameArrive = true;
 		//		bQueueDirectly = false;
+		cam_->LogMessage("FrameReceived");
 		cam_->ThreadRun(pFrame);
 	}
 
 	// If any error occurred we queue the frame without notification
-	if ( true == bQueueDirectly )
-	{
-		m_pCamera->QueueFrame( pFrame );
-	}
+	//	if ( true == bQueueDirectly )
+	//	{
+	//		m_pCamera->QueueFrame( pFrame );
+	//	}
 }
 bool FrameObserver::hasNewFrame()
 {
@@ -634,11 +573,11 @@ FramePtr FrameObserver::GetFrame()
 
 void FrameObserver::ClearFrameQueue()
 {
-	// Lock the frame queue
-	m_FramesMutex.Lock();
-	// Clear the frame queue and release the memory
-	std::queue<FramePtr> empty;
-	std::swap( m_Frames, empty );
-	// Unlock the frame queue
-	m_FramesMutex.Unlock();
+	//	// Lock the frame queue
+	//	m_FramesMutex.Lock();
+	//	// Clear the frame queue and release the memory
+	//	std::queue<FramePtr> empty;
+	//	std::swap( m_Frames, empty );
+	//	// Unlock the frame queue
+	//	m_FramesMutex.Unlock();
 }

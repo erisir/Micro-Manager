@@ -37,18 +37,17 @@ using namespace AVT::VmbAPI;
 #define ERR_NO_AVAIL_AMPS 111
 #define ERR_SOFTWARE_TRIGGER_IN_USE 112
 #define ERR_SETROI_ERROR 113
-class  SequenceThread;
 class  FrameObserver;
 class AVTCamera : public CCameraBase<AVTCamera>
 {
 public:
-	static AVTCamera* GetInstance();
+	AVTCamera(const char * CameraId);
 	~AVTCamera();
-
+	const char * m_CameraId;
 	// MMDevice API
 	int Initialize();
 	int Shutdown();
-
+	int OpenCamera();
 	void GetName(char* pszName) const;
 	bool Busy() { return false; }
 	FrameObserver* m_pFrameObserver;
@@ -75,10 +74,10 @@ public:
 	int InsertImage();
 	bool IsCapturing();
 	int ThreadRun(FramePtr frame);
+	int m_busy;
 private:
-	friend class  SequenceThread;
+
 	friend class  FrameObserver;
-	AVTCamera();
 
 	// Update the image buffer information
 	int ResizeImageBuffer();
@@ -89,17 +88,11 @@ private:
 	int OnDeInterlace(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
 
-	double GetSequenceExposure();
 	std::vector<double> exposureSequence_;
 	MM::MMTime sequenceStartTime_;
-	bool isSequenceable_;
-	long sequenceMaxLength_;
-	bool sequenceRunning_;
-	long sequenceIndex_;
 	long imageCounter_;
-
-	int GenerateImage(FramePtr frame,ImgBuffer& img, double exp);
-	SequenceThread* thd_;
+	bool sequenceRunning_;
+	int GenerateImage(FramePtr frame);
 	// Camera information
 	ImgBuffer img_;
 	int depth_;
@@ -117,6 +110,7 @@ private:
 	static AVTCamera* instance_;
 	bool initialized_;
 	AVT_Guppy_F146BCamera *cam_;
+	CameraPtr m_pCamera;
 	bool m_isbusy;
 	struct ROI {
 		int x;
@@ -134,48 +128,6 @@ private:
 
 };
 
-class SequenceThread : public MMDeviceThreadBase
-{
-	friend class AVTCamera;
-	enum { default_numImages=1, default_intervalMS = 100 };
-public:
-	SequenceThread(AVTCamera* pCam);
-	~SequenceThread();
-	void Stop();
-	void Start(long numImages, double intervalMs);
-	bool IsStopped();
-	void Suspend();
-	bool IsSuspended();
-	void Resume();
-	double GetIntervalMs(){return intervalMs_;}
-	void SetLength(long images) {numImages_ = images;}
-	long GetLength() const {return numImages_;}
-	long GetImageCounter(){return imageCounter_;}
-	MM::MMTime GetStartTime(){return startTime_;}
-	MM::MMTime GetActualDuration(){return actualDuration_;}
-private:
-	int svc(void) throw();
-	AVTCamera* camera_;
-	bool stop_;
-	bool suspend_;
-	long numImages_;
-	long imageCounter_;
-	double intervalMs_;
-	MM::MMTime startTime_;
-	MM::MMTime actualDuration_;
-	MM::MMTime lastFrameTime_;
-	MMThreadLock stopLock_;
-	MMThreadLock suspendLock_;
-	double exposure_;
-};
-
-class DriverGuard
-{
-public:
-	DriverGuard(const AVTCamera * cam);
-	~DriverGuard();
-};
-
 
 class FrameObserver : virtual public IFrameObserver
 {
@@ -183,7 +135,7 @@ class FrameObserver : virtual public IFrameObserver
 
 public:
 	FrameObserver(AVTCamera* pCam,  CameraPtr pCamera );
-//	AVTCamera *cam_ ;
+	//	AVTCamera *cam_ ;
 	// This is our callback routine that will be executed on every received frame
 	virtual void FrameReceived( const FramePtr pFrame );
 	// After the view has been notified about a new frame it can pick it up

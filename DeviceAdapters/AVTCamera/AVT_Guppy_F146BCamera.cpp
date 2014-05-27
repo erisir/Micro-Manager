@@ -27,25 +27,9 @@
 
 #include "AVT_Guppy_F146BCamera.h"
 
-AVT_Guppy_F146BCamera::AVT_Guppy_F146BCamera (
-    const char         *pCameraID,
-    const char         *pCameraName,
-    const char         *pCameraModel,
-    const char         *pCameraSerialNumber,
-    const char         *pInterfaceID,
-    VmbInterfaceType    interfaceType,
-    const char         *pInterfaceName,
-    const char         *pInterfaceSerialNumber,
-    VmbAccessModeType   interfacePermittedAccess 
-    )
-    : Camera (
-        pCameraID, 
-        pCameraName, 
-        pCameraModel, 
-        pCameraSerialNumber, 
-        pInterfaceID, 
-        interfaceType)
+AVT_Guppy_F146BCamera::AVT_Guppy_F146BCamera (CameraPtr Camera)
 {
+	m_pCamera = Camera;
 }
 
 
@@ -75,7 +59,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAcquisitionFrameCountFeature (AVT::VmbAPI
     if (m_AcquisitionFrameCountFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AcquisitionFrameCount", m_AcquisitionFrameCountFeature);
+        result = m_pCamera->GetFeatureByName ("AcquisitionFrameCount", m_AcquisitionFrameCountFeature);
         if (result != VmbErrorSuccess)
         {
             m_AcquisitionFrameCountFeature.reset();
@@ -111,7 +95,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAcquisitionFrameRateFeature (AVT::VmbAPI:
     if (m_AcquisitionFrameRateFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AcquisitionFrameRate", m_AcquisitionFrameRateFeature);
+        result = m_pCamera->GetFeatureByName ("AcquisitionFrameRate", m_AcquisitionFrameRateFeature);
         if (result != VmbErrorSuccess)
         {
             m_AcquisitionFrameRateFeature.reset();
@@ -137,7 +121,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAcquisitionFrameRateLimitFeature (AVT::Vm
     if (m_AcquisitionFrameRateLimitFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AcquisitionFrameRateLimit", m_AcquisitionFrameRateLimitFeature);
+        result = m_pCamera->GetFeatureByName ("AcquisitionFrameRateLimit", m_AcquisitionFrameRateLimitFeature);
         if (result != VmbErrorSuccess)
         {
             m_AcquisitionFrameRateLimitFeature.reset();
@@ -175,7 +159,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAcquisitionModeFeature (AVT::VmbAPI::Feat
     if (m_AcquisitionModeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AcquisitionMode", m_AcquisitionModeFeature);
+        result = m_pCamera->GetFeatureByName ("AcquisitionMode", m_AcquisitionModeFeature);
         if (result != VmbErrorSuccess)
         {
             m_AcquisitionModeFeature.reset();
@@ -201,7 +185,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAcquisitionStartFeature (AVT::VmbAPI::Fea
     if (m_AcquisitionStartFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AcquisitionStart", m_AcquisitionStartFeature);
+        result = m_pCamera->GetFeatureByName ("AcquisitionStart", m_AcquisitionStartFeature);
         if (result != VmbErrorSuccess)
         {
             m_AcquisitionStartFeature.reset();
@@ -227,7 +211,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAcquisitionStopFeature (AVT::VmbAPI::Feat
     if (m_AcquisitionStopFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AcquisitionStop", m_AcquisitionStopFeature);
+        result = m_pCamera->GetFeatureByName ("AcquisitionStop", m_AcquisitionStopFeature);
         if (result != VmbErrorSuccess)
         {
             m_AcquisitionStopFeature.reset();
@@ -265,7 +249,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureAutoFeature (AVT::VmbAPI::Feature
     if (m_ExposureAutoFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureAuto", m_ExposureAutoFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureAuto", m_ExposureAutoFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureAutoFeature.reset();
@@ -303,7 +287,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureModeFeature (AVT::VmbAPI::Feature
     if (m_ExposureModeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureMode", m_ExposureModeFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureMode", m_ExposureModeFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureModeFeature.reset();
@@ -329,7 +313,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureOffsetFeature (AVT::VmbAPI::Featu
     if (m_ExposureOffsetFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureOffset", m_ExposureOffsetFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureOffset", m_ExposureOffsetFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureOffsetFeature.reset();
@@ -365,7 +349,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureTimeFeature (AVT::VmbAPI::Feature
     if (m_ExposureTimeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureTime", m_ExposureTimeFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureTime", m_ExposureTimeFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureTimeFeature.reset();
@@ -403,7 +387,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetTriggerActivationFeature (AVT::VmbAPI::Fe
     if (m_TriggerActivationFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("TriggerActivation", m_TriggerActivationFeature);
+        result = m_pCamera->GetFeatureByName ("TriggerActivation", m_TriggerActivationFeature);
         if (result != VmbErrorSuccess)
         {
             m_TriggerActivationFeature.reset();
@@ -439,7 +423,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetTriggerDelayFeature (AVT::VmbAPI::Feature
     if (m_TriggerDelayFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("TriggerDelay", m_TriggerDelayFeature);
+        result = m_pCamera->GetFeatureByName ("TriggerDelay", m_TriggerDelayFeature);
         if (result != VmbErrorSuccess)
         {
             m_TriggerDelayFeature.reset();
@@ -477,7 +461,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetTriggerModeFeature (AVT::VmbAPI::FeatureP
     if (m_TriggerModeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("TriggerMode", m_TriggerModeFeature);
+        result = m_pCamera->GetFeatureByName ("TriggerMode", m_TriggerModeFeature);
         if (result != VmbErrorSuccess)
         {
             m_TriggerModeFeature.reset();
@@ -515,7 +499,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetTriggerSelectorFeature (AVT::VmbAPI::Feat
     if (m_TriggerSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("TriggerSelector", m_TriggerSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("TriggerSelector", m_TriggerSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_TriggerSelectorFeature.reset();
@@ -553,7 +537,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetTriggerSourceFeature (AVT::VmbAPI::Featur
     if (m_TriggerSourceFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("TriggerSource", m_TriggerSourceFeature);
+        result = m_pCamera->GetFeatureByName ("TriggerSource", m_TriggerSourceFeature);
         if (result != VmbErrorSuccess)
         {
             m_TriggerSourceFeature.reset();
@@ -583,7 +567,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureAutoAlgFeature (AVT::VmbAPI::Feat
     if (m_ExposureAutoAlgFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureAutoAlg", m_ExposureAutoAlgFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureAutoAlg", m_ExposureAutoAlgFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureAutoAlgFeature.reset();
@@ -619,7 +603,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureAutoMaxFeature (AVT::VmbAPI::Feat
     if (m_ExposureAutoMaxFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureAutoMax", m_ExposureAutoMaxFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureAutoMax", m_ExposureAutoMaxFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureAutoMaxFeature.reset();
@@ -655,7 +639,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureAutoMinFeature (AVT::VmbAPI::Feat
     if (m_ExposureAutoMinFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureAutoMin", m_ExposureAutoMinFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureAutoMin", m_ExposureAutoMinFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureAutoMinFeature.reset();
@@ -693,7 +677,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureAutoTimebaseFeature (AVT::VmbAPI:
     if (m_ExposureAutoTimebaseFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("ExposureAutoTimebase", m_ExposureAutoTimebaseFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureAutoTimebase", m_ExposureAutoTimebaseFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureAutoTimebaseFeature.reset();
@@ -731,7 +715,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetBlackLevelFeature (AVT::VmbAPI::FeaturePt
     if (m_BlackLevelFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("BlackLevel", m_BlackLevelFeature);
+        result = m_pCamera->GetFeatureByName ("BlackLevel", m_BlackLevelFeature);
         if (result != VmbErrorSuccess)
         {
             m_BlackLevelFeature.reset();
@@ -759,7 +743,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetBlackLevelSelectorFeature (AVT::VmbAPI::F
     if (m_BlackLevelSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("BlackLevelSelector", m_BlackLevelSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("BlackLevelSelector", m_BlackLevelSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_BlackLevelSelectorFeature.reset();
@@ -795,7 +779,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetGainFeature (AVT::VmbAPI::FeaturePtr & fe
     if (m_GainFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("Gain", m_GainFeature);
+        result = m_pCamera->GetFeatureByName ("Gain", m_GainFeature);
         if (result != VmbErrorSuccess)
         {
             m_GainFeature.reset();
@@ -833,7 +817,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetGainAutoFeature (AVT::VmbAPI::FeaturePtr 
     if (m_GainAutoFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("GainAuto", m_GainAutoFeature);
+        result = m_pCamera->GetFeatureByName ("GainAuto", m_GainAutoFeature);
         if (result != VmbErrorSuccess)
         {
             m_GainAutoFeature.reset();
@@ -861,7 +845,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetGainSelectorFeature (AVT::VmbAPI::Feature
     if (m_GainSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("GainSelector", m_GainSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("GainSelector", m_GainSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_GainSelectorFeature.reset();
@@ -897,7 +881,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetGammaFeature (AVT::VmbAPI::FeaturePtr & f
     if (m_GammaFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("Gamma", m_GammaFeature);
+        result = m_pCamera->GetFeatureByName ("Gamma", m_GammaFeature);
         if (result != VmbErrorSuccess)
         {
             m_GammaFeature.reset();
@@ -935,7 +919,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAutofunctionAOIEnableFeature (AVT::VmbAPI
     if (m_AutofunctionAOIEnableFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AutofunctionAOIEnable", m_AutofunctionAOIEnableFeature);
+        result = m_pCamera->GetFeatureByName ("AutofunctionAOIEnable", m_AutofunctionAOIEnableFeature);
         if (result != VmbErrorSuccess)
         {
             m_AutofunctionAOIEnableFeature.reset();
@@ -971,7 +955,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAutofunctionAOIHeightFeature (AVT::VmbAPI
     if (m_AutofunctionAOIHeightFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AutofunctionAOIHeight", m_AutofunctionAOIHeightFeature);
+        result = m_pCamera->GetFeatureByName ("AutofunctionAOIHeight", m_AutofunctionAOIHeightFeature);
         if (result != VmbErrorSuccess)
         {
             m_AutofunctionAOIHeightFeature.reset();
@@ -1007,7 +991,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAutofunctionAOIOffsetXFeature (AVT::VmbAP
     if (m_AutofunctionAOIOffsetXFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AutofunctionAOIOffsetX", m_AutofunctionAOIOffsetXFeature);
+        result = m_pCamera->GetFeatureByName ("AutofunctionAOIOffsetX", m_AutofunctionAOIOffsetXFeature);
         if (result != VmbErrorSuccess)
         {
             m_AutofunctionAOIOffsetXFeature.reset();
@@ -1043,7 +1027,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAutofunctionAOIOffsetYFeature (AVT::VmbAP
     if (m_AutofunctionAOIOffsetYFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AutofunctionAOIOffsetY", m_AutofunctionAOIOffsetYFeature);
+        result = m_pCamera->GetFeatureByName ("AutofunctionAOIOffsetY", m_AutofunctionAOIOffsetYFeature);
         if (result != VmbErrorSuccess)
         {
             m_AutofunctionAOIOffsetYFeature.reset();
@@ -1079,7 +1063,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAutofunctionAOIShowAreaFeature (AVT::VmbA
     if (m_AutofunctionAOIShowAreaFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AutofunctionAOIShowArea", m_AutofunctionAOIShowAreaFeature);
+        result = m_pCamera->GetFeatureByName ("AutofunctionAOIShowArea", m_AutofunctionAOIShowAreaFeature);
         if (result != VmbErrorSuccess)
         {
             m_AutofunctionAOIShowAreaFeature.reset();
@@ -1115,7 +1099,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAutofunctionAOIWidthFeature (AVT::VmbAPI:
     if (m_AutofunctionAOIWidthFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AutofunctionAOIWidth", m_AutofunctionAOIWidthFeature);
+        result = m_pCamera->GetFeatureByName ("AutofunctionAOIWidth", m_AutofunctionAOIWidthFeature);
         if (result != VmbErrorSuccess)
         {
             m_AutofunctionAOIWidthFeature.reset();
@@ -1151,7 +1135,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetAutofunctionTargetIntensityFeature (AVT::
     if (m_AutofunctionTargetIntensityFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("AutofunctionTargetIntensity", m_AutofunctionTargetIntensityFeature);
+        result = m_pCamera->GetFeatureByName ("AutofunctionTargetIntensity", m_AutofunctionTargetIntensityFeature);
         if (result != VmbErrorSuccess)
         {
             m_AutofunctionTargetIntensityFeature.reset();
@@ -1189,7 +1173,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDriverBuffersCountFeature (AVT::VmbAPI::F
     if (m_DriverBuffersCountFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DriverBuffersCount", m_DriverBuffersCountFeature);
+        result = m_pCamera->GetFeatureByName ("DriverBuffersCount", m_DriverBuffersCountFeature);
         if (result != VmbErrorSuccess)
         {
             m_DriverBuffersCountFeature.reset();
@@ -1217,7 +1201,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetStreamAcquisitionModeSelectorFeature (AVT
     if (m_StreamAcquisitionModeSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("StreamAcquisitionModeSelector", m_StreamAcquisitionModeSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("StreamAcquisitionModeSelector", m_StreamAcquisitionModeSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_StreamAcquisitionModeSelectorFeature.reset();
@@ -1243,7 +1227,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetStreamAnnounceBufferMinimumFeature (AVT::
     if (m_StreamAnnounceBufferMinimumFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("StreamAnnounceBufferMinimum", m_StreamAnnounceBufferMinimumFeature);
+        result = m_pCamera->GetFeatureByName ("StreamAnnounceBufferMinimum", m_StreamAnnounceBufferMinimumFeature);
         if (result != VmbErrorSuccess)
         {
             m_StreamAnnounceBufferMinimumFeature.reset();
@@ -1269,7 +1253,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetStreamAnnouncedBufferCountFeature (AVT::V
     if (m_StreamAnnouncedBufferCountFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("StreamAnnouncedBufferCount", m_StreamAnnouncedBufferCountFeature);
+        result = m_pCamera->GetFeatureByName ("StreamAnnouncedBufferCount", m_StreamAnnouncedBufferCountFeature);
         if (result != VmbErrorSuccess)
         {
             m_StreamAnnouncedBufferCountFeature.reset();
@@ -1295,7 +1279,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetStreamIDFeature (AVT::VmbAPI::FeaturePtr 
     if (m_StreamIDFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("StreamID", m_StreamIDFeature);
+        result = m_pCamera->GetFeatureByName ("StreamID", m_StreamIDFeature);
         if (result != VmbErrorSuccess)
         {
             m_StreamIDFeature.reset();
@@ -1321,7 +1305,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetStreamIsGrabbingFeature (AVT::VmbAPI::Fea
     if (m_StreamIsGrabbingFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("StreamIsGrabbing", m_StreamIsGrabbingFeature);
+        result = m_pCamera->GetFeatureByName ("StreamIsGrabbing", m_StreamIsGrabbingFeature);
         if (result != VmbErrorSuccess)
         {
             m_StreamIsGrabbingFeature.reset();
@@ -1349,7 +1333,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetStreamTypeFeature (AVT::VmbAPI::FeaturePt
     if (m_StreamTypeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("StreamType", m_StreamTypeFeature);
+        result = m_pCamera->GetFeatureByName ("StreamType", m_StreamTypeFeature);
         if (result != VmbErrorSuccess)
         {
             m_StreamTypeFeature.reset();
@@ -1387,7 +1371,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceAccessRegisterAddressFeature (AVT::
     if (m_DeviceAccessRegisterAddressFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceAccessRegisterAddress", m_DeviceAccessRegisterAddressFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceAccessRegisterAddress", m_DeviceAccessRegisterAddressFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceAccessRegisterAddressFeature.reset();
@@ -1423,7 +1407,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceAccessRegisterValueFeature (AVT::Vm
     if (m_DeviceAccessRegisterValueFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceAccessRegisterValue", m_DeviceAccessRegisterValueFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceAccessRegisterValue", m_DeviceAccessRegisterValueFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceAccessRegisterValueFeature.reset();
@@ -1449,7 +1433,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceFirmwareVersionFeature (AVT::VmbAPI
     if (m_DeviceFirmwareVersionFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceFirmwareVersion", m_DeviceFirmwareVersionFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceFirmwareVersion", m_DeviceFirmwareVersionFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceFirmwareVersionFeature.reset();
@@ -1475,7 +1459,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceIDFeature (AVT::VmbAPI::FeaturePtr 
     if (m_DeviceIDFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceID", m_DeviceIDFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceID", m_DeviceIDFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceIDFeature.reset();
@@ -1501,7 +1485,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceMicrocontrollerVersionFeature (AVT:
     if (m_DeviceMicrocontrollerVersionFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceMicrocontrollerVersion", m_DeviceMicrocontrollerVersionFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceMicrocontrollerVersion", m_DeviceMicrocontrollerVersionFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceMicrocontrollerVersionFeature.reset();
@@ -1527,7 +1511,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceModelNameFeature (AVT::VmbAPI::Feat
     if (m_DeviceModelNameFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceModelName", m_DeviceModelNameFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceModelName", m_DeviceModelNameFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceModelNameFeature.reset();
@@ -1553,7 +1537,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceSFNCVersionMajorFeature (AVT::VmbAP
     if (m_DeviceSFNCVersionMajorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceSFNCVersionMajor", m_DeviceSFNCVersionMajorFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceSFNCVersionMajor", m_DeviceSFNCVersionMajorFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceSFNCVersionMajorFeature.reset();
@@ -1579,7 +1563,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceSFNCVersionMinorFeature (AVT::VmbAP
     if (m_DeviceSFNCVersionMinorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceSFNCVersionMinor", m_DeviceSFNCVersionMinorFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceSFNCVersionMinor", m_DeviceSFNCVersionMinorFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceSFNCVersionMinorFeature.reset();
@@ -1605,7 +1589,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceSFNCVersionSubMinorFeature (AVT::Vm
     if (m_DeviceSFNCVersionSubMinorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceSFNCVersionSubMinor", m_DeviceSFNCVersionSubMinorFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceSFNCVersionSubMinor", m_DeviceSFNCVersionSubMinorFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceSFNCVersionSubMinorFeature.reset();
@@ -1633,7 +1617,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceScanTypeFeature (AVT::VmbAPI::Featu
     if (m_DeviceScanTypeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceScanType", m_DeviceScanTypeFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceScanType", m_DeviceScanTypeFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceScanTypeFeature.reset();
@@ -1659,7 +1643,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceSerialNumberFeature (AVT::VmbAPI::F
     if (m_DeviceSerialNumberFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceSerialNumber", m_DeviceSerialNumberFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceSerialNumber", m_DeviceSerialNumberFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceSerialNumberFeature.reset();
@@ -1685,7 +1669,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetDeviceVendorNameFeature (AVT::VmbAPI::Fea
     if (m_DeviceVendorNameFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("DeviceVendorName", m_DeviceVendorNameFeature);
+        result = m_pCamera->GetFeatureByName ("DeviceVendorName", m_DeviceVendorNameFeature);
         if (result != VmbErrorSuccess)
         {
             m_DeviceVendorNameFeature.reset();
@@ -1711,7 +1695,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFirmwareVerBuildFeature (AVT::VmbAPI::Fea
     if (m_FirmwareVerBuildFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FirmwareVerBuild", m_FirmwareVerBuildFeature);
+        result = m_pCamera->GetFeatureByName ("FirmwareVerBuild", m_FirmwareVerBuildFeature);
         if (result != VmbErrorSuccess)
         {
             m_FirmwareVerBuildFeature.reset();
@@ -1737,7 +1721,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFirmwareVerMajorFeature (AVT::VmbAPI::Fea
     if (m_FirmwareVerMajorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FirmwareVerMajor", m_FirmwareVerMajorFeature);
+        result = m_pCamera->GetFeatureByName ("FirmwareVerMajor", m_FirmwareVerMajorFeature);
         if (result != VmbErrorSuccess)
         {
             m_FirmwareVerMajorFeature.reset();
@@ -1763,7 +1747,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFirmwareVerMinorFeature (AVT::VmbAPI::Fea
     if (m_FirmwareVerMinorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FirmwareVerMinor", m_FirmwareVerMinorFeature);
+        result = m_pCamera->GetFeatureByName ("FirmwareVerMinor", m_FirmwareVerMinorFeature);
         if (result != VmbErrorSuccess)
         {
             m_FirmwareVerMinorFeature.reset();
@@ -1801,7 +1785,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIntEnaDelayEnableFeature (AVT::VmbAPI::Fe
     if (m_IntEnaDelayEnableFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IntEnaDelayEnable", m_IntEnaDelayEnableFeature);
+        result = m_pCamera->GetFeatureByName ("IntEnaDelayEnable", m_IntEnaDelayEnableFeature);
         if (result != VmbErrorSuccess)
         {
             m_IntEnaDelayEnableFeature.reset();
@@ -1837,7 +1821,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIntEnaDelayTimeFeature (AVT::VmbAPI::Feat
     if (m_IntEnaDelayTimeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IntEnaDelayTime", m_IntEnaDelayTimeFeature);
+        result = m_pCamera->GetFeatureByName ("IntEnaDelayTime", m_IntEnaDelayTimeFeature);
         if (result != VmbErrorSuccess)
         {
             m_IntEnaDelayTimeFeature.reset();
@@ -1865,7 +1849,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLineFormatFeature (AVT::VmbAPI::FeaturePt
     if (m_LineFormatFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LineFormat", m_LineFormatFeature);
+        result = m_pCamera->GetFeatureByName ("LineFormat", m_LineFormatFeature);
         if (result != VmbErrorSuccess)
         {
             m_LineFormatFeature.reset();
@@ -1901,7 +1885,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLineInverterFeature (AVT::VmbAPI::Feature
     if (m_LineInverterFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LineInverter", m_LineInverterFeature);
+        result = m_pCamera->GetFeatureByName ("LineInverter", m_LineInverterFeature);
         if (result != VmbErrorSuccess)
         {
             m_LineInverterFeature.reset();
@@ -1929,7 +1913,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLineModeFeature (AVT::VmbAPI::FeaturePtr 
     if (m_LineModeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LineMode", m_LineModeFeature);
+        result = m_pCamera->GetFeatureByName ("LineMode", m_LineModeFeature);
         if (result != VmbErrorSuccess)
         {
             m_LineModeFeature.reset();
@@ -1967,7 +1951,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLineRoutingFeature (AVT::VmbAPI::FeatureP
     if (m_LineRoutingFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LineRouting", m_LineRoutingFeature);
+        result = m_pCamera->GetFeatureByName ("LineRouting", m_LineRoutingFeature);
         if (result != VmbErrorSuccess)
         {
             m_LineRoutingFeature.reset();
@@ -2005,7 +1989,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLineSelectorFeature (AVT::VmbAPI::Feature
     if (m_LineSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LineSelector", m_LineSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("LineSelector", m_LineSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_LineSelectorFeature.reset();
@@ -2033,7 +2017,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLineSourceFeature (AVT::VmbAPI::FeaturePt
     if (m_LineSourceFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LineSource", m_LineSourceFeature);
+        result = m_pCamera->GetFeatureByName ("LineSource", m_LineSourceFeature);
         if (result != VmbErrorSuccess)
         {
             m_LineSourceFeature.reset();
@@ -2059,7 +2043,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLineStatusFeature (AVT::VmbAPI::FeaturePt
     if (m_LineStatusFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LineStatus", m_LineStatusFeature);
+        result = m_pCamera->GetFeatureByName ("LineStatus", m_LineStatusFeature);
         if (result != VmbErrorSuccess)
         {
             m_LineStatusFeature.reset();
@@ -2099,7 +2083,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortBaudRateFeature (AVT::VmbAPI::F
     if (m_SerialPortBaudRateFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortBaudRate", m_SerialPortBaudRateFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortBaudRate", m_SerialPortBaudRateFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortBaudRateFeature.reset();
@@ -2135,7 +2119,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortBufferFeature (AVT::VmbAPI::Fea
     if (m_SerialPortBufferFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortBuffer", m_SerialPortBufferFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortBuffer", m_SerialPortBufferFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortBufferFeature.reset();
@@ -2173,7 +2157,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortCharLengthFeature (AVT::VmbAPI:
     if (m_SerialPortCharLengthFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortCharLength", m_SerialPortCharLengthFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortCharLength", m_SerialPortCharLengthFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortCharLengthFeature.reset();
@@ -2211,7 +2195,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortModeSelectorFeature (AVT::VmbAP
     if (m_SerialPortModeSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortModeSelector", m_SerialPortModeSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortModeSelector", m_SerialPortModeSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortModeSelectorFeature.reset();
@@ -2249,7 +2233,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortParityFeature (AVT::VmbAPI::Fea
     if (m_SerialPortParityFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortParity", m_SerialPortParityFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortParity", m_SerialPortParityFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortParityFeature.reset();
@@ -2275,7 +2259,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortReceiveFramingErrorFeature (AVT
     if (m_SerialPortReceiveFramingErrorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortReceiveFramingError", m_SerialPortReceiveFramingErrorFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortReceiveFramingError", m_SerialPortReceiveFramingErrorFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortReceiveFramingErrorFeature.reset();
@@ -2301,7 +2285,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortReceiveOverrunErrorFeature (AVT
     if (m_SerialPortReceiveOverrunErrorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortReceiveOverrunError", m_SerialPortReceiveOverrunErrorFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortReceiveOverrunError", m_SerialPortReceiveOverrunErrorFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortReceiveOverrunErrorFeature.reset();
@@ -2327,7 +2311,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortReceiveParityErrorFeature (AVT:
     if (m_SerialPortReceiveParityErrorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortReceiveParityError", m_SerialPortReceiveParityErrorFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortReceiveParityError", m_SerialPortReceiveParityErrorFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortReceiveParityErrorFeature.reset();
@@ -2353,7 +2337,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortReceiveReadyFeature (AVT::VmbAP
     if (m_SerialPortReceiveReadyFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortReceiveReady", m_SerialPortReceiveReadyFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortReceiveReady", m_SerialPortReceiveReadyFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortReceiveReadyFeature.reset();
@@ -2379,7 +2363,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortRemainingReceiveSizeFeature (AV
     if (m_SerialPortRemainingReceiveSizeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortRemainingReceiveSize", m_SerialPortRemainingReceiveSizeFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortRemainingReceiveSize", m_SerialPortRemainingReceiveSizeFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortRemainingReceiveSizeFeature.reset();
@@ -2417,7 +2401,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortSelectorFeature (AVT::VmbAPI::F
     if (m_SerialPortSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortSelector", m_SerialPortSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortSelector", m_SerialPortSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortSelectorFeature.reset();
@@ -2455,7 +2439,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortStopBitsFeature (AVT::VmbAPI::F
     if (m_SerialPortStopBitsFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortStopBits", m_SerialPortStopBitsFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortStopBits", m_SerialPortStopBitsFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortStopBitsFeature.reset();
@@ -2481,7 +2465,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortTransmitReadyFeature (AVT::VmbA
     if (m_SerialPortTransmitReadyFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortTransmitReady", m_SerialPortTransmitReadyFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortTransmitReady", m_SerialPortTransmitReadyFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortTransmitReadyFeature.reset();
@@ -2507,7 +2491,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortTransmitSizeFeature (AVT::VmbAP
     if (m_SerialPortTransmitSizeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortTransmitSize", m_SerialPortTransmitSizeFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortTransmitSize", m_SerialPortTransmitSizeFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortTransmitSizeFeature.reset();
@@ -2533,7 +2517,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSerialPortValidReceiveSizeFeature (AVT::V
     if (m_SerialPortValidReceiveSizeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SerialPortValidReceiveSize", m_SerialPortValidReceiveSizeFeature);
+        result = m_pCamera->GetFeatureByName ("SerialPortValidReceiveSize", m_SerialPortValidReceiveSizeFeature);
         if (result != VmbErrorSuccess)
         {
             m_SerialPortValidReceiveSizeFeature.reset();
@@ -2571,7 +2555,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileAccessBufferFeature (AVT::VmbAPI::Fea
     if (m_FileAccessBufferFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileAccessBuffer", m_FileAccessBufferFeature);
+        result = m_pCamera->GetFeatureByName ("FileAccessBuffer", m_FileAccessBufferFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileAccessBufferFeature.reset();
@@ -2607,7 +2591,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileAccessLengthFeature (AVT::VmbAPI::Fea
     if (m_FileAccessLengthFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileAccessLength", m_FileAccessLengthFeature);
+        result = m_pCamera->GetFeatureByName ("FileAccessLength", m_FileAccessLengthFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileAccessLengthFeature.reset();
@@ -2633,7 +2617,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileAccessOffsetFeature (AVT::VmbAPI::Fea
     if (m_FileAccessOffsetFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileAccessOffset", m_FileAccessOffsetFeature);
+        result = m_pCamera->GetFeatureByName ("FileAccessOffset", m_FileAccessOffsetFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileAccessOffsetFeature.reset();
@@ -2671,7 +2655,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileOpenModeFeature (AVT::VmbAPI::Feature
     if (m_FileOpenModeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileOpenMode", m_FileOpenModeFeature);
+        result = m_pCamera->GetFeatureByName ("FileOpenMode", m_FileOpenModeFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileOpenModeFeature.reset();
@@ -2697,7 +2681,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileOperationExecuteFeature (AVT::VmbAPI:
     if (m_FileOperationExecuteFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileOperationExecute", m_FileOperationExecuteFeature);
+        result = m_pCamera->GetFeatureByName ("FileOperationExecute", m_FileOperationExecuteFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileOperationExecuteFeature.reset();
@@ -2723,7 +2707,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileOperationResultFeature (AVT::VmbAPI::
     if (m_FileOperationResultFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileOperationResult", m_FileOperationResultFeature);
+        result = m_pCamera->GetFeatureByName ("FileOperationResult", m_FileOperationResultFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileOperationResultFeature.reset();
@@ -2761,7 +2745,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileOperationSelectorFeature (AVT::VmbAPI
     if (m_FileOperationSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileOperationSelector", m_FileOperationSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("FileOperationSelector", m_FileOperationSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileOperationSelectorFeature.reset();
@@ -2789,7 +2773,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileOperationStatusFeature (AVT::VmbAPI::
     if (m_FileOperationStatusFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileOperationStatus", m_FileOperationStatusFeature);
+        result = m_pCamera->GetFeatureByName ("FileOperationStatus", m_FileOperationStatusFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileOperationStatusFeature.reset();
@@ -2827,7 +2811,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileSelectorFeature (AVT::VmbAPI::Feature
     if (m_FileSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileSelector", m_FileSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("FileSelector", m_FileSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileSelectorFeature.reset();
@@ -2853,7 +2837,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileSizeFeature (AVT::VmbAPI::FeaturePtr 
     if (m_FileSizeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileSize", m_FileSizeFeature);
+        result = m_pCamera->GetFeatureByName ("FileSize", m_FileSizeFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileSizeFeature.reset();
@@ -2881,7 +2865,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetFileStatusFeature (AVT::VmbAPI::FeaturePt
     if (m_FileStatusFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("FileStatus", m_FileStatusFeature);
+        result = m_pCamera->GetFeatureByName ("FileStatus", m_FileStatusFeature);
         if (result != VmbErrorSuccess)
         {
             m_FileStatusFeature.reset();
@@ -2919,7 +2903,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetHeightFeature (AVT::VmbAPI::FeaturePtr & 
     if (m_HeightFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("Height", m_HeightFeature);
+        result = m_pCamera->GetFeatureByName ("Height", m_HeightFeature);
         if (result != VmbErrorSuccess)
         {
             m_HeightFeature.reset();
@@ -2945,7 +2929,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetHeightMaxFeature (AVT::VmbAPI::FeaturePtr
     if (m_HeightMaxFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("HeightMax", m_HeightMaxFeature);
+        result = m_pCamera->GetFeatureByName ("HeightMax", m_HeightMaxFeature);
         if (result != VmbErrorSuccess)
         {
             m_HeightMaxFeature.reset();
@@ -2983,7 +2967,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCModeFeature (AVT::VmbAPI::FeaturePtr 
     if (m_IIDCModeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCMode", m_IIDCModeFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCMode", m_IIDCModeFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCModeFeature.reset();
@@ -3019,7 +3003,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetOffsetXFeature (AVT::VmbAPI::FeaturePtr &
     if (m_OffsetXFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("OffsetX", m_OffsetXFeature);
+        result = m_pCamera->GetFeatureByName ("OffsetX", m_OffsetXFeature);
         if (result != VmbErrorSuccess)
         {
             m_OffsetXFeature.reset();
@@ -3055,7 +3039,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetOffsetYFeature (AVT::VmbAPI::FeaturePtr &
     if (m_OffsetYFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("OffsetY", m_OffsetYFeature);
+        result = m_pCamera->GetFeatureByName ("OffsetY", m_OffsetYFeature);
         if (result != VmbErrorSuccess)
         {
             m_OffsetYFeature.reset();
@@ -3083,7 +3067,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetPixelColorFilterFeature (AVT::VmbAPI::Fea
     if (m_PixelColorFilterFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("PixelColorFilter", m_PixelColorFilterFeature);
+        result = m_pCamera->GetFeatureByName ("PixelColorFilter", m_PixelColorFilterFeature);
         if (result != VmbErrorSuccess)
         {
             m_PixelColorFilterFeature.reset();
@@ -3111,7 +3095,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetPixelColorFilterAutoFeature (AVT::VmbAPI:
     if (m_PixelColorFilterAutoFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("PixelColorFilterAuto", m_PixelColorFilterAutoFeature);
+        result = m_pCamera->GetFeatureByName ("PixelColorFilterAuto", m_PixelColorFilterAutoFeature);
         if (result != VmbErrorSuccess)
         {
             m_PixelColorFilterAutoFeature.reset();
@@ -3149,7 +3133,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetPixelFormatFeature (AVT::VmbAPI::FeatureP
     if (m_PixelFormatFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("PixelFormat", m_PixelFormatFeature);
+        result = m_pCamera->GetFeatureByName ("PixelFormat", m_PixelFormatFeature);
         if (result != VmbErrorSuccess)
         {
             m_PixelFormatFeature.reset();
@@ -3175,7 +3159,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSensorBitsFeature (AVT::VmbAPI::FeaturePt
     if (m_SensorBitsFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SensorBits", m_SensorBitsFeature);
+        result = m_pCamera->GetFeatureByName ("SensorBits", m_SensorBitsFeature);
         if (result != VmbErrorSuccess)
         {
             m_SensorBitsFeature.reset();
@@ -3201,7 +3185,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSensorHeightFeature (AVT::VmbAPI::Feature
     if (m_SensorHeightFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SensorHeight", m_SensorHeightFeature);
+        result = m_pCamera->GetFeatureByName ("SensorHeight", m_SensorHeightFeature);
         if (result != VmbErrorSuccess)
         {
             m_SensorHeightFeature.reset();
@@ -3229,7 +3213,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSensorTapsFeature (AVT::VmbAPI::FeaturePt
     if (m_SensorTapsFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SensorTaps", m_SensorTapsFeature);
+        result = m_pCamera->GetFeatureByName ("SensorTaps", m_SensorTapsFeature);
         if (result != VmbErrorSuccess)
         {
             m_SensorTapsFeature.reset();
@@ -3255,7 +3239,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetSensorWidthFeature (AVT::VmbAPI::FeatureP
     if (m_SensorWidthFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("SensorWidth", m_SensorWidthFeature);
+        result = m_pCamera->GetFeatureByName ("SensorWidth", m_SensorWidthFeature);
         if (result != VmbErrorSuccess)
         {
             m_SensorWidthFeature.reset();
@@ -3293,7 +3277,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetTestImageSelectorFeature (AVT::VmbAPI::Fe
     if (m_TestImageSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("TestImageSelector", m_TestImageSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("TestImageSelector", m_TestImageSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_TestImageSelectorFeature.reset();
@@ -3329,7 +3313,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetWidthFeature (AVT::VmbAPI::FeaturePtr & f
     if (m_WidthFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("Width", m_WidthFeature);
+        result = m_pCamera->GetFeatureByName ("Width", m_WidthFeature);
         if (result != VmbErrorSuccess)
         {
             m_WidthFeature.reset();
@@ -3355,7 +3339,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetWidthMaxFeature (AVT::VmbAPI::FeaturePtr 
     if (m_WidthMaxFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("WidthMax", m_WidthMaxFeature);
+        result = m_pCamera->GetFeatureByName ("WidthMax", m_WidthMaxFeature);
         if (result != VmbErrorSuccess)
         {
             m_WidthMaxFeature.reset();
@@ -3383,7 +3367,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLUTBitDepthInFeature (AVT::VmbAPI::Featur
     if (m_LUTBitDepthInFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LUTBitDepthIn", m_LUTBitDepthInFeature);
+        result = m_pCamera->GetFeatureByName ("LUTBitDepthIn", m_LUTBitDepthInFeature);
         if (result != VmbErrorSuccess)
         {
             m_LUTBitDepthInFeature.reset();
@@ -3409,7 +3393,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLUTBitDepthOutFeature (AVT::VmbAPI::Featu
     if (m_LUTBitDepthOutFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LUTBitDepthOut", m_LUTBitDepthOutFeature);
+        result = m_pCamera->GetFeatureByName ("LUTBitDepthOut", m_LUTBitDepthOutFeature);
         if (result != VmbErrorSuccess)
         {
             m_LUTBitDepthOutFeature.reset();
@@ -3435,7 +3419,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLUTCountFeature (AVT::VmbAPI::FeaturePtr 
     if (m_LUTCountFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LUTCount", m_LUTCountFeature);
+        result = m_pCamera->GetFeatureByName ("LUTCount", m_LUTCountFeature);
         if (result != VmbErrorSuccess)
         {
             m_LUTCountFeature.reset();
@@ -3471,7 +3455,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLUTEnableFeature (AVT::VmbAPI::FeaturePtr
     if (m_LUTEnableFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LUTEnable", m_LUTEnableFeature);
+        result = m_pCamera->GetFeatureByName ("LUTEnable", m_LUTEnableFeature);
         if (result != VmbErrorSuccess)
         {
             m_LUTEnableFeature.reset();
@@ -3509,7 +3493,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLUTSelectorFeature (AVT::VmbAPI::FeatureP
     if (m_LUTSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LUTSelector", m_LUTSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("LUTSelector", m_LUTSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_LUTSelectorFeature.reset();
@@ -3535,7 +3519,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetLUTSizeBytesFeature (AVT::VmbAPI::Feature
     if (m_LUTSizeBytesFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("LUTSizeBytes", m_LUTSizeBytesFeature);
+        result = m_pCamera->GetFeatureByName ("LUTSizeBytes", m_LUTSizeBytesFeature);
         if (result != VmbErrorSuccess)
         {
             m_LUTSizeBytesFeature.reset();
@@ -3563,7 +3547,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCBusNumberFeature (AVT::VmbAPI::Featur
     if (m_IIDCBusNumberFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCBusNumber", m_IIDCBusNumberFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCBusNumber", m_IIDCBusNumberFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCBusNumberFeature.reset();
@@ -3599,7 +3583,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCCameraAcceptDelayFeature (AVT::VmbAPI
     if (m_IIDCCameraAcceptDelayFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCCameraAcceptDelay", m_IIDCCameraAcceptDelayFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCCameraAcceptDelay", m_IIDCCameraAcceptDelayFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCCameraAcceptDelayFeature.reset();
@@ -3625,7 +3609,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCFreeBandwidthFeature (AVT::VmbAPI::Fe
     if (m_IIDCFreeBandwidthFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCFreeBandwidth", m_IIDCFreeBandwidthFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCFreeBandwidth", m_IIDCFreeBandwidthFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCFreeBandwidthFeature.reset();
@@ -3651,7 +3635,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCIsoChannelFeature (AVT::VmbAPI::Featu
     if (m_IIDCIsoChannelFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCIsoChannel", m_IIDCIsoChannelFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCIsoChannel", m_IIDCIsoChannelFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCIsoChannelFeature.reset();
@@ -3689,7 +3673,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCIsoChannelAutoFeature (AVT::VmbAPI::F
     if (m_IIDCIsoChannelAutoFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCIsoChannelAuto", m_IIDCIsoChannelAutoFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCIsoChannelAuto", m_IIDCIsoChannelAutoFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCIsoChannelAutoFeature.reset();
@@ -3715,7 +3699,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCPacketCountFeature (AVT::VmbAPI::Feat
     if (m_IIDCPacketCountFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCPacketCount", m_IIDCPacketCountFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCPacketCount", m_IIDCPacketCountFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCPacketCountFeature.reset();
@@ -3751,7 +3735,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCPacketSizeFeature (AVT::VmbAPI::Featu
     if (m_IIDCPacketSizeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCPacketSize", m_IIDCPacketSizeFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCPacketSize", m_IIDCPacketSizeFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCPacketSizeFeature.reset();
@@ -3789,7 +3773,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCPacketSizeAutoFeature (AVT::VmbAPI::F
     if (m_IIDCPacketSizeAutoFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCPacketSizeAuto", m_IIDCPacketSizeAutoFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCPacketSizeAuto", m_IIDCPacketSizeAutoFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCPacketSizeAutoFeature.reset();
@@ -3827,7 +3811,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetIIDCPhyspeedFeature (AVT::VmbAPI::Feature
     if (m_IIDCPhyspeedFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("IIDCPhyspeed", m_IIDCPhyspeedFeature);
+        result = m_pCamera->GetFeatureByName ("IIDCPhyspeed", m_IIDCPhyspeedFeature);
         if (result != VmbErrorSuccess)
         {
             m_IIDCPhyspeedFeature.reset();
@@ -3853,7 +3837,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetPayloadSizeFeature (AVT::VmbAPI::FeatureP
     if (m_PayloadSizeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("PayloadSize", m_PayloadSizeFeature);
+        result = m_pCamera->GetFeatureByName ("PayloadSize", m_PayloadSizeFeature);
         if (result != VmbErrorSuccess)
         {
             m_PayloadSizeFeature.reset();
@@ -3881,7 +3865,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetUserSetLoadFeature (AVT::VmbAPI::FeatureP
     if (m_UserSetLoadFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("UserSetLoad", m_UserSetLoadFeature);
+        result = m_pCamera->GetFeatureByName ("UserSetLoad", m_UserSetLoadFeature);
         if (result != VmbErrorSuccess)
         {
             m_UserSetLoadFeature.reset();
@@ -3907,7 +3891,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetUserSetMakeDefaultFeature (AVT::VmbAPI::F
     if (m_UserSetMakeDefaultFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("UserSetMakeDefault", m_UserSetMakeDefaultFeature);
+        result = m_pCamera->GetFeatureByName ("UserSetMakeDefault", m_UserSetMakeDefaultFeature);
         if (result != VmbErrorSuccess)
         {
             m_UserSetMakeDefaultFeature.reset();
@@ -3933,7 +3917,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetUserSetOperationResultFeature (AVT::VmbAP
     if (m_UserSetOperationResultFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("UserSetOperationResult", m_UserSetOperationResultFeature);
+        result = m_pCamera->GetFeatureByName ("UserSetOperationResult", m_UserSetOperationResultFeature);
         if (result != VmbErrorSuccess)
         {
             m_UserSetOperationResultFeature.reset();
@@ -3961,7 +3945,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetUserSetOperationStatusFeature (AVT::VmbAP
     if (m_UserSetOperationStatusFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("UserSetOperationStatus", m_UserSetOperationStatusFeature);
+        result = m_pCamera->GetFeatureByName ("UserSetOperationStatus", m_UserSetOperationStatusFeature);
         if (result != VmbErrorSuccess)
         {
             m_UserSetOperationStatusFeature.reset();
@@ -3987,7 +3971,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetUserSetSaveFeature (AVT::VmbAPI::FeatureP
     if (m_UserSetSaveFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("UserSetSave", m_UserSetSaveFeature);
+        result = m_pCamera->GetFeatureByName ("UserSetSave", m_UserSetSaveFeature);
         if (result != VmbErrorSuccess)
         {
             m_UserSetSaveFeature.reset();
@@ -4025,7 +4009,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetUserSetSelectorFeature (AVT::VmbAPI::Feat
     if (m_UserSetSelectorFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = GetFeatureByName ("UserSetSelector", m_UserSetSelectorFeature);
+        result = m_pCamera->GetFeatureByName ("UserSetSelector", m_UserSetSelectorFeature);
         if (result != VmbErrorSuccess)
         {
             m_UserSetSelectorFeature.reset();

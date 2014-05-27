@@ -79,8 +79,8 @@
     <ClCompile Include="..\..\MMDevice\ModuleInterface.cpp" />
     <ClCompile Include="..\..\MMDevice\Property.cpp" />
     <ClCompile Include="AVTCamera.cpp" />
+    <ClCompile Include="AVT_Guppy_F146BCamera.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="SequenceThread.cpp" />
     <ClCompile Include="stdafx.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -95,11 +95,13 @@
     <ClInclude Include="..\..\MMDevice\ModuleInterface.h" />
     <ClInclude Include="..\..\MMDevice\Property.h" />
     <ClInclude Include="AVTCamera.h" />
+    <ClInclude Include="AVT_Guppy_F146BCamera.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="FGCamera.lib" />
+    <Library Include="VimbaCPP.lib" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
