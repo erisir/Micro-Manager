@@ -265,6 +265,9 @@ int AVTCamera::SetBinning(int bin)
 void AVTCamera::SetExposure(double exp)
 {
 	exposure_ = exp;
+	if(m_isbusy)
+		StopSequenceAcquisition();
+	cam_->SetExposureTime(exp*1000);
 }
 
 double AVTCamera::GetExposure() const
