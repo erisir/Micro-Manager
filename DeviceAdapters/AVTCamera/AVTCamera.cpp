@@ -14,13 +14,9 @@ using namespace AVT::VmbAPI;
 // All the DVC error code will be returned plus this.
 const int g_Err_Offset = 10000;
 
-// External names used used by the rest of the system
-// to load particular device from the "DemoCamera.dll" library
 const char* g_AVTCameraDeviceName = "AVTCamera";
-
 // singleton instance
 AVTCamera* AVTCamera::instance_ = 0;
-unsigned int AVTCamera::refCount_ = 0;
 
 // global Andor driver thread lock
 MMThreadLock g_AVTCamDriverLock;
@@ -30,6 +26,7 @@ const char g_CameraName[] = "Camera Name";
 const char g_DeInterlace[] = "De-interlace Algorithm";
 const char g_Binning[] = "Binning";
 const char g_Label[] = "Label";
+const char g_PixelFormat[] = "PixelFormat";
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
@@ -44,7 +41,7 @@ const char g_Label[] = "Label";
 MODULE_API void InitializeModuleData()
 {
 	VimbaSystem& sys = VimbaSystem::GetInstance();  // Get a reference to the VimbaSystem singleton
-	VmbErrorType err = sys.Startup();               // Initialize the Vimba API
+	sys.Startup();              					// Initialize the Vimba API
 	CameraPtrVector cameras;                        // A vector of std::shared_ptr<AVT::VmbAPI::Camera> objects
 
 	std::string strID;                              // The ID of the cam
@@ -69,7 +66,7 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
 		return 0;
 
 	VimbaSystem& sys = VimbaSystem::GetInstance();  // Get a reference to the VimbaSystem singleton
-	VmbErrorType err = sys.Startup();               // Initialize the Vimba API
+	sys.Startup();               // Initialize the Vimba API
 	CameraPtrVector cameras;                        // A vector of std::shared_ptr<AVT::VmbAPI::Camera> objects
 
 	std::string strID;                              // The ID of the cam
@@ -119,7 +116,6 @@ AVTCamera::AVTCamera(const char * CameraId)
 	fullFrameBufferSize_ = 0;
 	timeout_ = 1000;
 	exposure_ = 20;
-	deinterlace_ = 0;
 	fullFrameBuffer_ = 0;
 	m_CameraId = CameraId;
 	VimbaSystem::GetInstance().Startup();
@@ -147,7 +143,7 @@ int AVTCamera::Initialize()
 	if (initialized_)
 		return DEVICE_OK;
 
-	VmbInt64_t height,width,bufferSize;
+	VmbInt64_t height,width;
 	err = cam_->SetPixelFormat(AVT_Guppy_F146BCamera::PixelFormat_Mono12);
 	err = cam_->GetHeightMax(height);
 	err = cam_->GetWidthMax(width);
@@ -155,8 +151,8 @@ int AVTCamera::Initialize()
 	err = cam_->SetOffsetY(0);
 	err = cam_->SetHeight(height);
 	err = cam_->SetWidth(width);
-	fullFrameX_ = width;
-	fullFrameY_ = height;
+	fullFrameX_ =(int) width;
+	fullFrameY_ =(int) height;
 
 	m_isbusy = false;
 	depth_ = 16;
@@ -172,7 +168,12 @@ int AVTCamera::Initialize()
 	CPropertyAction* pActOnSetPixelFormat = new CPropertyAction(this, &AVTCamera::OnSetPixelFormat);
 	char format[20];
 	sprintf(format, "%d", 8);
-	CreateProperty("PixelFormat", format, MM::String, false, pActOnSetPixelFormat);
+	CreateProperty(g_PixelFormat, format, MM::String, false, pActOnSetPixelFormat);
+
+	CPropertyAction* pActOnBinning = new CPropertyAction(this, &AVTCamera::OnBinning);
+	char binning[20];
+	sprintf(binning, "%d", 1);
+	CreateProperty(g_Binning, binning, MM::String, false, pActOnBinning);
 	return DEVICE_OK;
 }
 
@@ -263,6 +264,7 @@ const unsigned char* AVTCamera::GetImageBuffer()
 
 int AVTCamera::SetBinning(int bin)
 {
+	binSize_ = bin;
 	return DEVICE_OK;
 }
 
@@ -281,10 +283,6 @@ double AVTCamera::GetExposure() const
 
 int AVTCamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize)
 {
-	if (Busy())
-		return ERR_BUSY_ACQUIRING;
-	Sleep(500);
-	//added to use RTA
 	if(m_isbusy)
 		StopSequenceAcquisition();
 
@@ -357,21 +355,6 @@ int AVTCamera::ClearROI()
 	return SetROI(0,0, fullFrameX_, fullFrameY_);
 }
 
-int AVTCamera::OnDeInterlace(MM::PropertyBase* pProp, MM::ActionType eAct)
-{
-	if (eAct == MM::BeforeGet)
-	{
-		long tmp = deinterlace_;
-		pProp->Set(tmp);
-	}
-	else if (eAct == MM::AfterSet)
-	{
-		long tmp;
-		pProp->Get(tmp);
-		deinterlace_ = tmp;
-	}
-	return DEVICE_OK;
-}
 int AVTCamera::OnSetPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
@@ -446,14 +429,8 @@ int AVTCamera::StartSequenceAcquisition(double interval) {
  */
 int AVTCamera::StopSequenceAcquisition()
 {
-	VmbErrorType reta;
-
+	m_pCamera->StopContinuousImageAcquisition();
 	m_isbusy = false;
-	reta = m_pCamera->StopContinuousImageAcquisition();
-	std::ostringstream osMessage;
-	osMessage.str("");
-	osMessage <<"\r\nStopContinuousImageAcquisition["<<reta<<"]";
-	LogMessage(osMessage.str());
 	return DEVICE_OK;
 }
 
@@ -466,20 +443,10 @@ int AVTCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool
 {
 	if (IsCapturing())
 		return DEVICE_CAMERA_BUSY_ACQUIRING;
-	//
-	//	int ret = GetCoreCallback()->PrepareForAcq(this);
-	//	if (ret != DEVICE_OK)
-	//		return ret;
-	// Start streaming
-	std::ostringstream osMessage;
-	osMessage.str("");
-	VmbErrorType reta;
-	//	reta = cam_->StopContinuousImageAcquisition();
-	//	osMessage <<"\r\n\r\nStopContinuousImageAcquisition["<<reta<<"]";
-	m_isbusy = true;
 
+	m_isbusy = true;
 	m_pFrameObserver = new FrameObserver(this,m_pCamera );
-	reta = m_pCamera->StartContinuousImageAcquisition( 3, IFrameObserverPtr( m_pFrameObserver ));
+	m_pCamera->StartContinuousImageAcquisition( 3, IFrameObserverPtr( m_pFrameObserver ));
 	return DEVICE_OK;
 }
 
@@ -516,45 +483,31 @@ int AVTCamera::InsertImage()
 	unsigned int b = GetImageBytesPerPixel();
 
 	int ret = GetCoreCallback()->InsertImage(this, pI, w, h, b, md.Serialize().c_str());
-	if (!stopOnOverflow_ && ret == DEVICE_BUFFER_OVERFLOW)
+	if (ret == DEVICE_BUFFER_OVERFLOW)
 	{
 		// do not stop on overflow - just reset the buffer
 		GetCoreCallback()->ClearImageBuffer(this);
-		// don't process this same image again...
+		LogMessage("DEVICE_BUFFER_OVERFLOW");
 		return GetCoreCallback()->InsertImage(this, pI, w, h, b, md.Serialize().c_str(), false);
 	} else
 		return ret;
 }
 
 
-
-/*
- * Do actual capturing
- * Called from inside the thread
- */
-
-bool AVTCamera::IsCapturing() {
-	return m_isbusy;//!thd_->IsStopped();
-}
 int  AVTCamera::ThreadRun (FramePtr frame)
 {
-	int ret=DEVICE_ERR;
-	//	if(thd_->IsStopped()){
-	//		cam_->StopContinuousImageAcquisition();
-	//		return DEVICE_ERR;
-	//	}
 	GenerateImage(frame);
 	return  InsertImage();
 };
 int AVTCamera::GenerateImage(FramePtr frame)
 {
 	VmbUchar_t *pBuffer;
-	frame->GetImage(pBuffer);
 	VmbUint32_t bufferSize_ = 0;
-	frame->GetBufferSize(bufferSize_);
+
+	frame->GetImage(pBuffer);
+	frame->GetImageSize(bufferSize_);
 	memcpy(fullFrameBuffer_,pBuffer,bufferSize_);
 	m_pCamera->QueueFrame( frame );
-	LogMessage("GenerateImage");
 	return DEVICE_OK;
 }
 
@@ -570,50 +523,9 @@ void FrameObserver::FrameReceived( const FramePtr pFrame )
 
 	if ( VmbErrorSuccess == pFrame->GetReceiveStatus( eReceiveStatus ))
 	{
-
-		//		// Lock the frame queue
-		//		m_FramesMutex.Lock();
-		//		// We store the FramePtr
-		//		m_Frames.push( pFrame );
-		//		// Unlock frame queue
-		//		m_FramesMutex.Unlock();
-		//		// And notify the view about it
-		//		m_newFrameArrive = true;
-		//		bQueueDirectly = false;
-		cam_->LogMessage("FrameReceived");
 		cam_->ThreadRun(pFrame);
+	}else{
+		m_pCamera->QueueFrame( pFrame );
+
 	}
-
-	// If any error occurred we queue the frame without notification
-	//	if ( true == bQueueDirectly )
-	//	{
-	//		m_pCamera->QueueFrame( pFrame );
-	//	}
-}
-bool FrameObserver::hasNewFrame()
-{
-	return m_newFrameArrive;
-}
-// Returns the oldest frame that has not been picked up yet
-FramePtr FrameObserver::GetFrame()
-{
-	// Lock frame queue
-	m_FramesMutex.Lock();
-	// Pop the frame from the queue
-	FramePtr res = m_Frames.front();
-	// Unlock the frame queue
-	m_FramesMutex.Unlock();
-	m_newFrameArrive = false;
-	return res;
-}
-
-void FrameObserver::ClearFrameQueue()
-{
-	//	// Lock the frame queue
-	//	m_FramesMutex.Lock();
-	//	// Clear the frame queue and release the memory
-	//	std::queue<FramePtr> empty;
-	//	std::swap( m_Frames, empty );
-	//	// Unlock the frame queue
-	//	m_FramesMutex.Unlock();
 }

@@ -349,7 +349,7 @@ VmbErrorType AVT_Guppy_F146BCamera::GetExposureTimeFeature (AVT::VmbAPI::Feature
     if (m_ExposureTimeFeature.get() == NULL)
     {
         VmbErrorType result;
-        result = m_pCamera->GetFeatureByName ("ExposureTime", m_ExposureTimeFeature);
+        result = m_pCamera->GetFeatureByName ("ExposureTimeAbs", m_ExposureTimeFeature);
         if (result != VmbErrorSuccess)
         {
             m_ExposureTimeFeature.reset();

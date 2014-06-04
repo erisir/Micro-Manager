@@ -40,17 +40,19 @@ using namespace AVT::VmbAPI;
 class  FrameObserver;
 class AVTCamera : public CCameraBase<AVTCamera>
 {
+	friend class  FrameObserver;
 public:
 	AVTCamera(const char * CameraId);
 	~AVTCamera();
 	const char * m_CameraId;
+
 	// MMDevice API
 	int Initialize();
 	int Shutdown();
-	int OpenCamera();
 	void GetName(char* pszName) const;
 	bool Busy() { return false; }
 	FrameObserver* m_pFrameObserver;
+
 	// MMCamera API
 	int SnapImage();
 	const unsigned char* GetImageBuffer();
@@ -60,7 +62,6 @@ public:
 	unsigned int GetImageBytesPerPixel() const { return img_.Depth(); }
 	unsigned int GetBitDepth() const { return depth_; }
 	int GetBinning() const { return binSize_; }
-	int OnSetPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int SetBinning(int binSize);
 	double GetExposure() const;
 	void SetExposure(double dExp);
@@ -73,47 +74,43 @@ public:
 	int StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow);
 	int StopSequenceAcquisition();
 	int InsertImage();
-	bool IsCapturing();
+	bool IsCapturing(){return m_isbusy;};
 	int ThreadRun(FramePtr frame);
-	int m_busy;
 private:
 
-	friend class  FrameObserver;
 
-	// Update the image buffer information
+	int OpenCamera();
+	void StopCamera();
 	int ResizeImageBuffer();
 
-	void StopCamera();
-
 	// Property handlers
-	int OnDeInterlace(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnSetPixelFormat(MM::PropertyBase* pProp, MM::ActionType eAct);
 
-	std::vector<double> exposureSequence_;
 	MM::MMTime sequenceStartTime_;
 	long imageCounter_;
-	bool sequenceRunning_;
 	int GenerateImage(FramePtr frame);
 	// Camera information
 	ImgBuffer img_;
 	int depth_;
 	int binSize_;
 	int format_;
-	std::string camName_;
 	int fullFrameX_;
 	int fullFrameY_;
-	unsigned char* fullFrameBuffer_;
 	int fullFrameBufferSize_;
+	unsigned char* fullFrameBuffer_;
 	unsigned long timeout_;
-	// Methods for de-interlacing. 0 for none, 1 for normal, 2 for Jiwei's special algorithm
-	int deinterlace_;
 	double exposure_;
-	static unsigned int refCount_;
+
+	std::string camName_;
 	static AVTCamera* instance_;
-	bool initialized_;
 	AVT_Guppy_F146BCamera *cam_;
 	CameraPtr m_pCamera;
+
 	bool m_isbusy;
+	bool initialized_;
+	bool sequenceRunning_;
+
 	struct ROI {
 		int x;
 		int y;
@@ -127,29 +124,15 @@ private:
 	};
 	ROI roi_;
 
-
 };
 
 
 class FrameObserver : virtual public IFrameObserver
 {
 	friend class AVTCamera;
-
 public:
 	FrameObserver(AVTCamera* pCam,  CameraPtr pCamera );
-	//	AVTCamera *cam_ ;
 	// This is our callback routine that will be executed on every received frame
 	virtual void FrameReceived( const FramePtr pFrame );
-	// After the view has been notified about a new frame it can pick it up
-	FramePtr GetFrame();
 	AVTCamera* cam_;
-	// Clears the double buffer frame queue
-	void ClearFrameQueue();
-	bool hasNewFrame();
-private:
-	// Since a MFC message cannot contain a whole frame
-	// the frame observer stores all FramePtr
-	std::queue<FramePtr> m_Frames;
-	AVT::VmbAPI::Mutex m_FramesMutex;
-	bool m_newFrameArrive;
 };
