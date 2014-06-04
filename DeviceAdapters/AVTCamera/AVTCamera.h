@@ -100,6 +100,7 @@ private:
 	int fullFrameBufferSize_;
 	unsigned char* fullFrameBuffer_;
 	unsigned long timeout_;
+	long m_numImages;
 	double exposure_;
 
 	std::string camName_;
@@ -129,6 +130,7 @@ private:
 
 class FrameObserver : virtual public IFrameObserver
 {
+	long int m_numImages;
 	friend class AVTCamera;
 public:
 	FrameObserver(AVTCamera* pCam,  CameraPtr pCamera );

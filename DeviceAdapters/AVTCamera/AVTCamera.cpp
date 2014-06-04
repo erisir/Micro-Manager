@@ -153,7 +153,7 @@ int AVTCamera::Initialize()
 	err = cam_->SetWidth(width);
 	fullFrameX_ =(int) width;
 	fullFrameY_ =(int) height;
-
+	imageCounter_ = 0;
 	m_isbusy = false;
 	depth_ = 16;
 	binSize_ = 1;
@@ -420,7 +420,7 @@ int AVTCamera::PrepareSequenceAcqusition()
  * The Base class implementation is deprecated and will be removed shortly
  */
 int AVTCamera::StartSequenceAcquisition(double interval) {
-
+	imageCounter_ =0;
 	return StartSequenceAcquisition(LONG_MAX, interval, false);
 }
 
@@ -429,9 +429,14 @@ int AVTCamera::StartSequenceAcquisition(double interval) {
  */
 int AVTCamera::StopSequenceAcquisition()
 {
-	m_pCamera->StopContinuousImageAcquisition();
+	VmbErrorType ret;
+
+	ret = m_pCamera->StopContinuousImageAcquisition();
+	std::ostringstream os;
+	os << "\t\t********StopContinuousImageAcquisition: ret[" << ret<<"]";
+	LogMessage(os.str().c_str());
 	m_isbusy = false;
-	return DEVICE_OK;
+	return ret;
 }
 
 /**
@@ -443,10 +448,16 @@ int AVTCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool
 {
 	if (IsCapturing())
 		return DEVICE_CAMERA_BUSY_ACQUIRING;
-
+	imageCounter_ =0;
+	m_numImages = numImages;
 	m_isbusy = true;
 	m_pFrameObserver = new FrameObserver(this,m_pCamera );
-	m_pCamera->StartContinuousImageAcquisition( 3, IFrameObserverPtr( m_pFrameObserver ));
+	VmbErrorType ret;
+	ret = m_pCamera->StartContinuousImageAcquisition(3,
+			IFrameObserverPtr(m_pFrameObserver));
+	std::ostringstream os;
+	os << "\t\t********StartContinuousImageAcquisition: ret[" << ret<<"]";
+	LogMessage(os.str().c_str());
 	return DEVICE_OK;
 }
 
@@ -468,8 +479,6 @@ int AVTCamera::InsertImage()
 	md.put(MM::g_Keyword_Metadata_ROI_X, CDeviceUtils::ConvertToString( (long)roi_.x));
 	md.put(MM::g_Keyword_Metadata_ROI_Y, CDeviceUtils::ConvertToString( (long) roi_.y));
 
-	imageCounter_++;
-
 	char buf[MM::MaxStrLength];
 	GetProperty(MM::g_Keyword_Binning, buf);
 	md.put(MM::g_Keyword_Binning, buf);
@@ -481,7 +490,6 @@ int AVTCamera::InsertImage()
 	unsigned int w = GetImageWidth();
 	unsigned int h = GetImageHeight();
 	unsigned int b = GetImageBytesPerPixel();
-
 	int ret = GetCoreCallback()->InsertImage(this, pI, w, h, b, md.Serialize().c_str());
 	if (ret == DEVICE_BUFFER_OVERFLOW)
 	{
@@ -497,6 +505,11 @@ int AVTCamera::InsertImage()
 int  AVTCamera::ThreadRun (FramePtr frame)
 {
 	GenerateImage(frame);
+	imageCounter_++;
+	if(imageCounter_ >= m_numImages){
+		LogMessage("m_numImages Enough, StopSequenceAcquisition");
+		return StopSequenceAcquisition();
+	}
 	return  InsertImage();
 };
 int AVTCamera::GenerateImage(FramePtr frame)
