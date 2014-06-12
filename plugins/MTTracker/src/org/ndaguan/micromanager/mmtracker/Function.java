@@ -138,8 +138,8 @@ public class Function {
 				try {
 					double currMP285zpos = core_.getPosition(MMT.magnetZStage_);
 					double z = MMT.VariablesNUPD.magnetStepSize.value();
-					double target =  currMP285zpos - z;
-					if(target>0){
+					double target =  currMP285zpos + z;
+					if(target<0){
 						target = 0;
 						MMTFrame.getInstance().MagnetManual.setSelected(true);
 					}

@@ -625,8 +625,8 @@ public class StageControlFrame extends javax.swing.JFrame {
 				double from = core_.getPosition(stageZLabel_);
 
 				if(stageZLabel_.equals(MMT.magnetZStage_)){
-					target= from - z;
-					if(target >0)
+					target= from + z;
+					if(target <0)
 						target = 0;
 					MMT.magnetCurrentPosition = target;
 					core_.setPosition(stageZLabel_,target);
