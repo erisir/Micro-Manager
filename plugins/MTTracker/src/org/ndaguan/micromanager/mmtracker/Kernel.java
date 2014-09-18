@@ -182,7 +182,7 @@ public class Kernel {
 		}
 		char b = checksum;
 		List<RoiItem> rt = Collections.synchronizedList(new ArrayList<RoiItem>());
-		rt.add(RoiItem.createInstance(new double[]{130,130},"bean2"));
+		rt.add(RoiItem.createInstance(new double[]{130,130,1},"bean2"));
 
 		Function fc = new Function( rt);
 		Kernel kl = new Kernel(rt);
@@ -811,7 +811,7 @@ public class Kernel {
 	}
 
 	private static String[] getimgString(Object nameext)  {
-		File imgFile = new File("F:/Development/CalImages/img"+nameext+".txt");
+		File imgFile = new File("F:/Development/SandBox/CalImages/img"+nameext+".txt");
 		if(!imgFile.exists())
 			return null;		
 		try {

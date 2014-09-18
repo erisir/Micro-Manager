@@ -1,7 +1,18 @@
 package org.ndaguan.micromanager.mmtracker;
+import ij.ImagePlus;
+import ij.ImageStack;
+import ij.WindowManager;
+
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+
+import javax.swing.SwingUtilities;
+
 import mmcorej.TaggedImage;
+
 import org.json.JSONException;
 import org.micromanager.MMStudioMainFrame;
 import org.micromanager.acquisition.TaggedImageQueue;
@@ -22,7 +33,11 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 	public  String acqName_;
 	private Kernel kernel_;
 	private long timeStart;	
-
+	private String acqName;
+	private boolean update;	
+	private HashMap<Long, Double> timeStamp;
+	private List<RoiItem> copyOfRoiList;
+	private String nameComp;
 
 	public static GetXYZPositionAnalyzer getInstance() {	
 		return instance_;
@@ -49,6 +64,10 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 			Function.getInstance().dataReset();
 			frameNum_ = 0;
 			elapsed = 0;
+			if(!update){
+				reCalculateXYZ();
+				timeStamp.clear();
+			}
 			return;
 		}
 
@@ -70,6 +89,12 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 					: false;
 
 			if(!listener_.isRunning()){
+				timeStamp = new HashMap<Long, Double>();
+				copyOfRoiList = Collections.synchronizedList(new ArrayList<RoiItem>());
+				for (int i = 0; i < kernel_.roiList_.size(); i++) {
+					copyOfRoiList.add(kernel_.roiList_.get(i));
+				}
+				
 				Function.getInstance().dataReset();
 				listener_.start(acqName);
 				acqName_ = acqName;
@@ -100,6 +125,13 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 			else{
 				frameNum_ ++;
 			}
+			
+			//storage timestamp
+			timeStamp.put(frameNum_,elapsed);
+			if(!update && (frameNum_%MMT.VariablesNUPD.frameToRefreshChart.value() != 0)){
+				return;
+			}
+			
 			synchronized(MMT.Acqlock){
 				if(kernel_.roiList_.size()<=0){
 					Function.getInstance().reDraw(acqName, frameNum_, update,true);
@@ -132,5 +164,33 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 		}
 		System.out.print(String.format("\r\n%d:\tcostTime:\t%f\t\n", frameNum_,(System.nanoTime()-timeStart)/10e6));
 
+	}
+	
+	private void reCalculateXYZ() {
+		final ImagePlus currentImage = WindowManager.getCurrentImage();
+		ImageStack images = currentImage.getImageStack();
+		kernel_.roiList_ = copyOfRoiList;
+		for (int i = 1; i < images.getSize(); i++) {
+			if(!timeStamp.containsKey((long)i))continue;
+			if(!kernel_.getXYZPosition(images.getPixels(i)))return;
+			final long index = i;
+			try {
+				kernel_.saveRoiData("full_"+nameComp,i-1,timeStamp.get((long)i));
+			} catch (IOException e) {
+				MMT.logError("Save data error");
+			}
+			SwingUtilities.invokeLater(new Runnable(){
+				@Override
+				public void run() {
+					currentImage.setSlice((int) (index+1));
+					Function.getInstance().updateChart(index);
+					Function.getInstance().reDraw(acqName, index, update,false);
+				}
+			});
+			
+		}
+		for(RoiItem it:kernel_.roiList_)
+			it.dataClean(false);
+		
 	}
 }
