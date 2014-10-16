@@ -749,9 +749,6 @@ public class Kernel {
 		}
 		normalization(sumXY[0], sumX_);
 		normalization(sumXY[1], sumY_);
-		int width = (int) MMT.VariablesNUPD.iTerm_z.value();
-		smooth(sumXY[0],10);
-		smooth(sumXY[1],10);
 		sumXY[2][0] = sumGrayValue;
 		return sumXY;
 	}
