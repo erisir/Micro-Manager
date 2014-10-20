@@ -199,7 +199,17 @@ int MMC100Ctrl::Initialize()
 
     if (ret != DEVICE_OK) return ret;
 
+    // Create  property for debug log flag
+      int nDebugLogFlag = MMC100::Instance()->GetDebugLogFlag();
+      CPropertyAction* pActDebugLogFlag = new CPropertyAction (this, &MMC100Ctrl::OnDebugLogFlag);
+  	ret = CreateProperty(MMC100::Instance()->GetSKStr(MMC100::SKSTR_DebugLogFlagLabel).c_str(), CDeviceUtils::ConvertToString(nDebugLogFlag), MM::Integer, false, pActDebugLogFlag);
 
+      if (MMC100::Instance()->GetDebugLogFlag() > 0)
+      {
+          osMessage.str("");
+          osMessage << "MMC100Ctrl::Initialize> CreateProperty(" << MMC100::Instance()->GetSKStr(MMC100::SKSTR_DebugLogFlagLabel).c_str() << " = " << nDebugLogFlag << "), ReturnCode = " << ret;
+          this->LogMessage(osMessage.str().c_str());
+      }
     // Read status data
     unsigned int nLength = 256;
     unsigned char sResponse[256];
@@ -211,17 +221,7 @@ int MMC100Ctrl::Initialize()
     ret = UpdateStatus();
     if (ret != DEVICE_OK) return ret;
 
-    // Create  property for debug log flag
-    int nDebugLogFlag = MMC100::Instance()->GetDebugLogFlag();
-    CPropertyAction* pActDebugLogFlag = new CPropertyAction (this, &MMC100Ctrl::OnDebugLogFlag);
-	ret = CreateProperty(MMC100::Instance()->GetSKStr(MMC100::SKSTR_DebugLogFlagLabel).c_str(), CDeviceUtils::ConvertToString(nDebugLogFlag), MM::Integer, false, pActDebugLogFlag);
 
-    if (MMC100::Instance()->GetDebugLogFlag() > 0)
-    {
-        osMessage.str("");
-        osMessage << "MMC100Ctrl::Initialize> CreateProperty(" << MMC100::Instance()->GetSKStr(MMC100::SKSTR_DebugLogFlagLabel).c_str() << " = " << nDebugLogFlag << "), ReturnCode = " << ret;
-        this->LogMessage(osMessage.str().c_str());
-    }
 
 	m_yInitialized = true;
     MMC100::Instance()->SetDeviceAvailable(true);
@@ -235,8 +235,8 @@ int MMC100Ctrl::Initialize()
 int MMC100Ctrl::CheckStatus(unsigned char* sResponse, unsigned int nLength)
 {
     std::ostringstream osMessage;
-    unsigned char sCommand[8] ="1VER?\n\r";
-    int ret = WriteCommand(sCommand, 8);
+    osMessage <<"\n\r1VER?\n\r";
+	int ret = WriteCommand((unsigned char *)osMessage.str().c_str(),osMessage.str().length());
 
     if (ret != DEVICE_OK) return ret;
 
@@ -245,7 +245,7 @@ int MMC100Ctrl::CheckStatus(unsigned char* sResponse, unsigned int nLength)
 
     memset(sResponse, 0, nLength);
     ret = ReadMessage(sResponse, 8);
-//"FINE-01r"
+
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
     {
 		osMessage.str("");
@@ -797,14 +797,7 @@ int MMC100Ctrl::WriteCommand(unsigned char* sCommand, int nLength)
     if (MMC100::Instance()->GetDebugLogFlag() > 1)
     {
 		osMessage.str("");
-		osMessage << "<MMC100Ctrl::WriteCommand> (Command=";
-		char sHex[4] = { NULL, NULL, NULL, NULL };
-		for (int n=0; n < nLength; n++)
-		{
-			MMC100::Instance()->Byte2Hex((const unsigned char)sCommand[n], sHex);
-			osMessage << "[" << n << "]=<" << sHex << ">";
-		}
-		osMessage << ")";
+		osMessage << "<MMC100Ctrl::WriteCommand> (Command=" <<sCommand<< ")";
 		this->LogMessage(osMessage.str().c_str());
 	}
 
@@ -846,16 +839,7 @@ int MMC100Ctrl::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		if (MMC100::Instance()->GetDebugLogFlag() > 1)
 		{
 			osMessage.str("");
-			osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = (" << nBytesRead << "," << lRead << "," << lByteRead << ")::<";
-		
-			for (unsigned long lIndx=0; lIndx < lByteRead; lIndx++)
-			{
-				// convert to hext format
-				MMC100::Instance()->Byte2Hex(sAnswer[lRead+lIndx], sHex);
-				osMessage << "[" << sHex  << "]";
-			}
-			osMessage << ">";
-			this->LogMessage(osMessage.str().c_str());
+			osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = [ExpectLen:" << nBytesRead << "],[totalLen" << lRead << "],[thisTimeLen" << lByteRead << "])";
 		}
 
         // concade new string
@@ -878,45 +862,23 @@ int MMC100Ctrl::ReadMessage(unsigned char* sResponse, int nBytesRead)
         if (yRead) break;
         
         // check for timeout
-        yTimeout = ((double)(GetClockTicksUs() - lStartTime) / 10000. ) > (double) m_nAnswerTimeoutMs;
+        yTimeout = ((double)(GetClockTicksUs() - lStartTime) / 1000 ) > (double) m_nAnswerTimeoutMs;
         if (!yTimeout) CDeviceUtils::SleepMs(3);
 
-		//if (MMC100::Instance()->GetDebugLogFlag() > 2)
-		//{
-		//	osMessage.str("");
-		//	osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = (" << nBytesRead << "," << lRead << "," << yRead << yTimeout << ")";
-		//	this->LogMessage(osMessage.str().c_str());
-		//}
+
     }
-
-    // block/wait for acknowledge, or until we time out
-    // if (!yRead || yTimeout) return DEVICE_SERIAL_TIMEOUT;
-    // MMC100::Instance()->ByteCopy(sResponse, sAnswer, nBytesRead);
-    // if (checkError(sAnswer[0])) ret = DEVICE_SERIAL_COMMAND_FAILED;
-
-	if (MMC100::Instance()->GetDebugLogFlag() > 1)
+    for (int i = 0; i < lRead; i++)
+        {
+    	sResponse[i] = sAnswer[i];
+        }
+  	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
-		osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = <";
-	}
+		osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = <"<<sAnswer<<")";
 
-	for (unsigned long lIndx=0; lIndx < (unsigned long)nBytesRead; lIndx++)
-	{
-		sResponse[lIndx] = sAnswer[lIndx];
-		if (MMC100::Instance()->GetDebugLogFlag() > 1)
-		{
-			MMC100::Instance()->Byte2Hex(sResponse[lIndx], sHex);
-			osMessage << "[" << sHex  << ",";
-			MMC100::Instance()->Byte2Hex(sAnswer[lIndx], sHex);
-			osMessage << sHex  << "]";
-		}
-	}
-
-	if (MMC100::Instance()->GetDebugLogFlag() > 1)
-	{
-		osMessage << ">";
 		this->LogMessage(osMessage.str().c_str());
 	}
+
 
     return DEVICE_OK;
 }

@@ -698,6 +698,12 @@ public class Function {
 		}
 		stopLiveView();
 		stopFeedBack();
+		try {
+			updatePositions();
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
 		updateCalibrationProfile();
 		installAnalyzer("CAL");
 		WHATISLOVE("CalibrateStart");

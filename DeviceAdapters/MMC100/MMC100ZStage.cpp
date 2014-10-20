@@ -231,10 +231,13 @@ int ZStage::SetMotionMode(long lMotionMode)
 //
 int ZStage::GetPositionUm(double& dZPosUm)
 {
+	std::ostringstream osMessage;
 	long lZPosSteps = 0;
 
-	unsigned char sCommand[8] ="1POS?\n\r";
-	int ret = WriteCommand(sCommand, 8);
+
+	    osMessage <<"\n\r1POS?\n\r";
+	 int  	ret = WriteCommand((unsigned char *)osMessage.str().c_str(),osMessage.str().length());
+
 
 	if (ret != DEVICE_OK) return ret;
 
@@ -245,7 +248,6 @@ int ZStage::GetPositionUm(double& dZPosUm)
 	ret = ReadMessage(sResponse, 24);
 	//"         0,X,K,R"
 	//(     12000,X,K,R)
-	std::ostringstream osMessage;
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
@@ -261,8 +263,10 @@ int ZStage::GetPositionUm(double& dZPosUm)
 
 	 */
 	std::string s((char*)&sResponse);
-	int sT = s.find(',',0);
-	int sE = s.find('\n',0);
+	int sT = s.find(',',0);//10
+	if(sT == -1)return MPError::MPERR_SerialZeroReturn;
+	int sE = s.find('\n',0);//17 len = 8
+	if(sE == -1)return MPError::MPERR_SerialZeroReturn;
 	char v[12];
 	memset(v,0,12);
 	memcpy(v,(char*)(sResponse+sT+1),sE-sT);
@@ -311,7 +315,7 @@ int ZStage::SetRelativePositionUm(double dZPosUm)
 	}
 	double dZPosmm = dZPosUm/1000;
 	osMessage.str("");
-	osMessage <<"1MVR"<<dZPosmm<<"\n\r";
+	osMessage <<"\n\r1MVR"<<dZPosmm<<"\n\r";
 
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
@@ -351,7 +355,7 @@ int ZStage::SetPositionUm(double dZPosUm)
 
 	double dZPosmm = dZPosUm/1000;
 
-	osMessage <<"1MVA"<<dZPosmm<<"\n\r";
+	osMessage <<"\n\r1MVA"<<dZPosmm<<"\n\r";
 
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
@@ -811,14 +815,7 @@ int ZStage::WriteCommand(unsigned char* sCommand, int nLength)
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
-		osMessage << "<ZStage::WriteCommand> (Command=";
-		char sHex[4] = { NULL, NULL, NULL, NULL };
-		for (int n = 0; n < nLength && ret == DEVICE_OK; n++)
-		{
-			MMC100::Instance()->Byte2Hex((const unsigned char)sCommand[n], sHex);
-			osMessage << "[" << n << "]=<" << sHex << ">";
-		}
-		osMessage << ")";
+		osMessage << "<ZStage::WriteCommand> (Command=" <<sCommand << ")";
 		this->LogMessage(osMessage.str().c_str());
 	}
 
@@ -860,14 +857,7 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		if (MMC100::Instance()->GetDebugLogFlag() > 1 && lByteRead>0)
 		{
 			osMessage.str("");
-			osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = (" << lByteRead << ")::<";
-			for (unsigned long lIndx=0; lIndx < lByteRead; lIndx++)
-			{
-				// convert to hext format
-				MMC100::Instance()->Byte2Hex(sAnswer[lRead+lIndx], sHex);
-				osMessage << "[" << sAnswer[lRead+lIndx]  << "]";
-			}
-			osMessage << ">";
+			osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = [ExpectLen:" << nBytesRead << "],[totalLen" << lRead << "],[thisTimeLen" << lByteRead << "])";
 			this->LogMessage(osMessage.str().c_str());
 		}
 
@@ -890,7 +880,7 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		if (yRead) break;
 
 		// check for timeout
-		yTimeout = ((double)(GetClockTicksUs() - lStartTime) / 10000.) > (double) m_nAnswerTimeoutMs;
+		yTimeout = ((double)(GetClockTicksUs() - lStartTime) / 1000) > (double) m_nAnswerTimeoutMs;
 		if (!yTimeout) CDeviceUtils::SleepMs(3);
 	}
 
@@ -902,27 +892,14 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
-		osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = <";
+		osMessage << "<MMC100Ctrl::ReadMessage> (ReadFromSerial = <" <<sAnswer;
+		this->LogMessage(osMessage.str().c_str());
 	}
 
 	for (unsigned long lIndx=0; lIndx < (unsigned long)nBytesRead; lIndx++)
 	{
 		sResponse[lIndx] = sAnswer[lIndx];
-		if (MMC100::Instance()->GetDebugLogFlag() > 1)
-		{
-			MMC100::Instance()->Byte2Hex(sResponse[lIndx], sHex);
-			osMessage << "[" << sHex  << ",";
-			MMC100::Instance()->Byte2Hex(sAnswer[lIndx], sHex);
-			osMessage << sHex  << "]";
-		}
 	}
-
-	if (MMC100::Instance()->GetDebugLogFlag() > 1)
-	{
-		osMessage << ">";
-		this->LogMessage(osMessage.str().c_str());
-	}
-
 	return DEVICE_OK;
 }
 
