@@ -13,8 +13,7 @@ main()
     EX1 = 1 ;// 开外部中断1
 	LCD_Initial();
 	P1 = 0xff;
-
-	
+ 	
 	InitSerial(); //Serial
 	InitDevice(); //StepMotor
     LCD_Printf1("Device Init ok!");

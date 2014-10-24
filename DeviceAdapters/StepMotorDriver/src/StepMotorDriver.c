@@ -438,7 +438,7 @@ void refLCD(  )
 bool InitDevice()
 {
 	isBusy = false;  
-	FindUpLimit(0);			
+	//FindUpLimit(0);			
 	return true;
 }
 /************************************************************

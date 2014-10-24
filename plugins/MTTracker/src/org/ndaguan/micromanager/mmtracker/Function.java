@@ -648,6 +648,7 @@ public class Function {
 				try {
 					MMT.testingIndex_ = i;
 					setStageZPosition(kernel_.zTestingPosProfiles[i]);
+					IJ.log(String.format("index:%d, set:%f", MMT.testingIndex_,kernel_.zTestingPosProfiles[i]));
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
@@ -719,10 +720,12 @@ public class Function {
 		for(RoiItem it:roiList_)
 			it.setZOrign(currzpos_ - MMT.VariablesNUPD.beanRadius.value());
 		//calibration start
+		IJ.log("calibrate:");
 		for (int i = 0; i < kernel_.zPosProfiles.length; i++) {
 			if(MMT.isCalibrationRunning_){
 				try {
 					Function.getInstance().setXYZCalPosition(i);
+					IJ.log(String.format("index:%d, set:%f", MMT.calibrateIndex_,kernel_.zPosProfiles[MMT.calibrateIndex_]));
 					MMT.calibrateIndex_ = i;
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();

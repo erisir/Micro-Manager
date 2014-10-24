@@ -1,4 +1,5 @@
 package org.ndaguan.micromanager.mmtracker;
+import ij.IJ;
 import mmcorej.TaggedImage;
 
 import org.micromanager.MMStudioMainFrame;
@@ -29,7 +30,10 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 		if (!MMT.isTestingRunning_ || taggedImage == null || taggedImage == TaggedImageQueue.POISON)return;
 		//Testing start
 		try {
+			double[] pos = Function.getInstance().getStagePosition();//new double[]{kernel_.xPosProfiles[MMT.calibrateIndex_],kernel_.yPosProfiles[MMT.calibrateIndex_],kernel_.zPosProfiles[MMT.calibrateIndex_]};
+			IJ.log(String.format("get:%f", pos[2]));
 			boolean ret = kernel_.getXYZPosition(taggedImage.pix);
+			
 			Function.getInstance().reDraw(MMStudioMainFrame.SIMPLE_ACQ,MMT.testingIndex_, true,true);
 			if(!ret){
 				MMT.logError("Testting Error");
@@ -37,7 +41,7 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 				MMT.isAnalyzerBusy_ = false;
 				return;
 			}
-			Function.getInstance().updateTestingChart(kernel_.zTestingPosProfiles[MMT.testingIndex_]);
+			Function.getInstance().updateTestingChart( pos[2]);//kernel_.zTestingPosProfiles[MMT.testingIndex_]);
 			MMT.logMessage(String.format("Testing:\t\t%d/%d",MMT.testingIndex_,kernel_.zTestingPosProfiles.length));
 		} catch (Exception e) {
 			MMT.isTestingRunning_  = false;

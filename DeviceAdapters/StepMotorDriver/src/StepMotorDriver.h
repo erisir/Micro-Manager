@@ -13,6 +13,8 @@ sbit _manualDownPort  		= P1^5;
 sbit _manualUpPort  		= P1^6;
 sbit _manualAcceleratePort  = P1^7;
 
+sbit _ExtenTrigPort  		= P3^3;
+
 #define uchar unsigned char  //0~255
 #define uint unsigned int	 //0^65535
 #define ulong unsigned long

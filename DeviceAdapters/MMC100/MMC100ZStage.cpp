@@ -251,7 +251,7 @@ int ZStage::GetPositionUm(double& dZPosUm)
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
-		osMessage << "<MMC100Ctrl::CheckStatus::ReadMessage> (ReturnCode = " << ret << ")return msg=("<<sResponse<<")";
+		osMessage << "<ZStage::GetPositionUm> (ReturnCode = " << ret << ")return msg=("<<sResponse<<")";
 		this->LogMessage(osMessage.str().c_str());
 	}
 
