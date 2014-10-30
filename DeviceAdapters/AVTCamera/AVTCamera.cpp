@@ -166,14 +166,13 @@ int AVTCamera::Initialize()
 	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
 	ResizeImageBuffer();
 	CPropertyAction* pActOnSetPixelFormat = new CPropertyAction(this, &AVTCamera::OnSetPixelFormat);
-	char format[20];
-	sprintf(format, "%d", 8);
-	CreateProperty(g_PixelFormat, format, MM::String, false, pActOnSetPixelFormat);
+	CreateProperty(g_PixelFormat, "12", MM::Integer, false, pActOnSetPixelFormat);
 
 	CPropertyAction* pActOnBinning = new CPropertyAction(this, &AVTCamera::OnBinning);
 	char binning[20];
 	sprintf(binning, "%d", 1);
 	CreateProperty(g_Binning, binning, MM::String, false, pActOnBinning);
+	initialized_ = true;
 	return DEVICE_OK;
 }
 
