@@ -89,22 +89,27 @@ int ClearPort(MM::Device& device, MM::Core& core, const char* sPort)
     // Clear contents of serial port 
     const int nBufSize = 255;
     unsigned char sClear[nBufSize];                                                        
-    unsigned long lRead = nBufSize;                                               
+    unsigned long lRead = 1;
     int ret;
 
     // reset the communication port buffer
-    while ((int) lRead == nBufSize)                                                     
+    while(lRead)
     { 
         // reading from the serial port
-        ret = core.ReadFromSerial(&device, sPort, sClear, nBufSize, lRead);
+        ret = core.ReadFromSerial(&device, sPort, (unsigned char *)&sClear[0], nBufSize, lRead);
 
         std::ostringstream sMessage;
-        sMessage << "<XMTE517::ClearPort> port = (" <<  sPort << ") :: clearBuffer(" << lRead << ")  = (" << sClear << ")";
+        sMessage << "<XMTE517::ClearPort> port = (" <<  sPort << ") :: clearBuffer(" << lRead << ") (";
+        for (int n = 0; n < lRead ; n++)
+		{
+			if(sClear[n] == 0)
+				sClear[n] = '#';
+			sMessage << "[" << (char)sClear[n] << "|"<< (int)sClear[n] <<"]";
+		}
+        sMessage<<")";
         core.LogMessage(&device, sMessage.str().c_str(), false);
-
-        // verify the read operation
         if (ret != DEVICE_OK) return ret;                                                           
-    } 
+    }
 
     // upon successful restting the port
     return DEVICE_OK;                                                           
@@ -112,10 +117,10 @@ int ClearPort(MM::Device& device, MM::Core& core, const char* sPort)
 
 bool            XMTE517::m_yInstanceFlag      = false;        // instance flag
 bool            XMTE517::m_yDeviceAvailable   = false;        // XMTE517 devices availability
-int				XMTE517::m_nDebugLogFlag		= 0;			// XMTE517 debug log flag
+int				XMTE517::m_nDebugLogFlag		= 2;			// XMTE517 debug log flag
 XMTE517*        XMTE517::m_pXMTE517             = NULL;         // single copy XMTE517
 int             XMTE517::m_nMotionMode        = 0;            // motor motion mode
-int             XMTE517::m_nTimeoutInterval   = 2000;        // timeout interval
+int             XMTE517::m_nTimeoutInterval   = 3000;        // timeout interval
 int             XMTE517::m_nTimeoutTrys       = 5;            // timeout trys
 double          XMTE517::m_dPositionZ         = 0.00;         // Z Position
 std::string XMTE517::m_sPort;                                 // serial port symbols

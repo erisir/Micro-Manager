@@ -66,6 +66,7 @@ class XMTE517Ctrl : public CGenericBase<XMTE517Ctrl>
 
         int WriteCommand(unsigned char* sCommand, int nLength);
         int ReadMessage(unsigned char* sResponse, int nBytesRead);
+        int clearBuffer();
 
         // montoring controller status
         // ---------------------------

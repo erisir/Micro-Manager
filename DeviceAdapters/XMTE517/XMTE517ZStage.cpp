@@ -63,7 +63,7 @@ using namespace std;
 // Single axis stage constructor
 //
 ZStage::ZStage() :
-    																		m_yInitialized(false)
+    																								m_yInitialized(false)
 //m_nAnswerTimeoutMs(1000)
 //, stepSizeUm_(1)
 {
@@ -104,13 +104,18 @@ ZStage::~ZStage()
 int ZStage::Initialize()
 {
 	std::ostringstream osMessage;
+	int ret;
+	ret =clearBuffer();
+	if (ret != DEVICE_OK) return ret;
 
+	if (ret != DEVICE_OK) return ret;
 	if (!XMTE517::Instance()->GetDeviceAvailability()) return DEVICE_NOT_CONNECTED;
 	CPropertyAction* pActOnGetPosZ = new CPropertyAction(this, &ZStage::OnGetPositionZ);
 	char sPosZ[20];
 	double dPosZ = XMTE517::Instance()->GetPositionZ();
 	sprintf(sPosZ, "%ld", (long)(dPosZ));
-	int ret = CreateProperty(XMTE517::Instance()->GetXMTStr(XMTE517::XMTSTR_GetPositionZ).c_str(), sPosZ, MM::Integer, false, pActOnGetPosZ);  // get position Z 
+
+	ret = CreateProperty(XMTE517::Instance()->GetXMTStr(XMTE517::XMTSTR_GetPositionZ).c_str(), sPosZ, MM::Integer, false, pActOnGetPosZ);  // get position Z
 	if (ret != DEVICE_OK)  return ret;
 
 	ret = GetPositionUm(dPosZ);
@@ -122,7 +127,7 @@ int ZStage::Initialize()
 	ret = CreateProperty(XMTE517::Instance()->GetXMTStr(XMTE517::XMTSTR_SetPositionZ).c_str(), sPosZ, MM::Float, false, pActOnSetPosZ);  // Absolute  vs Relative
 	if (ret != DEVICE_OK)  return ret;
 
-	XMTE517::Instance()->SetMotionMode(0);//Fast
+	XMTE517::Instance()->SetMotionMode(1);//Fast
 	CPropertyAction* pActOnMotionMode = new CPropertyAction(this, &ZStage::OnMotionMode);
 	ret = CreateProperty(XMTE517::Instance()->GetXMTStr(XMTE517::XMTSTR_MotionMode).c_str(), "Undefined", MM::Integer, false, pActOnMotionMode);  // Absolute  vs Relative
 	ret = UpdateStatus();
@@ -210,18 +215,22 @@ int ZStage::GetPositionUm(double& dZPosUm)
 
 	// get current position
 	unsigned char buf[9];
+	unsigned char sResponse[64];
 	XMTE517::Instance()->PackageCommand("RB1",NULL,buf);
 	int ret = WriteCommand(buf, 9);
 	if (ret != DEVICE_OK) return ret;
 
-	unsigned char sResponse[64];
+
 	memset(sResponse, 0, 64);
 	Sleep(100);
 	ret = ReadMessage(sResponse, 7);
-	if (ret != DEVICE_OK) return ret;
-	if(sResponse[6] != XMTE517::Instance()->checkSumCalc(sResponse, 0, 6))
-		return MPError::MPERR_SerialInpInvalid;
 	ostringstream osMessage;
+	osMessage.str("");
+	osMessage << "<ZStage::GetPositionUm> (readMsg="<<sResponse  << ")retCode("<<ret<<")";
+	this->LogMessage(osMessage.str().c_str());
+	//if(sResponse[6] != XMTE517::Instance()->checkSumCalc(sResponse, 0, 6))
+	//return MPError::MPERR_SerialInpInvalid;
+
 	char sCommStat[30];
 	dZPosUm  =  XMTE517::Instance()->RawToFloat((byte *)sResponse,2);
 
@@ -237,20 +246,20 @@ int ZStage::SetRelativePositionUm(double dZPosUm)
 	int ret = DEVICE_OK;
 	ostringstream osMessage;
 
-//	double curr =0;
-//	double delta = 0;
-//	double lStartTime = GetClockTicksUs();
-//	for(int i =0;i<20;i++){
-//		double tar = 5+i*0.1;
-//		SetPositionUm(tar);
-//		GetPositionUm(curr);
-//		delta = curr - tar;
-//		osMessage<<"(["<<i<<"]"<<tar<<"----"<<curr<<"----"<<delta<<")--";
-//
-//	}
-//	osMessage<<"time"<<GetClockTicksUs() -lStartTime ;
-//	this->LogMessage(osMessage.str().c_str());
-//	return ret;
+	//	double curr =0;
+	//	double delta = 0;
+	//	double lStartTime = GetClockTicksUs();
+	//	for(int i =0;i<20;i++){
+	//		double tar = 5+i*0.1;
+	//		SetPositionUm(tar);
+	//		GetPositionUm(curr);
+	//		delta = curr - tar;
+	//		osMessage<<"(["<<i<<"]"<<tar<<"----"<<curr<<"----"<<delta<<")--";
+	//
+	//	}
+	//	osMessage<<"time"<<GetClockTicksUs() -lStartTime ;
+	//	this->LogMessage(osMessage.str().c_str());
+	//	return ret;
 
 	// convert um to steps
 	double currPos =0;
@@ -350,7 +359,7 @@ int ZStage::WriteCommand(unsigned char* sCommand, int nLength)
 {
 	int ret = DEVICE_OK;
 	ostringstream osMessage;
-
+	if (ret != DEVICE_OK) return ret;
 	for (int nBytes = 0; nBytes < nLength && ret == DEVICE_OK; nBytes++)
 	{
 		ret = WriteToComPort(XMTE517::Instance()->GetSerialPort().c_str(), (const unsigned char*)&sCommand[nBytes], 1);
@@ -361,11 +370,13 @@ int ZStage::WriteCommand(unsigned char* sCommand, int nLength)
 		osMessage.str("");
 		osMessage << "<ZStage::WriteCommand> (Command=";
 		char sHex[4] = { NULL, NULL, NULL, NULL };
+
 		for (int n = 0; n < nLength && ret == DEVICE_OK; n++)
 		{
 			if(sCommand[n] == 0)
 				sCommand[n] = '#';
-			osMessage << "[" << (char)sCommand[n] << "|"<< (int)sCommand[n] <<"]";
+			XMTE517::Instance()->Byte2Hex((const unsigned char)sCommand[n], sHex);
+			osMessage << "[" << (char)sCommand[n] << "|"<< sHex <<"]";
 		}
 		osMessage << ")";
 		this->LogMessage(osMessage.str().c_str());
@@ -379,6 +390,44 @@ int ZStage::WriteCommand(unsigned char* sCommand, int nLength)
 //
 // Read a message from serial port
 //
+int ZStage::clearBuffer()
+{
+	// block/wait for acknowledge, or until we time out;
+	unsigned int nLength = 256;
+	unsigned char sAnswer[256];
+	memset(sAnswer, 0, nLength);
+	unsigned long lRead = 0;
+	unsigned long lStartTime = GetClockTicksUs();
+	bool yTimeout = false;
+	ostringstream osMessage;
+	char sHex[4] = { NULL, NULL, NULL, NULL };
+	int ret = DEVICE_OK;
+	while (!yTimeout && ret == DEVICE_OK )
+	{
+		unsigned long lByteRead;
+
+		const MM::Device* pDevice = this;
+		ret = (GetCoreCallback())->ReadFromSerial(pDevice, XMTE517::Instance()->GetSerialPort().c_str(), (unsigned char *)&sAnswer[lRead], (unsigned long)nLength-lRead, lByteRead);
+
+		if (XMTE517::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage.str("");
+			osMessage << "<ZStage::clearBuffer> (ReadFromSerial = (" << lByteRead << ")::(msg=";
+			char sHex[4] = { NULL, NULL, NULL, NULL };
+			for (int n = 0; n < lByteRead ; n++)
+			{
+				if(sAnswer[n] == 0)
+					sAnswer[n] = '#';
+				osMessage << "[" << (char)sAnswer[n] << "|"<< (int)sAnswer[n] <<"]";
+			}
+			osMessage << ")";
+			this->LogMessage(osMessage.str().c_str());
+		}
+		yTimeout = (GetClockTicksUs() - lStartTime)/1000 > 500;
+		if (!yTimeout) CDeviceUtils::SleepMs(30);
+	}
+	return DEVICE_OK;
+}
 int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 {
 	// block/wait for acknowledge, or until we time out;
@@ -399,7 +448,18 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		const MM::Device* pDevice = this;
 		ret = (GetCoreCallback())->ReadFromSerial(pDevice, XMTE517::Instance()->GetSerialPort().c_str(), (unsigned char *)&sAnswer[lRead], (unsigned long)nLength-lRead, lByteRead);
 
-
+		if (XMTE517::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage.str("");
+			osMessage << "<ZStage::ReadMessage> (ReadFromSerial = (" << nBytesRead << "," << lRead << "," << lByteRead << ")::(msg=";
+			char sHex[4] = { NULL, NULL, NULL, NULL };
+			for (int n = 0; n < lByteRead ; n++)
+			{
+				osMessage << "[" << (char)sAnswer[n] << "|"<< (int)sAnswer[n] <<"]";
+			}
+			osMessage << ")";
+			this->LogMessage(osMessage.str().c_str());
+		}
 		// concade new string
 		lRead += lByteRead;
 
@@ -413,8 +473,8 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		if (yRead) break;
 
 		// check for timeout
-		yTimeout = ((double)(GetClockTicksUs() - lStartTime)) > (double) m_nAnswerTimeoutMs;
-		if (!yTimeout) CDeviceUtils::SleepMs(3);
+		yTimeout = (GetClockTicksUs() - lStartTime)/1000 > m_nAnswerTimeoutMs;
+		if (!yTimeout) CDeviceUtils::SleepMs(30);
 
 	}
 
@@ -423,20 +483,7 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		sResponse[lIndx] = sAnswer[lIndx];
 	}
 
-	if (XMTE517::Instance()->GetDebugLogFlag() > 1)
-	{
-		osMessage.str("");
-		osMessage << "<ZStage::ReadMessage> (ReadFromSerial =  <";
 
-		for (unsigned long lIndx=0; lIndx < nBytesRead; lIndx++)
-		{
-			if(sAnswer[lIndx] == 0)
-				sAnswer[lIndx] = '#';
-			osMessage << "[" << (char)sAnswer[lIndx]<<"|"<<(int)sAnswer[lIndx]  << "]";
-		}
-		osMessage << ">";
-		this->LogMessage(osMessage.str().c_str());
-	}
 	if(yTimeout){
 		if (XMTE517::Instance()->GetDebugLogFlag() > 1)
 		{

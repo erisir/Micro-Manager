@@ -97,7 +97,7 @@ public:
     bool IsContinuousFocusDrive() const {return true;}
 
 private:
-
+    int clearBuffer();
     int WriteCommand(unsigned char* sCommand, int nLength);
     int ReadMessage(unsigned char* sResponse, int nBytesRead);
     //int GetCommand(const std::string& cmd, std::string& response);

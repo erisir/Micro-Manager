@@ -44,7 +44,7 @@ using namespace std;
 // XMTE517 Controller Constructor
 //
 XMTE517Ctrl::XMTE517Ctrl() :
-    										m_yInitialized(false)       // initialized flag set to false
+    														m_yInitialized(false)       // initialized flag set to false
 {
 	// call initialization of error messages
 	InitializeDefaultErrorMessages();
@@ -83,14 +83,14 @@ int XMTE517Ctrl::Initialize()
 
 	// empty the Rx serial buffer before sending command
 	int ret = DEVICE_OK ;
-	ret = ClearPort(*this, *GetCoreCallback(), XMTE517::Instance()->GetSerialPort().c_str());
+	ret =clearBuffer();
 	if (ret != DEVICE_OK) return ret;
 
 	// Name
 	char sCtrlName[120];
 	sprintf(sCtrlName, "%s%s", XMTE517::Instance()->GetXMTStr(XMTE517::XMTSTR_CtrlDevNameLabel).c_str(), MM::g_Keyword_Name);
 	ret = CreateProperty(sCtrlName, XMTE517::Instance()->GetXMTStr(XMTE517::XMTSTR_CtrlDevName).c_str(), MM::String, true);
- 	if (ret != DEVICE_OK) return ret;
+	if (ret != DEVICE_OK) return ret;
 
 	// Description
 	char sCtrlDesc[120];
@@ -139,7 +139,7 @@ int XMTE517Ctrl::Initialize()
 int XMTE517Ctrl::CheckStatus(unsigned char* sResponse, unsigned int nLength)
 {
 	std::ostringstream osMessage;
-	unsigned char buf[9];
+	unsigned char buf[10];
 	XMTE517::Instance()->PackageCommand("ABC",NULL,buf);
 	int ret = WriteCommand(buf, 9);
 	if (ret != DEVICE_OK) return ret;
@@ -151,8 +151,11 @@ int XMTE517Ctrl::CheckStatus(unsigned char* sResponse, unsigned int nLength)
 	XMTE517::Instance()->PackageCommand("TQL",NULL,buf);
 	ret = WriteCommand(buf, 9);
 	if (ret != DEVICE_OK) return ret;
+	XMTE517::Instance()->PackageCommand("QHH",NULL,buf);
+	ret = WriteCommand(buf, 9);
+	if (ret != DEVICE_OK) return ret;
 
-	XMTE517::Instance()->PackageCommand("RAA",NULL,buf);
+	XMTE517::Instance()->PackageCommand("RAX",NULL,buf);
 	ret = WriteCommand(buf, 9);
 	if (ret != DEVICE_OK) return ret;
 
@@ -161,7 +164,6 @@ int XMTE517Ctrl::CheckStatus(unsigned char* sResponse, unsigned int nLength)
 	memset(sResponse, 0, nLength);
 	ret = ReadMessage(sResponse, 7);
 	if (ret != DEVICE_OK) return ret;
-
 	return DEVICE_OK;
 }
 
@@ -287,16 +289,11 @@ int XMTE517Ctrl::WriteCommand(unsigned char* sCommand, int nLength)
 {
 	int ret = DEVICE_OK;
 	ostringstream osMessage;
-
+	sCommand[9] = '\0';
 	if (XMTE517::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
-		osMessage << "<XMTE517Ctrl::WriteCommand> (Command=";
-		for (int n=0; n < nLength; n++)
-		{
-			osMessage << "[" << (char)sCommand[n] << "|" << (byte)sCommand[n] << "]";
-		}
-		osMessage << ")";
+		osMessage << "<XMTE517Ctrl::WriteCommand> (Command="<<sCommand<<")";
 		this->LogMessage(osMessage.str().c_str());
 	}
 
@@ -305,7 +302,6 @@ int XMTE517Ctrl::WriteCommand(unsigned char* sCommand, int nLength)
 		ret = WriteToComPort(XMTE517::Instance()->GetSerialPort().c_str(), (const unsigned char*)&sCommand[nBytes], 1);
 		CDeviceUtils::SleepMs(1);
 	}
-	Sleep(90);
 	if (ret != DEVICE_OK) return ret;
 
 	return DEVICE_OK;
@@ -338,13 +334,15 @@ int XMTE517Ctrl::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		if (XMTE517::Instance()->GetDebugLogFlag() > 1)
 		{
 			osMessage.str("");
-			osMessage << "<XMTE517Ctrl::ReadMessage> (ReadFromSerial = (" << nBytesRead << "," << lRead << "," << lByteRead << ")::<";
-
-			for (unsigned long lIndx=0; lIndx < lByteRead; lIndx++)
+			osMessage << "<XMTE517Ctrl::ReadMessage> (ReadFromSerial = (" << nBytesRead << "," << lRead << "," << lByteRead << ")::(msg=";
+			char sHex[4] = { NULL, NULL, NULL, NULL };
+			for (int n = 0; n < lByteRead ; n++)
 			{
-				osMessage << "[" <<(char)sAnswer[lRead+lIndx]<<"|"<< (byte)sAnswer[lRead+lIndx] << "]";
+				if(sAnswer[n] == 0)
+					sAnswer[n] = '#';
+				osMessage << "[" << (char)sAnswer[n] << "|"<< (int)sAnswer[n] <<"]";
 			}
-			osMessage << ">";
+			osMessage << ")";
 			this->LogMessage(osMessage.str().c_str());
 		}
 
@@ -361,42 +359,64 @@ int XMTE517Ctrl::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		if (yRead) break;
 
 		// check for timeout
-		yTimeout = ((double)(GetClockTicksUs() - lStartTime)) > (double) m_nAnswerTimeoutMs;
-		if (!yTimeout) CDeviceUtils::SleepMs(3);
+		yTimeout = (GetClockTicksUs() - lStartTime)/1000 > (double) m_nAnswerTimeoutMs;
+		if (!yTimeout) CDeviceUtils::SleepMs(30);
 
 	}
 
 
-	if (XMTE517::Instance()->GetDebugLogFlag() > 1)
-	{
-		osMessage.str("");
-		osMessage << "<XMTE517Ctrl::ReadMessage> (ReadFromSerial = <";
-	}
 
 	for (unsigned long lIndx=0; lIndx < (unsigned long)nBytesRead; lIndx++)
 	{
 		sResponse[lIndx] = sAnswer[lIndx];
-		if (XMTE517::Instance()->GetDebugLogFlag() > 1)
-		{
-			XMTE517::Instance()->Byte2Hex(sResponse[lIndx], sHex);
-			osMessage << "[" << sHex  << ",";
-			XMTE517::Instance()->Byte2Hex(sAnswer[lIndx], sHex);
-			osMessage << sHex  << "]";
-		}
 	}
 
-	if (XMTE517::Instance()->GetDebugLogFlag() > 1)
-	{
-		osMessage << ">";
-		this->LogMessage(osMessage.str().c_str());
-	}
+
 	if(yTimeout){
 		if (XMTE517::Instance()->GetDebugLogFlag() > 1)
 		{
 			osMessage << "Timeout ok";
 			this->LogMessage(osMessage.str().c_str());
 		}
-		return 3;
+		return MPError::MPERR_SerialTimeout;
+	}
+	return DEVICE_OK;
+}
+int XMTE517Ctrl::clearBuffer()
+{
+	// block/wait for acknowledge, or until we time out;
+	unsigned int nLength = 256;
+	unsigned char sAnswer[256];
+	memset(sAnswer, 0, nLength);
+	unsigned long lRead = 0;
+	unsigned long lStartTime = GetClockTicksUs();
+	bool yTimeout = false;
+	ostringstream osMessage;
+	char sHex[4] = { NULL, NULL, NULL, NULL };
+	int ret = DEVICE_OK;
+	while (!yTimeout && ret == DEVICE_OK )
+	{
+		unsigned long lByteRead;
+
+		const MM::Device* pDevice = this;
+		ret = (GetCoreCallback())->ReadFromSerial(pDevice, XMTE517::Instance()->GetSerialPort().c_str(), (unsigned char *)&sAnswer[lRead], (unsigned long)nLength-lRead, lByteRead);
+
+		if (XMTE517::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage.str("");
+			osMessage << "<XMTE517Ctrl::clearBuffer> (ReadFromSerial = (" << lByteRead << ")::(msg=";
+			char sHex[4] = { NULL, NULL, NULL, NULL };
+			for (int n = 0; n < lByteRead ; n++)
+			{
+				if(sAnswer[n] == 0)
+					sAnswer[n] = '#';
+				osMessage << "[" << (char)sAnswer[n] << "|"<< (int)sAnswer[n] <<"]";
+			}
+			osMessage << ")";
+			this->LogMessage(osMessage.str().c_str());
+		}
+		yTimeout = (GetClockTicksUs() - lStartTime)/1000 > 500;
+		if (!yTimeout) CDeviceUtils::SleepMs(30);
 	}
 	return DEVICE_OK;
 }
