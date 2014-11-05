@@ -482,7 +482,7 @@ public class Function {
 		double start = kernel_.zPosProfiles[0];
 		double end = kernel_.zPosProfiles[kernel_.zPosProfiles.length -1];
 		for (int i = 0; i < kernel_.zTestingPosProfiles.length; i++) {
-			double target = kernel_.zPosProfiles[0] +  (i+ Math.floor(Math.random()*100)/100) * testingPrecision;
+			double target = kernel_.zPosProfiles[0] + i * testingPrecision;
 			if(target > end)
 				target = end;
 			if(target <start)
@@ -636,7 +636,8 @@ public class Function {
 		installAnalyzer("TEST");
 		WHATISLOVE("TestingStart");
 		try {
-			setXYZCalPosition(0);
+			setXYZCalPosition(kernel_.zPosProfiles.length-1);
+			TimeUnit.MICROSECONDS.sleep(500);
 		} catch (Exception e) {
 			WHATISLOVE("TestingFalse");
 			MMT.logError("testing error1:Set Pi Stage error!\r\n"+e.toString());
@@ -646,9 +647,9 @@ public class Function {
 		for (int i = 0; i <kernel_.zTestingPosProfiles.length; i ++) {
 			if(MMT.isTestingRunning_){
 				try {
-					MMT.testingIndex_ = i;
-					setStageZPosition(kernel_.zTestingPosProfiles[i]);
-					IJ.log(String.format("index:%d, set:%f", MMT.testingIndex_,kernel_.zTestingPosProfiles[i]));
+					MMT.testingIndex_ = kernel_.zTestingPosProfiles.length-1-i;
+					setStageZPosition(kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]);
+					IJ.log(String.format("index:%d, set:%f", MMT.testingIndex_,kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]));
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
@@ -699,18 +700,13 @@ public class Function {
 		}
 		stopLiveView();
 		stopFeedBack();
-		try {
-			updatePositions();
-		} catch (Exception e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
 		updateCalibrationProfile();
 		installAnalyzer("CAL");
 		WHATISLOVE("CalibrateStart");
 
 		try {
-			setXYZCalPosition(0);
+			setXYZCalPosition(kernel_.zPosProfiles.length-1);
+			TimeUnit.MICROSECONDS.sleep(500);
 		} catch (Exception e) {
 			WHATISLOVE("CalibrateFalse");
 			MMT.logError("Calbration error1:Set Pi Stage error!\r\n"+e.toString());
@@ -724,9 +720,9 @@ public class Function {
 		for (int i = 0; i < kernel_.zPosProfiles.length; i++) {
 			if(MMT.isCalibrationRunning_){
 				try {
-					Function.getInstance().setXYZCalPosition(i);
+					Function.getInstance().setXYZCalPosition(kernel_.zPosProfiles.length-1-i);
 					IJ.log(String.format("index:%d, set:%f", MMT.calibrateIndex_,kernel_.zPosProfiles[MMT.calibrateIndex_]));
-					MMT.calibrateIndex_ = i;
+					MMT.calibrateIndex_ = kernel_.zPosProfiles.length-1-i;
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
@@ -791,13 +787,14 @@ public class Function {
 				gui_.enableLiveMode(true);
 		}
 	}
-	public void updateTestingChart(final double currZpos) {
+	public void updateTestingChart(final double currZpos,boolean _flag) {
+		final boolean flag = _flag;
 		SwingUtilities.invokeLater(new Runnable(){
 			@Override
 			public void run() {
 				for(int i = 0;i<roiList_.size();i++)
 				{
-					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ() - currZpos);
+					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ() - currZpos,flag);
 				}
 			}
 		});
@@ -975,7 +972,7 @@ public class Function {
 				@Override
 				public void run() {
 					for (int j = 0; j < yArray.length; j++) {
-						roiList_.get(roiIndex).addChartData("Chart-Corr",j,yArray[j]);
+						roiList_.get(roiIndex).addChartData("Chart-Corr",j,yArray[j],true);
 					}
 				}
 			});
@@ -989,8 +986,8 @@ public class Function {
 				@Override
 				public void run() {
 					for (int j = 0; j < sumXY[0].length; j++) {
-						roiList_.get(roiIndex).addChartData("Chart-SumX",j,sumXY[0][j]);
-						roiList_.get(roiIndex).addChartData("Chart-SumY",j,sumXY[1][j]);
+						roiList_.get(roiIndex).addChartData("Chart-SumX",j,sumXY[0][j],true);
+						roiList_.get(roiIndex).addChartData("Chart-SumY",j,sumXY[1][j],true);
 					}
 				}
 			});
@@ -1005,7 +1002,7 @@ public class Function {
 				@Override
 				public void run() {
 					for (int j = 0; j < posProfile.length; j++) {
-						roiList_.get(roiIndex).addChartData("Chart-PosProfile",j,posProfile[j]);
+						roiList_.get(roiIndex).addChartData("Chart-PosProfile",j,posProfile[j],true);
 					}
 				}
 			});		

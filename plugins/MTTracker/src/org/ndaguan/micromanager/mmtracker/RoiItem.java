@@ -342,10 +342,10 @@ public  class RoiItem {
 	public void setChartVisible(boolean flag) {
 		chart_.setVisible(flag);
 	}
-	public void addChartData(String string, double x, double y) {
+	public void addChartData(String string, double x, double y,boolean flag) {
 		XYSeries dataSeries = chart_.getDataSeries().get(string);
 		if(dataSeries != null)
-			dataSeries.add(x,y);		
+			dataSeries.add(x,y,flag);		
 	}
 	public void clearChart(String string) {
 		final XYSeries dataSeries = chart_.getDataSeries().get(string);

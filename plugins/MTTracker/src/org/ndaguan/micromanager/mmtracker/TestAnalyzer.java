@@ -41,7 +41,7 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 				MMT.isAnalyzerBusy_ = false;
 				return;
 			}
-			Function.getInstance().updateTestingChart( pos[2]);//kernel_.zTestingPosProfiles[MMT.testingIndex_]);
+			Function.getInstance().updateTestingChart( pos[2],MMT.testingIndex_ == 0);//kernel_.zTestingPosProfiles[MMT.testingIndex_]);
 			MMT.logMessage(String.format("Testing:\t\t%d/%d",MMT.testingIndex_,kernel_.zTestingPosProfiles.length));
 		} catch (Exception e) {
 			MMT.isTestingRunning_  = false;
