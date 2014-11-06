@@ -31,7 +31,6 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 		//Testing start
 		try {
 			double[] pos = Function.getInstance().getStagePosition();//new double[]{kernel_.xPosProfiles[MMT.calibrateIndex_],kernel_.yPosProfiles[MMT.calibrateIndex_],kernel_.zPosProfiles[MMT.calibrateIndex_]};
-			IJ.log(String.format("get:%f", pos[2]));
 			boolean ret = kernel_.getXYZPosition(taggedImage.pix);
 			
 			Function.getInstance().reDraw(MMStudioMainFrame.SIMPLE_ACQ,MMT.testingIndex_, true,true);

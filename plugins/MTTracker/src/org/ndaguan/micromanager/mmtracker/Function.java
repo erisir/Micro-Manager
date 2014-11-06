@@ -649,7 +649,6 @@ public class Function {
 				try {
 					MMT.testingIndex_ = kernel_.zTestingPosProfiles.length-1-i;
 					setStageZPosition(kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]);
-					IJ.log(String.format("index:%d, set:%f", MMT.testingIndex_,kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]));
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
@@ -706,7 +705,7 @@ public class Function {
 
 		try {
 			setXYZCalPosition(kernel_.zPosProfiles.length-1);
-			TimeUnit.MICROSECONDS.sleep(500);
+			TimeUnit.MICROSECONDS.sleep(1000);
 		} catch (Exception e) {
 			WHATISLOVE("CalibrateFalse");
 			MMT.logError("Calbration error1:Set Pi Stage error!\r\n"+e.toString());
@@ -721,7 +720,6 @@ public class Function {
 			if(MMT.isCalibrationRunning_){
 				try {
 					Function.getInstance().setXYZCalPosition(kernel_.zPosProfiles.length-1-i);
-					IJ.log(String.format("index:%d, set:%f", MMT.calibrateIndex_,kernel_.zPosProfiles[MMT.calibrateIndex_]));
 					MMT.calibrateIndex_ = kernel_.zPosProfiles.length-1-i;
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
