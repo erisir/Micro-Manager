@@ -11,7 +11,7 @@ bool isBusy = false;
 uchar	startdelay = 32;
 uchar	runningdelay = 0; 
 float   currPosition = 0;//nm
-float	step2Um = 0.124601;	   //40xf
+float	step2Um = 0.3064;//0.124601;	   //40xf
 bit	    isSetZero = 0;	
 uchar str[12];
 uchar ret;
@@ -195,12 +195,12 @@ uchar SetStagePosition(long pos)
 
 	if(pos - currPosition>0){  //down
    	
-	_directionPort = 1;
+	_directionPort = 0;
 	delay(100);
 	return SendPluse((pos - currPosition)/step2Um);
 
 	}else{
-	_directionPort = 0;
+	_directionPort = 1;
 	delay(100);
 	return SendPluse((currPosition - pos)/step2Um);
 	}
@@ -244,9 +244,9 @@ void ManualMove(bit deriction,bit flag)//deriction 0 up,1 down,flag 1 fast 0 low
 	uchar _interval = 0;
  
 	if(deriction ==0) 
-		currPosition -= step2Um;
-	else{
 		currPosition += step2Um;
+	else{
+		currPosition -= step2Um;
 	}
 
 	if(flag ==1)
@@ -268,13 +268,13 @@ uchar SendPluse(long step)
 	long i = 0,temp = 0;
 	int k = 0;
 	isBusy =1;
-	if(_directionPort == 0){ //up
+	if(_directionPort == 0){ //down
 		if(step <=startdelay){
 			temp = step/2;
 			for(i=0;i<temp && checkBoundary();i++){
 
 				_plusePort = 1;
-				currPosition -= step2Um;
+				currPosition += step2Um;
 				delay(startdelay-i);
 
 				_plusePort = 0;
@@ -285,7 +285,7 @@ uchar SendPluse(long step)
 			for(i=0;i<temp && checkBoundary();i++){
 
 				_plusePort = 1;
-				currPosition -= step2Um;
+				currPosition += step2Um;
 				delay(startdelay-temp+i);
 
 				_plusePort = 0;
@@ -300,7 +300,7 @@ uchar SendPluse(long step)
 
 			for(i=startdelay;i>runningdelay  && checkBoundary();i--){
 				_plusePort = 1;
-				currPosition -= step2Um;
+				currPosition += step2Um;
 				delay(i);
 
 				_plusePort = 0;
@@ -309,7 +309,7 @@ uchar SendPluse(long step)
 			temp = step - 2*(startdelay - runningdelay);
 			for(i=0;i<temp && checkBoundary();i++){
 				_plusePort = 1;
-				currPosition -= step2Um;
+				currPosition += step2Um;
 				delay(runningdelay);
 
 				_plusePort = 0;
@@ -318,7 +318,7 @@ uchar SendPluse(long step)
 
 			for(i=runningdelay;i<startdelay  && checkBoundary();i++){
 				_plusePort = 1;
-				currPosition -= step2Um;
+				currPosition += step2Um;
 				delay(i);
 
 				_plusePort = 0;
@@ -333,7 +333,7 @@ uchar SendPluse(long step)
 			temp = step/2;
 			for(i=0;i<temp && checkBoundary();i++){
 				_plusePort = 1;
-				currPosition += step2Um;
+				currPosition -= step2Um;
 				delay(startdelay-i);
 
 				_plusePort = 0;
@@ -344,7 +344,7 @@ uchar SendPluse(long step)
 			for(i=0;i<temp && checkBoundary();i++){
 
 				_plusePort = 1;
-				currPosition += step2Um;
+				currPosition -= step2Um;
 				delay(startdelay-temp+i);
 
 				_plusePort = 0;
@@ -359,7 +359,7 @@ uchar SendPluse(long step)
 
 			for(i=startdelay;i>runningdelay  && checkBoundary();i--){
 				_plusePort = 1;
-				currPosition += step2Um;
+				currPosition -= step2Um;
 				delay(i);
 
 				_plusePort = 0;
@@ -369,7 +369,7 @@ uchar SendPluse(long step)
 
 			for(i=0;i<temp && checkBoundary();i++){
 				_plusePort = 1;
-				currPosition += step2Um;
+				currPosition -= step2Um;
 				delay(runningdelay);
 
 				_plusePort = 0;
@@ -378,7 +378,7 @@ uchar SendPluse(long step)
 
 			for(i=runningdelay;i<startdelay  && checkBoundary();i++){
 				_plusePort = 1;
-				currPosition += step2Um;
+				currPosition -= step2Um;
 				delay(i);
 
 				_plusePort = 0;
@@ -405,7 +405,7 @@ uchar SendPluse(long step)
 }
 bool checkBoundary()
 {
-	return   ( _directionPort  ==  0 &&_highLimitPort == 1) || (currPosition<0 &&_directionPort  ==  1 && _lowLimitPort== 1);
+	return   true;//( _directionPort  ==  0 &&_highLimitPort == 1) || (currPosition<0 &&_directionPort  ==  1 && _lowLimitPort== 1);
 }
 
 /************************************************************
