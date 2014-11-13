@@ -314,8 +314,11 @@ int ZStage::SetRelativePositionUm(double dZPosUm)
 		this->LogMessage(osMessage.str().c_str());
 	}
 	double dZPosmm = dZPosUm/1000;
+	char sPosZ[20];
+	sprintf(sPosZ, "%.6f", dZPosmm);
+
 	osMessage.str("");
-	osMessage <<"\n\r1MVR"<<dZPosmm<<"\n\r";
+	osMessage <<"\n\r1MVR"<<sPosZ<<"\n\r";
 
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
@@ -354,8 +357,9 @@ int ZStage::SetPositionUm(double dZPosUm)
 	osMessage.str("");
 
 	double dZPosmm = dZPosUm/1000;
-
-	osMessage <<"\n\r1MVA"<<dZPosmm<<"\n\r";
+	char sPosZ[20];
+	sprintf(sPosZ, "%.6f", dZPosmm);
+	osMessage <<"\n\r1MVA"<<sPosZ<<"\n\r";
 
 	if (MMC100::Instance()->GetDebugLogFlag() > 1)
 	{
