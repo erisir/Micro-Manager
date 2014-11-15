@@ -80,7 +80,16 @@ public class Kernel {
 			if(MMT.VariablesNUPD.iTerm_x.value() != 123){
 				roiList_.get(i).setXY(ret[i]);
 			}
-			roiList_.get(i).setZ(ret[i][2]);
+			int index = Function.getInstance().getReferenceRoiIndex();
+			if(index != -1 && i!=index)   //get delta z
+			{
+				double[] refXYPhy = roiList_.get(index).getXYZPhy();
+				double[] currXYPhy = roiList_.get(i).getXYZPhy();
+				double deltaX = refXYPhy[0] - currXYPhy[0];
+				double deltaY = refXYPhy[1] -currXYPhy[1];
+				double l = Math.sqrt(deltaX*deltaX + deltaY*deltaY );
+				roiList_.get(i).setZ(l);
+			}
 			force = calcForces(roiList_.get(i).getStats());
 			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
 			roiList_.get(i).setForce(force);
