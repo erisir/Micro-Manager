@@ -89,6 +89,11 @@ public class Kernel {
 				double deltaY = refXYPhy[1] -currXYPhy[1];
 				double l = Math.sqrt(deltaX*deltaX + deltaY*deltaY );
 				roiList_.get(i).setZ(l);
+				roiList_.get(i).setXYPhy(deltaX,deltaY);
+			}else{
+				roiList_.get(i).setZ(ret[i][2]);//I
+				roiList_.get(i).addChartStat();//I
+				
 			}
 			force = calcForces(roiList_.get(i).getStats());
 			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());

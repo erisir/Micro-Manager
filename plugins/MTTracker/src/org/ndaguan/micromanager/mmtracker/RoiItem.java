@@ -299,8 +299,6 @@ public  class RoiItem {
 		calcForceXYZStatis_[1].addValue(yPhy_*1000);
 		calcForceXYZStatis_[2].addValue(xPhy_ * yPhy_ * 1e6);
 		//uM:get mean&standardDeviation  to update chart with a smaller windowSize;
-		showChartXYZStatis_[0].addValue(xPhy_);
-		showChartXYZStatis_[1].addValue(yPhy_);
 		//uM:get mean&sum of the history data
 		if(MMT.isFeedbackRunning_){
 			feedbackXYZStatis_[0].addValue(xPhy_);
@@ -445,6 +443,20 @@ public  class RoiItem {
 		System.out.print(path);
 		out.flush();
 		out.close();
+	}
+	public void setXYPhy(double deltaX, double deltaY) {
+		// TODO Auto-generated method stub
+		//uM
+		xPhy_ = Math.abs(deltaX);
+		yPhy_ = Math.abs(deltaY);
+		//uM:get mean&standardDeviation  to update chart with a smaller windowSize;
+		showChartXYZStatis_[0].addValue(xPhy_);
+		showChartXYZStatis_[1].addValue(yPhy_);
+	}
+	public void addChartStat() {
+		// TODO Auto-generated method stub
+		showChartXYZStatis_[0].addValue(xPhy_);
+		showChartXYZStatis_[1].addValue(yPhy_);
 	}
 
 }
