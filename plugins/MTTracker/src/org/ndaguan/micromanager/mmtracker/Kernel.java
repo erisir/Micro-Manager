@@ -420,9 +420,13 @@ public class Kernel {
 			}
 			break;
 		}
-
-		normalization(profile,statis_);
-		return profile;
+ 
+        double[] prof = new double[(int) ((beanRadiuPixel -skipRadius)/rInterStep) ];
+        for(int i = skipStart;i<profile.length;i++){
+        	prof[i-skipStart] = profile[i];
+        }
+		normalization(prof,statis_);
+		return prof;
 	}
 	public void updateCalibrationProfile(){
 		double calRange = MMT.VariablesNUPD.calRange.value();
@@ -742,11 +746,11 @@ public class Kernel {
 			break;
 		}
 		int radius = (int) MMT.VariablesNUPD.beanRadiuPixel.value();
-		int skipRadius = (int) MMT.VariablesNUPD.skipRadius.value();
-		for(int i=radius-skipRadius;i<radius+skipRadius;i++){
-			sumXY[0][i] = 0;
-			sumXY[1][i] = 0;
-		}
+//		int skipRadius = (int) MMT.VariablesNUPD.skipRadius.value();
+//		for(int i=radius-skipRadius;i<radius+skipRadius;i++){
+//			sumXY[0][i] = 0;
+//			sumXY[1][i] = 0;
+//		}
 		normalization(sumXY[0], sumX_);
 		normalization(sumXY[1], sumY_);
 		sumXY[2][0] = sumGrayValue;
