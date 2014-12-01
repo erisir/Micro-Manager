@@ -18,7 +18,10 @@ import javax.swing.SwingUtilities;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.jfree.chart.ChartUtilities;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.NumberAxis;
+import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.xy.XYSeries;
+import org.jfree.data.xy.XYSeriesCollection;
 
 /**
  * @author Administrator
@@ -44,7 +47,7 @@ public  class RoiItem {
 
 	private Writer dataFileWriter_;
 	private double[][] calProfile_ = null;
-	private ChartManager chart_ = null;
+	public ChartManager chart_ = null;
 
 	private DescriptiveStatistics[] calcForceXYZStatis_;
 	private DescriptiveStatistics[] showChartXYZStatis_;
@@ -263,7 +266,7 @@ public  class RoiItem {
 				if(update  && (MMT.VariablesNUPD.AutoRange.value() == 1)){
 					double[] mean = getMean();
 					double[] drawScale = getDrawScale();
-					for(int i=0;i<4;i++){
+					for(int i=0;i<3;i++){
 						chart_.getChartSeries().get(MMT.CHARTLIST[i]).getXYPlot().getRangeAxis().setRange(mean[i] - drawScale[i],mean[i] + drawScale[i]);
 					}
 				}
@@ -273,7 +276,7 @@ public  class RoiItem {
 
 	}
 	private double[] getItemData(){
-		return new double[]{zPhy_,xPhy_,yPhy_,l_,fx_,fy_,stdXdY_,skrewness_};
+		return new double[]{zPhy_,xPhy_,yPhy_,fx_,fy_};
 	}
 	public double[] getXY() {
 		return new double[]{x_,y_};
@@ -445,6 +448,30 @@ public  class RoiItem {
 		System.out.print(path);
 		out.flush();
 		out.close();
+	}
+	public void updateCalProfilesChart() {
+		// TODO Auto-generated method stub  
+		JFreeChart cChart = chart_.getChartSeries().get("Chart-Cal-Pos");
+		if(cChart != null){
+			XYPlot plot = cChart.getXYPlot();
+			XYSeriesCollection dataset = new XYSeriesCollection(); 
+			XYSeries series1 = new XYSeries("");
+			for (int i = 0; i < calProfile_.length; i++) {
+				double  maxValue = 0;
+				XYSeries series = new XYSeries("");
+				for (int j = 0; j < calProfile_[i].length; j++) {
+					double v = calProfile_[i][j];
+					series.add(j,v);
+					if(maxValue  <v)
+						maxValue  = v;
+				}	
+				series1.add(Kernel.getInstance().zPosProfiles[i],maxValue);
+				dataset.addSeries(series);
+			}
+			
+			dataset.addSeries(series1); 
+			plot.setDataset(2, dataset); 
+		}
 	}
 
 }

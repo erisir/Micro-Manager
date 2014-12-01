@@ -82,9 +82,9 @@ public class Kernel {
 			}
 			roiList_.get(i).setZ(ret[i][2]);
 			force = calcForces(roiList_.get(i).getStats());
-			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
+//			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
 			roiList_.get(i).setForce(force);
-			roiList_.get(i).setSkrewness(skrewneww);
+//			roiList_.get(i).setSkrewness(skrewneww);
 		}
 		return true;
 	}
@@ -100,9 +100,9 @@ public class Kernel {
 			//set value
 			roiList_.get(i).setXY(ret[i]);
 			force = calcForces(roiList_.get(i).getStats());
-			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
+//			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
 			roiList_.get(i).setForce(force);
-			roiList_.get(i).setSkrewness(skrewneww);
+//			roiList_.get(i).setSkrewness(skrewneww);
 
 		}
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
@@ -131,6 +131,7 @@ public class Kernel {
 		}
 		return true;
 	}
+	@SuppressWarnings("unused")
 	private double[] calcSkrewness(DescriptiveStatistics[] stats,DescriptiveStatistics statCross) {
 		double[] skrewness = new double[2];
 		double[] stds = new double[2];
@@ -285,11 +286,12 @@ public class Kernel {
 		return ret;
 	} 
 	private double[] polarIntegral(Object image,double xpos,double ypos){
+		
 		double S00 = 0, S01 =0, S10 = 0, S11 =0;				 
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
 		double rInterStep = MMT.VariablesNUPD.rInterStep.value();
-		double skipRadius = MMT.VariablesNUPD.skipRadius.value()+1;
-		int skipStart  = (int) (skipRadius/rInterStep);
+		double skipRadius = MMT.VariablesNUPD.skipRadius.value();
+		int skipStart  = (int) (skipRadius/rInterStep)+1;
 		double xFactor = MMT.VariablesNUPD.xFactor.value();
 		double yFactor = MMT.VariablesNUPD.yFactor.value();
 		double[] profile = new double[(int) (beanRadiuPixel/rInterStep)];
@@ -358,7 +360,14 @@ public class Kernel {
 			}
 			break;
 		case "[S":
+
 			profile[0] = ((short[]) image)[(int)xpos + ((int)ypos)* imageWidth];
+			if(MMT.VariablesNUPD.pTerm_z.value()>2){
+				profile[0] = Math.log10(profile[0]);
+			};
+			statis_.addValue(profile[0]);
+
+
 			for(int i = skipStart;i< beanRadiuPixel/rInterStep ;i++)
 			{
 				double sumr = 0;
@@ -385,6 +394,9 @@ public class Kernel {
 					sumr += Sxy;
 				}
 				profile[i] =sumr/nTheta;
+				if(MMT.VariablesNUPD.pTerm_z.value()>2){
+					profile[i] = Math.log10(profile[i]);
+				};
 				statis_.addValue(profile[i]);
 			}
 			break;
@@ -420,13 +432,9 @@ public class Kernel {
 			}
 			break;
 		}
- 
-        double[] prof = new double[(int) ((beanRadiuPixel -skipRadius)/rInterStep) ];
-        for(int i = skipStart;i<profile.length;i++){
-        	prof[i-skipStart] = profile[i];
-        }
-		normalization(prof,statis_);
-		return prof;
+		normalization(profile,statis_);				
+
+		return profile;
 	}
 	public void updateCalibrationProfile(){
 		double calRange = MMT.VariablesNUPD.calRange.value();
@@ -746,11 +754,11 @@ public class Kernel {
 			break;
 		}
 		int radius = (int) MMT.VariablesNUPD.beanRadiuPixel.value();
-//		int skipRadius = (int) MMT.VariablesNUPD.skipRadius.value();
-//		for(int i=radius-skipRadius;i<radius+skipRadius;i++){
-//			sumXY[0][i] = 0;
-//			sumXY[1][i] = 0;
-//		}
+		int skipRadius = (int) MMT.VariablesNUPD.skipRadius.value();
+		for(int i=radius-skipRadius;i<radius+skipRadius;i++){
+			sumXY[0][i] = 0;
+			sumXY[1][i] = 0;
+		}
 		normalization(sumXY[0], sumX_);
 		normalization(sumXY[1], sumY_);
 		sumXY[2][0] = sumGrayValue;
@@ -766,16 +774,16 @@ public class Kernel {
 		}
 	} 
 	private void smooth(double[] data,int width){
-		 int len = data.length;
-		 for (int i=0;i<width;i++){
-			 for(int j=0;j<i;j++){
-				 data[i] += data[j]/(i+1);
-			 }
-		 }
-		 for (int i = width; i < len; i++) {
-			 for(int j=0;j<width;j++){
-				 data[i] += data[i-j]/width;
-			 }
+		int len = data.length;
+		for (int i=0;i<width;i++){
+			for(int j=0;j<i;j++){
+				data[i] += data[j]/(i+1);
+			}
+		}
+		for (int i = width; i < len; i++) {
+			for(int j=0;j<width;j++){
+				data[i] += data[i-j]/width;
+			}
 		}
 	} 
 

@@ -26,6 +26,9 @@ import mmcorej.CMMCore;
 
 import org.jfree.chart.ChartUtilities;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.xy.XYSeries;
+import org.jfree.data.xy.XYSeriesCollection;
 import org.micromanager.MMStudioMainFrame;
 import org.micromanager.utils.MMScriptException;
 
@@ -649,6 +652,7 @@ public class Function {
 				try {
 					MMT.testingIndex_ = kernel_.zTestingPosProfiles.length-1-i;
 					setStageZPosition(kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]);
+					IJ.log(String.format("index:%d, set:%f", MMT.testingIndex_,kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]));
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
@@ -705,7 +709,7 @@ public class Function {
 
 		try {
 			setXYZCalPosition(kernel_.zPosProfiles.length-1);
-			TimeUnit.MICROSECONDS.sleep(1000);
+			TimeUnit.MICROSECONDS.sleep(500);
 		} catch (Exception e) {
 			WHATISLOVE("CalibrateFalse");
 			MMT.logError("Calbration error1:Set Pi Stage error!\r\n"+e.toString());
@@ -720,6 +724,7 @@ public class Function {
 			if(MMT.isCalibrationRunning_){
 				try {
 					Function.getInstance().setXYZCalPosition(kernel_.zPosProfiles.length-1-i);
+					IJ.log(String.format("index:%d, set:%f", MMT.calibrateIndex_,kernel_.zPosProfiles[MMT.calibrateIndex_]));
 					MMT.calibrateIndex_ = kernel_.zPosProfiles.length-1-i;
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
@@ -740,6 +745,7 @@ public class Function {
 			setProgressBarValue(i);
 		}//for end
 		WHATISLOVE("CalibrateTrue");
+		updateCalProfilesChart();
 		testing();
 	}
 	private void stopFeedBack() {
@@ -796,8 +802,64 @@ public class Function {
 				}
 			}
 		});
-	}
+	}//"Char-CalPs"
+	public void updateCalProfilesChart() {
+		SwingUtilities.invokeLater(new Runnable(){
+			@Override
+			public void run() {
 
+				for(int i = 0;i<roiList_.size();i++)
+				{
+					roiList_.get(i).updateCalProfilesChart();
+				}
+
+			}
+		});
+	}//"Char-CalPs"
+	public void updatePosProfileChart(final int roiIndex,final double[] currProfiles) {
+		final  double[] posProfile = currProfiles;
+		if(MMT.debug && MMT.currentframeIndex_% MMT.VariablesNUPD.showDebugTime.value() == 0){
+			SwingUtilities.invokeLater(new Runnable() {
+				@Override
+				public void run() {
+					JFreeChart cChart = roiList_.get(roiIndex).chart_.getChartSeries().get("Chart-Cal-Pos");
+					if(cChart != null){
+						XYPlot plot = cChart.getXYPlot();
+						XYSeriesCollection dataset = new XYSeriesCollection();  
+						XYSeries series = new XYSeries("");
+						for (int j = 0; j < posProfile.length; j++) {
+							series.add(j,posProfile[j]);
+						}
+						dataset.addSeries(series);
+						plot.setDataset(3, dataset); 
+					}
+
+				}
+			});		
+		}
+	}
+	public void updateCorrChart(final int roiIndex,final double[] yArray) {
+
+		if(MMT.debug && MMT.currentframeIndex_% MMT.VariablesNUPD.showDebugTime.value() == 0){
+			SwingUtilities.invokeLater(new Runnable() {
+				@Override
+				public void run() {
+					JFreeChart cChart = roiList_.get(roiIndex).chart_.getChartSeries().get("Chart-Corr");
+					if(cChart != null){
+						XYPlot plot = cChart.getXYPlot();
+						XYSeriesCollection dataset = new XYSeriesCollection();  
+						XYSeries series = new XYSeries("");
+						for (int j = 0; j < yArray.length; j++) {
+							series.add(j,yArray[j]);
+						}
+						dataset.addSeries(series);
+						plot.setDataset(0, dataset); 
+						
+					}
+				}
+			});
+		}
+	}
 	public void cleanTestingData() {
 		for(int i = 0;i<roiList_.size();i++)
 		{
@@ -962,20 +1024,7 @@ public class Function {
 		buttonIsLocked_ = !buttonIsLocked_;
 	}
 
-	public void updateCorrChart(final int roiIndex,final double[] yArray) {
 
-		if(MMT.debug && MMT.currentframeIndex_% MMT.VariablesNUPD.showDebugTime.value() == 0){
-			roiList_.get(roiIndex).clearChart("Chart-Corr");
-			SwingUtilities.invokeLater(new Runnable() {
-				@Override
-				public void run() {
-					for (int j = 0; j < yArray.length; j++) {
-						roiList_.get(roiIndex).addChartData("Chart-Corr",j,yArray[j],true);
-					}
-				}
-			});
-		}
-	}
 	public void updateChartSumXY(final int roiIndex, final double[][] sumXY) {
 		if(MMT.debug && MMT.currentframeIndex_% MMT.VariablesNUPD.showDebugTime.value() == 0){
 			roiList_.get(roiIndex).clearChart("Chart-SumX");
@@ -992,20 +1041,7 @@ public class Function {
 		}
 
 	}
-	public void updatePosProfileChart(final int roiIndex,final double[] currProfiles) {
-		final  double[] posProfile = currProfiles;
-		if(MMT.debug && MMT.currentframeIndex_% MMT.VariablesNUPD.showDebugTime.value() == 0){
-			roiList_.get(roiIndex).clearChart("Chart-PosProfile");
-			SwingUtilities.invokeLater(new Runnable() {
-				@Override
-				public void run() {
-					for (int j = 0; j < posProfile.length; j++) {
-						roiList_.get(roiIndex).addChartData("Chart-PosProfile",j,posProfile[j],true);
-					}
-				}
-			});		
-		}
-	}
+
 
 	public void SetXYOrign() {
 		for(RoiItem it:roiList_)
@@ -1130,7 +1166,7 @@ public class Function {
 			ret = ret/takeTime;
 			IJ.log(String.format("%.3f,%.3f,%.3f", i,ret,i-ret));
 		}
-		
+
 	}
 	public void gaussionCenterlization(){
 		final ImagePlus currentImage = WindowManager.getCurrentImage();
@@ -1154,6 +1190,6 @@ public class Function {
 		}
 
 	}
-	
+
 
 }
