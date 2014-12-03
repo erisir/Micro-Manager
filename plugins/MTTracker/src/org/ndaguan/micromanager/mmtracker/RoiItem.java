@@ -452,10 +452,11 @@ public  class RoiItem {
 	public void updateCalProfilesChart() {
 		// TODO Auto-generated method stub  
 		JFreeChart cChart = chart_.getChartSeries().get("Chart-Cal-Pos");
+		JFreeChart lChart = chart_.getChartSeries().get("Chart-MaxLine");
+		XYSeries seriesMax = new XYSeries("");
 		if(cChart != null){
 			XYPlot plot = cChart.getXYPlot();
 			XYSeriesCollection dataset = new XYSeriesCollection(); 
-			XYSeries series1 = new XYSeries("");
 			for (int i = 0; i < calProfile_.length; i++) {
 				double  maxValue = 0;
 				XYSeries series = new XYSeries("");
@@ -465,11 +466,16 @@ public  class RoiItem {
 					if(maxValue  <v)
 						maxValue  = v;
 				}	
-				series1.add(Kernel.getInstance().zPosProfiles[i],maxValue);
+				seriesMax.add(Kernel.getInstance().zPosProfiles[i],maxValue);
 				dataset.addSeries(series);
 			}
-			
-			dataset.addSeries(series1); 
+			plot.setDataset(2, dataset); 
+		}
+		MMT.debugMSG(calProfile_);
+		if(lChart != null){
+			XYPlot plot = lChart.getXYPlot();
+			XYSeriesCollection dataset = new XYSeriesCollection(); 
+			dataset.addSeries(seriesMax); 
 			plot.setDataset(2, dataset); 
 		}
 	}

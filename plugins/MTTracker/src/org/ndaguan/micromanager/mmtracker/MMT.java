@@ -31,7 +31,7 @@ public class MMT {
 	
 	
 	public static String[] CHARTLIST = new String[]{
-		"Chart-Z","Chart-X","Chart-Y","Chart-FX","Chart-FY","Chart-Testing","Chart-Cal-Pos","Chart-Corr","Chart-SumX","Chart-SumY"
+		"Chart-Z","Chart-X","Chart-Y","Chart-FX","Chart-FY","Chart-Testing","Chart-Cal-Pos","Chart-Corr","Chart-SumX","Chart-SumY","Chart-MaxLine"
 	};
 
 	public static void logError(String string) 
@@ -43,6 +43,24 @@ public class MMT {
 	public static void debugError(String string) 
 	{
 		System.out.print(String.format("Error!!!\t%s\r\n",string));
+	}
+	public static void debugMSG(double[][] arry) 
+	{
+		for (int i = 0; i < arry.length; i++) {
+			for (int j = 0; j < arry[0].length; j++) {
+				
+				System.out.print(String.format("%.6f,",arry[i][j]));
+			}
+			System.out.print("\r\n");
+		}
+	}
+	public static void debugMSG(double[]arry) 
+	{
+			for (int j = 0; j < arry.length; j++) {
+				
+				System.out.print(String.format("%.6f,",arry[j]));
+			}
+			System.out.print("\r\n");
 	}
 	
 	public static void logMessage(String string) 
@@ -82,7 +100,7 @@ public class MMT {
 		beanRadius("/uM ",1.4,0.001,1,"磁球的物理半径，用来计算磁力",VariablesClassify.General.name()),
 		contourLen("/uM ",1,0.001,1,"DNA长度，用来计算磁力",VariablesClassify.General.name()),
 		//advance
-		rInterStep("/pixel ",0.2,0.1,0,"极坐标积分时的内插值大小，用来记录衍射环形状，太大时精度不好，太小时计算耗时，使用0.1时会有已知Bug，推荐使用默认值",VariablesClassify.Advance.name()),
+		rInterStep("/pixel ",0.2,0.001,0,"极坐标积分时的内插值大小，用来记录衍射环形状，太大时精度不好，太小时计算耗时，使用0.1时会有已知Bug，推荐使用默认值",VariablesClassify.Advance.name()),
 		persistance("/uM ",0.05,0.001,0,"DNA刚度，用来计算磁力，推荐使用默认值",VariablesClassify.Advance.name()),
 		kT("/pN*nM ",4.2,0.001,0,"Kb*T,用来计算磁力，推荐使用默认值",VariablesClassify.Advance.name()),
 		precision("/uM",0.0001,0.0001,0,"插值算法中的精度，即整个测量系统最终需要的最小精度，太大时精度不好，太小时计算耗时，推荐使用默认值",VariablesClassify.Advance.name()),

@@ -851,7 +851,7 @@ public class Function {
 						}
 						dataset.addSeries(series);
 						plot.setDataset(0, dataset); 
-						
+
 					}
 				}
 			});
@@ -1136,13 +1136,35 @@ public class Function {
 	}
 
 	public void runDebug() {
-		//gaussionCenterlization();	
+		List<RoiItem> rl = Kernel.getInstance().roiList_;
+		int len = rl.size();
+
+		double[][] cp = rl.get(len-1).getCalProfile();
+		double[] zp = Kernel.getInstance().zPosProfiles;
 		try {
-			MMT.logMessage("TESTING");
-			xmtStageDebug();
-		} catch (Exception e) {
-			MMT.logError("run debug error"+e.toString());
+			File dir = new File(System.getProperty("user.home"),"MMTracker");
+			if(!dir.isFile())
+				dir.mkdirs();
+
+			File loginDataFile = new File(System.getProperty("user.home")+"/MMTracker/calProfiles.txt");
+			FileWriter out = new FileWriter((loginDataFile)); 
+			String sData = "";
+			for (int i = 0; i < cp.length; i++) {
+
+				for (int j = 0; j <cp[0].length; j++) {
+					sData +=  Double.toString(cp[i][j])+ " , ";
+				}
+				sData += "\r\n";
+			}
+			for (int j = 0; j <zp.length; j++) {
+				sData +=  Double.toString(zp[j])+ " , ";
+			}
+			out.write(sData);
+			out.close(); 
+		} catch (IOException e) {
+			MMT.logError("save user data err");
 		}
+
 	}
 	private void xmtStageDebug() throws Exception {
 		String lable = core_.getFocusDevice();
