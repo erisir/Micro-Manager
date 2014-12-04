@@ -447,8 +447,8 @@ public  class RoiItem {
 	public void setXYPhy(double deltaX, double deltaY) {
 		// TODO Auto-generated method stub
 		//uM
-		xPhy_ = Math.abs(deltaX);
-		yPhy_ = Math.abs(deltaY);
+		xPhy_ =  deltaX;
+		yPhy_ = deltaY;
 		//uM:get mean&standardDeviation  to update chart with a smaller windowSize;
 		showChartXYZStatis_[0].addValue(xPhy_);
 		showChartXYZStatis_[1].addValue(yPhy_);
