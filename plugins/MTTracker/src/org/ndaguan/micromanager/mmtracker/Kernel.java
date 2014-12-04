@@ -706,7 +706,7 @@ public class Kernel {
 			//x
 			for (int x = roiX; x < roiX+roiBorder; x++) {
 				for (int y = centerY-CrossSize/2; y < centerY+CrossSize/2; y++) {
-					double gray = (double ) ((short[])image)[(y)*imageWidth +x];
+					double gray = (double ) (0x0FFFF& ((short[])image)[(y)*imageWidth +x]);
 					sumXY[0][x-roiX] += gray;
 				}
 				sumX_.addValue(sumXY[0][x-roiX]);
@@ -714,7 +714,7 @@ public class Kernel {
 			//y
 			for (int y = roiY; y < roiY+roiBorder; y++) {
 				for (int x = centerX-CrossSize/2; x < centerX+CrossSize/2; x++) {
-					double gray = (double ) ((short[])image)[(y)*imageWidth +x];
+					double gray = (double )(0x0FFFF&  ((short[])image)[(y)*imageWidth +x]);
 					sumXY[1][y-roiY] += gray;
 				}
 				sumY_.addValue(sumXY[1][y-roiY]);
@@ -722,7 +722,7 @@ public class Kernel {
 			//intensity
 			for (int x = 0; x < roiBorder; x++) {
 				for (int y = 0; y < roiBorder; y++) {
-					double gray = (double) ((short[])image)[(y+roiY)*imageWidth+(x+roiX)];
+					double gray = (double) (0x0FFFF& ((short[])image)[(y+roiY)*imageWidth+(x+roiX)]);
 					sumGrayValue += gray/sRoi;
 				}
 				sumX_.addValue(sumXY[0][x]);
@@ -732,7 +732,7 @@ public class Kernel {
 			//x
 			for (int x = roiX; x < roiX+roiBorder; x++) {
 				for (int y = centerY-CrossSize/2; y < centerY+CrossSize/2; y++) {
-					double gray = (double ) ((byte[])image)[(y)*imageWidth +x];
+					double gray = (double ) (0x0FF& ((byte[])image)[(y)*imageWidth +x]);
 					sumXY[0][x-roiX] += gray;
 				}
 				sumX_.addValue(sumXY[0][x-roiX]);
@@ -740,7 +740,7 @@ public class Kernel {
 			//y
 			for (int y = roiY; y < roiY+roiBorder; y++) {
 				for (int x = centerX-CrossSize/2; x < centerX+CrossSize/2; x++) {
-					double gray = (double ) ((byte[])image)[(y)*imageWidth +x];
+					double gray = (double ) (0x0FF& ((byte[])image)[(y)*imageWidth +x]);
 					sumXY[1][y-roiY] += gray;
 				}
 				sumY_.addValue(sumXY[1][y-roiY]);
@@ -748,7 +748,7 @@ public class Kernel {
 			//intensity
 			for (int x = 0; x < roiBorder; x++) {
 				for (int y = 0; y < roiBorder; y++) {
-					double gray = (double) ((byte[])image)[(y+roiY)*imageWidth+(x+roiX)];
+					double gray = (double) (0x0FF& ((byte[])image)[(y+roiY)*imageWidth+(x+roiX)]);
 					sumGrayValue += gray/sRoi;
 				}
 				sumX_.addValue(sumXY[0][x]);
