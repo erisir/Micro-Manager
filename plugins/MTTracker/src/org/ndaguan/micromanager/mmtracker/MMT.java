@@ -31,7 +31,7 @@ public class MMT {
 	
 	
 	public static String[] CHARTLIST = new String[]{
-		"Chart-Z","Chart-X","Chart-Y","Chart-FX","Chart-FY","Chart-Testing","Chart-Cal-Pos","Chart-Corr","Chart-SumX","Chart-SumY","Chart-MaxLine"
+		"Chart-Z","Chart-X","Chart-Y","Chart-FX","Chart-FY","Chart-Testing","Chart-Cal-Pos","Chart-Corr","Chart-SumX","Chart-SumY"
 	};
 
 	public static void logError(String string) 

@@ -1165,7 +1165,7 @@ public class Function {
 				}
 				String[] temp = line.split(","); 
 				for (int j = 0; j <cp[0].length; j++) {
-					cp[i][j] = Double.parseDouble(temp[i]);
+					cp[i][j] = Double.parseDouble(temp[j]);
 				}
 			}
 			if((line = in.readLine()) == null)
@@ -1178,7 +1178,6 @@ public class Function {
 			for (int j = 0; j <zp.length; j++) {
 				zp[j] = Double.parseDouble(temp[j]);
 			} 
-			 	
 			rl.get(len-1).setCalProfile(cp);
 			Kernel.getInstance().zPosProfiles = zp;
 			in.close();

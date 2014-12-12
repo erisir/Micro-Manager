@@ -289,7 +289,7 @@ public class Kernel {
 		
 		double S00 = 0, S01 =0, S10 = 0, S11 =0;				 
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
-		double rInterStep = MMT.VariablesNUPD.rInterStep.value()/MMT.VariablesNUPD.pTerm_y.value();
+		double rInterStep = MMT.VariablesNUPD.rInterStep.value();
 		double skipRadius = MMT.VariablesNUPD.skipRadius.value();
 		int skipStart  = (int) (skipRadius/rInterStep)+1;
 		double xFactor = MMT.VariablesNUPD.xFactor.value();
@@ -360,13 +360,8 @@ public class Kernel {
 			}
 			break;
 		case "[S":
-
 			profile[0] = ((short[]) image)[(int)xpos + ((int)ypos)* imageWidth];
-			if(MMT.VariablesNUPD.pTerm_z.value()>0){
-				profile[0] =  profile[0];
-			};
 			statis_.addValue(profile[0]);
-
 
 			for(int i = skipStart;i< beanRadiuPixel/rInterStep ;i++)
 			{
@@ -395,9 +390,6 @@ public class Kernel {
 					sumr += Sxy;
 				}
 				profile[i] =sumr/nTheta;
-				if(MMT.VariablesNUPD.pTerm_z.value()>0){
-					profile[i] *= (r/MMT.VariablesNUPD.pTerm_z.value());
-				};
 				statis_.addValue(profile[i]);
 			}
 			break;
@@ -434,15 +426,7 @@ public class Kernel {
 			break;
 		}
 		normalization(profile,statis_);				
-		if(MMT.VariablesNUPD.pTerm_y.value() >0 ){
-			smooth(profile,(int)MMT.VariablesNUPD.pTerm_y.value());
-		};
-		rInterStep = MMT.VariablesNUPD.rInterStep.value();
-		double[] pro = new double[(int) (beanRadiuPixel/rInterStep)];
-		for (int i = 0; i < pro.length; i++) {
-			pro[i] = profile[i];
-		}
-		return pro;
+		return profile;
 	}
 	public void updateCalibrationProfile(){
 		double calRange = MMT.VariablesNUPD.calRange.value();
@@ -780,35 +764,6 @@ public class Kernel {
 		for (int i = 0; i < data.length; i++) {
 			data[i] = (data[i] - mean)/std;
 		}
-	} 
-	private void smooth(double[] data,int width){
-		
-		int len = data.length;
-		double[] temp = new double[len];
-		int step = len/width;
-		for (int i = 0; i < step; i++) {
-			for (int j = 0; j < width; j++) {
-				temp[i] += data[i*width+j];
-			}
-			temp[i] /= width;
-		}
-		for (int i = 0; i < temp.length; i++) {
-			
-			data[i] = temp[i];
-		}
-		for (int i = temp.length; i < len; i++) {
-			data[i] = 0;
-		}
-//		for (int i=0;i<width;i++){
-//			for(int j=0;j<i;j++){
-//				data[i] += data[j]/(i+1);
-//			}
-//		}
-//		for (int i = width; i < len; i++) {
-//			for(int j=0;j<width;j++){
-//				data[i] += data[i-j]/width;
-//			}
-//		}
 	} 
 
 	private static Object getImg(Object nameext,int bitDepth)  {
