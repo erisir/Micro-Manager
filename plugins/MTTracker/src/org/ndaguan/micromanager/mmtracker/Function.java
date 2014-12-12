@@ -7,9 +7,11 @@ import ij.WindowManager;
 
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.UnknownHostException;
@@ -742,6 +744,7 @@ public class Function {
 			setProgressBarValue(i);
 		}//for end
 		WHATISLOVE("CalibrateTrue");
+		saveCalibrateProfiles();
 		updateCalProfilesChart();
 		testing();
 	}
@@ -1136,6 +1139,58 @@ public class Function {
 	}
 
 	public void runDebug() {
+		getCalibrateProfiles();
+		WHATISLOVE("TestingTrue");
+	}
+	public int getCalibrateProfiles() {
+		try {
+			File loginDataFile = new File(System.getProperty("user.home")+"/MMTracker/calProfiles.txt");
+			if(!loginDataFile.exists())
+				return -1;
+			updateCalibrationProfile();
+			List<RoiItem> rl = Kernel.getInstance().roiList_;
+			int len = rl.size();
+
+			double[][] cp = rl.get(len-1).getCalProfile();
+			double[] zp = Kernel.getInstance().zPosProfiles;
+			
+			BufferedReader in;
+			in = new BufferedReader(new FileReader(loginDataFile));
+			String line;
+			for (int i = 0; i < cp.length; i++) {
+				if((line = in.readLine()) == null)
+				{
+					in.close();
+					return -1;
+				}
+				String[] temp = line.split(","); 
+				for (int j = 0; j <cp[0].length; j++) {
+					cp[i][j] = Double.parseDouble(temp[i]);
+				}
+			}
+			if((line = in.readLine()) == null)
+			{
+				in.close();
+				return -1;
+			}
+			
+			String[] temp = line.split(","); 
+			for (int j = 0; j <zp.length; j++) {
+				zp[j] = Double.parseDouble(temp[j]);
+			} 
+			 	
+			rl.get(len-1).setCalProfile(cp);
+			Kernel.getInstance().zPosProfiles = zp;
+			in.close();
+			return 0;
+			
+		} catch (IOException e) {
+			MMT.logError("read user data false");
+			return -1;
+		} 
+	}
+
+	public void saveCalibrateProfiles() {
 		List<RoiItem> rl = Kernel.getInstance().roiList_;
 		int len = rl.size();
 

@@ -479,5 +479,8 @@ public  class RoiItem {
 			plot.setDataset(2, dataset); 
 		}
 	}
+	public void setCalProfile(double[][] cp) {
+		calProfile_ = cp;		
+	}
 
 }
