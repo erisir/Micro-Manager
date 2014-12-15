@@ -468,12 +468,11 @@ public class Function {
 		double calRange = MMT.VariablesNUPD.calRange.value();
 		double calStepSize = MMT.VariablesNUPD.calStepSize.value();
 		double testingPrecision = MMT.VariablesNUPD.testingPrecision.value();
-		double[][] cal = new double[ (int) (calRange/calStepSize)][(int) (MMT.VariablesNUPD.beanRadiuPixel.value()/MMT.VariablesNUPD.rInterStep.value())];
 		kernel_.zPosProfiles = new double[ (int) (calRange/calStepSize)];
 		kernel_.zTestingPosProfiles = new double [(int) (calRange/testingPrecision)];
 
 		for (RoiItem it:roiList_) 
-			it.InitializeCalProflie(cal);
+			it.InitializeCalProflie((int) (calRange/calStepSize),(int) (MMT.VariablesNUPD.beanRadiuPixel.value()/MMT.VariablesNUPD.rInterStep.value()));
 		int calSize = (int) (calRange/calStepSize);
 		try {
 			updatePositions();

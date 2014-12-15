@@ -385,8 +385,8 @@ public  class RoiItem {
 	public void updateCalProfile(int index, double[] posProfile) {
 		calProfile_[index] = posProfile;
 	}
-	public void InitializeCalProflie(double[][] cal) {
-		calProfile_ = cal;
+	public void InitializeCalProflie(int r,int c) {
+		calProfile_ = new double[r][c];
 	}
 	public void clearCalProfile() {
 		calProfile_ = null;		

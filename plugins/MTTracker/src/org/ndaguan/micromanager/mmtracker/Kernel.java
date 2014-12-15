@@ -431,13 +431,12 @@ public class Kernel {
 	public void updateCalibrationProfile(){
 		double calRange = MMT.VariablesNUPD.calRange.value();
 		double calStepSize = MMT.VariablesNUPD.calStepSize.value();
-		double[][] cal = new double[ (int) (calRange/calStepSize)][(int) (MMT.VariablesNUPD.beanRadiuPixel.value()/MMT.VariablesNUPD.rInterStep.value())];
-
+		
 		zPosProfiles = new double[ (int) (calRange/calStepSize)];
 		xPosProfiles = new double[ (int) (calRange/calStepSize)];
 		yPosProfiles = new double[ (int) (calRange/calStepSize)];
 		for (RoiItem it:roiList_)
-			it.InitializeCalProflie(cal);
+			it.InitializeCalProflie((int) (calRange/calStepSize),(int) (MMT.VariablesNUPD.beanRadiuPixel.value()/MMT.VariablesNUPD.rInterStep.value()));
 	}
 
 	public  boolean calibration(Object image,int index,double currXPos,double currYPos,double currZPos) {
