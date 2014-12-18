@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MMCore", "MMCore.vcxproj", "{248CEA17-3731-4606-872F-1609BC8C5415}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PI_E761", "..\DeviceAdapters\PI_E761\PI_E761.vcxproj", "{D843FF3D-FBF0-489E-AF6E-B9CAC706093D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{248CEA17-3731-4606-872F-1609BC8C5415}.Debug|Win32.ActiveCfg = Debug|Win32
+		{248CEA17-3731-4606-872F-1609BC8C5415}.Debug|Win32.Build.0 = Debug|Win32
+		{248CEA17-3731-4606-872F-1609BC8C5415}.Release|Win32.ActiveCfg = Release|Win32
+		{248CEA17-3731-4606-872F-1609BC8C5415}.Release|Win32.Build.0 = Release|Win32
+		{D843FF3D-FBF0-489E-AF6E-B9CAC706093D}.Debug|Win32.ActiveCfg = Debug|Win32
+		{D843FF3D-FBF0-489E-AF6E-B9CAC706093D}.Debug|Win32.Build.0 = Debug|Win32
+		{D843FF3D-FBF0-489E-AF6E-B9CAC706093D}.Release|Win32.ActiveCfg = Release|Win32
+		{D843FF3D-FBF0-489E-AF6E-B9CAC706093D}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
