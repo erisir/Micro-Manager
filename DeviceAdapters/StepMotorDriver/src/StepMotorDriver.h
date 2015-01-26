@@ -14,6 +14,8 @@ sbit _manualUpPort  		= P1^6;
 sbit _manualAcceleratePort  = P1^7;
 
 sbit _ExtenTrigPort  		= P3^3;
+sbit _rotationDirectionPort = P2^0;
+sbit _rotationPlusePort     = P2^1;
 
 #define uchar unsigned char  //0~255
 #define uint unsigned int	 //0^65535
@@ -44,7 +46,11 @@ sbit _ExtenTrigPort  		= P3^3;
 #define QueryStage   	0x0F +'E'-15
 #define SetPosition	    0x10 + 'T' - 16
 #define SetUM2Step	    0x11 + 'M'-17
-#define SetDivMode		    0x12 + 'V'-18
+#define SetDivMode		0x12 + 'V'-18
+
+#define QueryAngel	    0x13 + 'W'-19
+#define SetZeroAngel    0x00 +'X'
+#define SetAngel        0x00 +'Y'
 
 /*------------------------------------------------
                    º¯ÊýÉùÃ÷

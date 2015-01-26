@@ -68,6 +68,7 @@ void key_scan() interrupt 2 //使用了外部中断0的键盘扫描子函数
 		if(_manualUpPort==0)     //确实是有键按下，则：
 		{
 			_directionPort = 0;
+			_rotationDirectionPort = 0;
 			LCD_Printf1("MOVE UP [um]");
 			if(_manualAcceleratePort ==  0){
 
@@ -97,6 +98,7 @@ void key_scan() interrupt 2 //使用了外部中断0的键盘扫描子函数
 		if(_manualDownPort==0)     //确实是有键按下，则：
 		{
 			_directionPort = 1;
+			_rotationDirectionPort = 1;
 			LCD_Printf1("MOVE DOWN [um]");
 			if(_manualAcceleratePort ==  0){
 
