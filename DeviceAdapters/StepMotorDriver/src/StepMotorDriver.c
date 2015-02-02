@@ -644,35 +644,7 @@ bool InitDevice()
 void ltoa(long step,uchar* str)
 {
 
-	uchar i,j=1;
-	if(step ==0){*str = '0';str++;*str = '\0';return;}
-	
-	if(step > 0){*str = '+';str++;}
-	if(step < 0){*str = '-';str++;step*=-1;}
-	if(step > 0){str++;*str = ',';}
-	if(step >9){str++;*str = ',';}
-	if(step >99){str++;*str = ',';}
-	if(step >999){str++;*str = ',';str++;*str = ',';}
-	if(step >9999){str++;*str = ',';}
-	if(step >99999){str++;*str = ',';}
-	if(step >999999){str++;*str = ',';str++;*str = ',';}
-	if(step >9999999){str++;*str = ',';}
-	if(step >99999999){str++;*str = ',';}
-	if(step >999999999){str++;*str = ',';str++;*str = ',';}
-	if(step >9999999999){str++;*str = ',';}
-	if(step >99999999999){str++;*str = ',';}
-	
-	*str = '\0';
-
-	while (step >0 )
-	{	
-		str--;
-		i = step % 10;
-		step /= 10;
-		*str = i+'0';
-		if(j % 3 == 0)str--;
-		j++;
-	}
+ 
 }
 
 /************************************************************

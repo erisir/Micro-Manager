@@ -3,19 +3,19 @@
 #ifndef STEPMOTOR_20131219
 #define STEPMOTOR_20131219
 
-
-sbit _plusePort     		= P1^0;
+				   	   	  
+sbit _releasePort     		= P1^0;
 sbit _directionPort 		= P1^1;
-sbit _releasePort   		= P1^2;
-sbit _highLimitPort  		= P1^3;
-sbit _lowLimitPort 			= P1^4;
-sbit _manualDownPort  		= P1^5;
-sbit _manualUpPort  		= P1^6;
-sbit _manualAcceleratePort  = P1^7;
+sbit _rotationDirectionPort	= P1^2;
+sbit _plusePort         	= P1^3;
+sbit _rotationPlusePort		= P1^4;
+sbit _manualDownPort  		= P3^2;
+sbit _manualUpPort  		= P3^3;
+sbit _manualAcceleratePort  = P3^4;
 
 sbit _ExtenTrigPort  		= P3^3;
-sbit _rotationDirectionPort = P2^0;
-sbit _rotationPlusePort     = P2^1;
+sbit _lowLimitPort 	        = P2^0;
+sbit _highLimitPort    		= P2^1;
 
 #define uchar unsigned char  //0~255
 #define uint unsigned int	 //0^65535
