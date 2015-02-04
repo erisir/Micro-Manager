@@ -276,7 +276,7 @@ uchar FindUpLimit(bit flag)
 void ManualMove(bit deriction,bit flag)//deriction 0 up,1 down,flag 1 fast 0 low
 {
 
-	if(_releasePort == 0){
+	if(_moveRotationSwitch == 0){
 		uchar _interval = 0;
 
 		if(deriction ==0)

@@ -9,13 +9,13 @@ sbit _directionPort 		= P1^1;
 sbit _rotationDirectionPort	= P1^2;
 sbit _plusePort         	= P1^3;
 sbit _rotationPlusePort		= P1^4;
-sbit _manualDownPort  		= P3^2;
-sbit _manualUpPort  		= P3^3;
-sbit _manualAcceleratePort  = P3^4;
+sbit _manualUpPort  		= P1^5;
+sbit _manualDownPort  		= P1^6;
+sbit _manualAcceleratePort  = P1^7;
 
-sbit _ExtenTrigPort  		= P3^3;
-sbit _lowLimitPort 	        = P2^0;
-sbit _highLimitPort    		= P2^1;
+sbit _moveRotationSwitch	= P2^0;
+sbit _lowLimitPort 	        = P2^1;
+sbit _highLimitPort    		= P2^2;
 
 #define uchar unsigned char  //0~255
 #define uint unsigned int	 //0^65535

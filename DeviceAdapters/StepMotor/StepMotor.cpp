@@ -24,7 +24,7 @@
 #include "StepMotorError.h"
 #include "StepMotorCtrl.h"
 #include "StepMotorZStage.h"
-
+#include "StepMotorXYStage.h"
 
 
 using namespace std;
@@ -49,6 +49,8 @@ MODULE_API void InitializeModuleData()
 
 	// initialize the Z stage device name
 	AddAvailableDeviceName(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_ZStageDevName).c_str(), StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_ZStageDevName).c_str());
+	// initialize the xy stage device name
+	AddAvailableDeviceName(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str(), StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str());
 }
 
 //
@@ -71,6 +73,13 @@ MODULE_API MM::Device* CreateDevice(const char* sDeviceName)
 		// if device name is Z Stage, create the Z Stage Device
 		ZStage* pZStage = new ZStage();
 		return pZStage;
+	}
+
+	if (strcmp(sDeviceName, StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str()) == 0)
+	{
+		// if device name is Z Stage, create the Z Stage Device
+		XYStage* pXYStage = new XYStage();
+		return pXYStage;
 	}
 	return NULL;
 }
@@ -120,11 +129,18 @@ int             StepMotor::m_nMotionMode        = 0;            // motor motion 
 int             StepMotor::m_nTimeoutInterval   = 200;        // timeout interval
 int             StepMotor::m_nTimeoutTrys       = 20;            // timeout trys
 double          StepMotor::m_dPositionZ         = 0.00;         // Z Position
+ double               StepMotor::m_dPositionX = 0.00;               // position X
+ double               StepMotor::m_dPositionY = 0.00;               // position Y
+  int                  StepMotor::m_nUm2UStep = 0;                // unit to convert um to uStep
+   int                 StepMotor::m_nUStep2Nm = 0;                // unit to convert uStep to nm
+
+ long                 StepMotor::m_lVelocity = 0;                // StepMotor velocity
 std::string StepMotor::m_sPort;                                 // serial port symbols
 
 StepMotor::StepMotor()
 {
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_CtrlDevName]       = "StepMotor Controller";					// StepMotor Controllet device name
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_XYStageDevName]    = "MP285 XY Stage";						// MP286 Z Stage device name
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ZStageDevName]     = "MP285 Z Stage";						// MP286 Z Stage device name
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_StepMotorVersion]      = "1.0.0";							// StepMotor adpater version number
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_CtrlDevNameLabel]  = "Controller ";					// StepMotor Controller device name label
