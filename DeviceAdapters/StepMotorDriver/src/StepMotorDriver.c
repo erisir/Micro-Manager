@@ -10,6 +10,8 @@
 bool isBusy = false;
 uchar	startdelay = 32;
 uchar	runningdelay = 0; 
+uchar	rota_startdelay = 32;
+uchar	rota_runningdelay = 0; 
 float   currPosition = 0;//nm
 float   currAngel = 0;//nm
 float	step2Um = 0.3064;//0.124601;	   //40xf
@@ -173,13 +175,13 @@ void parseCMD(uchar rec[])
 			break;
 		
 		case SetRunningDelay:
-			runningdelay = recData;
+			rota_runningdelay = recData;
 			ltoa(runningdelay,str);
 	 		LCD_Printf1(strcat(str,"-SETRD"));
 			break;
 
 		case SetStartDelay:
-			startdelay = recData;
+			rota_startdelay = recData;
 			ltoa(startdelay,str);
 	 		LCD_Printf1(strcat(str,"-SETSD"));
 			break;
@@ -305,9 +307,9 @@ void ManualMove(bit deriction,bit flag)//deriction 0 up,1 down,flag 1 fast 0 low
 			}
 
 			if(flag ==1)
-				_interval = runningdelay;
+				_interval = rota_runningdelay;
 			else
-				_interval = startdelay;
+				_interval = rota_startdelay;
 
 			_rotationPlusePort = 1;
 			delay(_interval);
@@ -466,16 +468,16 @@ uchar SendAngelPluse(long step)
 	int k = 0;
 	isBusy =1;
 	if(_rotationDirectionPort == 0){ //down
-		if(step <=startdelay){
+		if(step <=rota_startdelay){
 			temp = step/2;
 			for(i=0;i<temp && checkBoundary();i++){
 
 				_rotationPlusePort = 1;
 				currAngel += step2Angel;
-				delay(startdelay-i);
+				delay(rota_startdelay-i);
 
 				_rotationPlusePort = 0;
-				delay(startdelay-i);//加速
+				delay(rota_startdelay-i);//加速
 
 			}
 			temp = step - temp;
@@ -483,19 +485,19 @@ uchar SendAngelPluse(long step)
 
 				_rotationPlusePort = 1;
 				currAngel += step2Angel;
-				delay(startdelay-temp+i);
+				delay(rota_startdelay-temp+i);
 
 				_rotationPlusePort = 0;
-				delay(startdelay-temp+i);//减速
+				delay(rota_startdelay-temp+i);//减速
 
 			}
 
 		}
 
 
-		if(step>startdelay){
+		if(step>rota_startdelay){
 
-			for(i=startdelay;i>runningdelay  && checkBoundary();i--){
+			for(i=rota_startdelay;i>rota_runningdelay  && checkBoundary();i--){
 				_rotationPlusePort = 1;
 				currAngel += step2Angel;
 				delay(i);
@@ -503,17 +505,17 @@ uchar SendAngelPluse(long step)
 				_rotationPlusePort = 0;
 				delay(i);//加速
 			}
-			temp = step - 2*(startdelay - runningdelay);
+			temp = step - 2*(rota_startdelay - rota_runningdelay);
 			for(i=0;i<temp && checkBoundary();i++){
 				_rotationPlusePort = 1;
 				currAngel += step2Angel;
-				delay(runningdelay);
+				delay(rota_runningdelay);
 
 				_rotationPlusePort = 0;
-				delay(runningdelay);//正常行行
+				delay(rota_runningdelay);//正常行行
 			}
 
-			for(i=runningdelay;i<startdelay  && checkBoundary();i++){
+			for(i=rota_runningdelay;i<rota_startdelay  && checkBoundary();i++){
 				_rotationPlusePort = 1;
 				currAngel += step2Angel;
 				delay(i);
@@ -526,15 +528,15 @@ uchar SendAngelPluse(long step)
 
 	}else{
 
-		if(step <=startdelay){
+		if(step <=rota_startdelay){
 			temp = step/2;
 			for(i=0;i<temp && checkBoundary();i++){
 				_rotationPlusePort = 1;
 				currAngel -= step2Angel;
-				delay(startdelay-i);
+				delay(rota_startdelay-i);
 
 				_rotationPlusePort = 0;
-				delay(startdelay-i);//加速
+				delay(rota_startdelay-i);//加速
 
 			}
 			temp = step - temp;
@@ -542,19 +544,19 @@ uchar SendAngelPluse(long step)
 
 				_rotationPlusePort = 1;
 				currAngel -= step2Angel;
-				delay(startdelay-temp+i);
+				delay(rota_startdelay-temp+i);
 
 				_rotationPlusePort = 0;
-				delay(startdelay-temp+i);//减速
+				delay(rota_startdelay-temp+i);//减速
 
 			}
 
 		}
 
 
-		if(step>startdelay){
+		if(step>rota_startdelay){
 
-			for(i=startdelay;i>runningdelay  && checkBoundary();i--){
+			for(i=rota_startdelay;i>rota_runningdelay  && checkBoundary();i--){
 				_rotationPlusePort = 1;
 				currAngel -= step2Angel;
 				delay(i);
@@ -562,18 +564,18 @@ uchar SendAngelPluse(long step)
 				_rotationPlusePort = 0;
 				delay(i);//加速
 			}
-			temp = step - 2*(startdelay - runningdelay);
+			temp = step - 2*(rota_startdelay - rota_runningdelay);
 
 			for(i=0;i<temp && checkBoundary();i++){
 				_rotationPlusePort = 1;
 				currAngel -= step2Angel;
-				delay(runningdelay);
+				delay(rota_runningdelay);
 
 				_rotationPlusePort = 0;
-				delay(runningdelay);//正常行
+				delay(rota_runningdelay);//正常行
 			}
 
-			for(i=runningdelay;i<startdelay  && checkBoundary();i++){
+			for(i=rota_runningdelay;i<rota_startdelay  && checkBoundary();i++){
 				_rotationPlusePort = 1;
 				currAngel -= step2Angel;
 				delay(i);

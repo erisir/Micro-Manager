@@ -50,12 +50,12 @@ using namespace std;
 
 //error code
 
-#define C51DEVICE_OK 0x01 +'I'-1
-#define C51DEVICE_BUSY 0x02 +'J'-2
-#define C51OUT_OF_LOW_LIMIT 0x03 +'K'-3
-#define C51OUT_OF_HIGH_LIMIT 0x04 +'L'-4
-#define C51CHECK_SUM_ERROR 0x05  +'M'-5
-#define C51BAD_COMMAND	    0x06 +'N'-6
+#define C51_DEVICE_OK 0x00
+#define C51_DEVICE_BUSY 0x02 +'J'-2
+#define C51_OUT_OF_LOW_LIMIT 0x03 +'K'-3
+#define C51_OUT_OF_HIGH_LIMIT 0x04 +'L'-4
+#define C51_CHECK_SUM_ERROR 0x05  +'M'-5
+#define C51_BAD_COMMAND	    0x06 +'N'-6
 
 //command string
 #define _SetZeroPosition 0x07 +'Z'-7
@@ -69,6 +69,11 @@ using namespace std;
 #define _QueryStage   	0x0F +'E'-15
 #define _SetPosition	    0x10 + 'T' - 16
 #define _SetUM2Step	    0x11 + 'M'-17
+#define _SetDivMode		0x12 + 'V'-18
+
+#define _QueryAngel	    0x13 + 'W'-19
+#define _SetZeroAngel    0x00 +'X'
+#define _SetAngel        0x00 +'Y'
 
 ///////////////////////////////////////////////////////////////////////////////
 // Z - Stage

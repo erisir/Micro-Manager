@@ -35,7 +35,7 @@ Options 1,0,0  // Target 'Target 1'
  EnvLib ()
  EnvReg (ÿAtmel\)
  OrgReg (ÿAtmel\)
- TgStat=27
+ TgStat=16
  OutDir (.\bin\)
  OutName (StepMotorDriver)
  GenApp=1
