@@ -19,7 +19,11 @@
 	<property name="MMCoreJ" value="../bin_Win32/MMCoreJ.jar" />
 	<property name="MMPluginDir-inst" value="${InstallRoot}/plugins/Micro-Manager" />
 	<property name="BinRoot" value="../bin_Win32" />
-
+	<property name="macrosRoot" value="../bin_Win32/macros" />
+	<property name="iconsRoot" value="../bin_Win32/icons" />
+	<property name="macrosInstallRoot" value="../Install_Win32/micro-manager/macros" />
+	<property name="iconsInstallRoot" value="../Install_Win32/micro-manager/icons" />
+	
 	<path id="project.MMPlugins.path">
 		<pathelement location="${MMPluginDir-inst}" />
 	</path>
@@ -57,13 +61,13 @@
 
 		<copy file="./bin/plugins_mmstudio.config" tofile="./build/plugins.config" overwrite="true" verbose="true" />
 		<jar jarfile="MMJ_.jar" basedir="build" manifest="./src/MANIFEST.MF" />
-		<!--
+		 
 		<copy todir="${MMPluginDir-inst}">
 			<fileset dir="../../3rdpartypublic/classext/" casesensitive="no">
 				<include name="*.jar" />
 			</fileset>
 		</copy>
-		-->
+		 
 	</target>
 
 
@@ -107,7 +111,17 @@
 				<exclude name="ij.jar" />
 			</fileset>
 		</copy>
-
+		<copy todir="${iconsInstallRoot}">
+			<fileset dir="${iconsRoot}" casesensitive="no">
+				<include name="*.*" />
+			</fileset>
+		</copy>
+		<copy todir="${macrosInstallRoot}">
+			<fileset dir="${macrosRoot}" casesensitive="no">
+				<include name="*.*" />
+			</fileset>
+		</copy>
+		 
 		<copy file="${BinRoot}/MMCoreJ_wrap.dll" todir="${InstallRoot}" />
 		<copy file="${BinRoot}/MMConfig_demo.cfg" todir="${InstallRoot}" />
 		<copy todir="${InstallRoot}">
