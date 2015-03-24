@@ -799,7 +799,7 @@ int CGigECamera::SetAllowedBinning()
 {
 	int64_t min, max, inc;
 	std::vector<std::string> vValues, hValues, binValues;
-
+    return DEVICE_OK;
 	// vertical binning
 	if( nodes->isAvailable( BINNING_VERTICAL ) )
 	{
