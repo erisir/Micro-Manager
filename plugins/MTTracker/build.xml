@@ -34,6 +34,12 @@
 	</target>
 
 	<target name="build" depends="compile" description="Build .jar.">
+		<copy todir="./build/org/ndaguan/micromanager/icons">
+			<fileset dir="./src/org/ndaguan/micromanager/icons" casesensitive="no">
+				<include name="**/*.png" />
+				<include name="**/*.gif" />
+			</fileset>
+		</copy>
 		<jar destfile="${target.name}.jar">
 			<fileset dir="${build.dir}" includes="**/**" />
 			<manifest>
@@ -42,6 +48,7 @@
 		</jar>
 		<copy file="${target.name}.jar" toDir="${bin.dir}" preservelastmodified="true" />
 		<copy file="${target.name}.jar" toDir="${dist.dir}/mmplugins" preservelastmodified="true" />
+
 	</target>
 
 	<target name="clean" description="Delete the build files.">

@@ -20,10 +20,8 @@
 	<property name="MMPluginDir-inst" value="${InstallRoot}/plugins/Micro-Manager" />
 	<property name="BinRoot" value="../bin_Win32" />
 	<property name="macrosRoot" value="../bin_Win32/macros" />
-	<property name="iconsRoot" value="../bin_Win32/icons" />
 	<property name="macrosInstallRoot" value="../Install_Win32/micro-manager/macros" />
-	<property name="iconsInstallRoot" value="../Install_Win32/micro-manager/icons" />
-	
+ 
 	<path id="project.MMPlugins.path">
 		<pathelement location="${MMPluginDir-inst}" />
 	</path>
@@ -31,7 +29,7 @@
 	<target name="compile" description="Compile MM Studio.">
 
 		<mkdir dir="build" />
-		<javac srcdir="./src" destdir="./build" sourcepath="./src/org/micromanager/utils/AutofocusBase.java" optimize="on" source="1.5" target="1.5" debug="on">
+		<javac srcdir="./src" destdir="./build" sourcepath="./src/org/micromanager/utils/AutofocusBase.java" optimize="on" source="1.7" target="1.7" debug="on">
 
 			<classpath>
 				<fileset dir="../../3rdpartypublic/classext">
@@ -111,11 +109,7 @@
 				<exclude name="ij.jar" />
 			</fileset>
 		</copy>
-		<copy todir="${iconsInstallRoot}">
-			<fileset dir="${iconsRoot}" casesensitive="no">
-				<include name="*.*" />
-			</fileset>
-		</copy>
+		
 		<copy todir="${macrosInstallRoot}">
 			<fileset dir="${macrosRoot}" casesensitive="no">
 				<include name="*.*" />

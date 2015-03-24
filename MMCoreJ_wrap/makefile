@@ -53,7 +53,7 @@ $(JAR_FILE):
 	@echo Maker .jar files...
 	cp -v -f TaggedImage.java mmcorej
 	-rm -f mmcorej/*.class
-	javac -source 5 -target 1.6 mmcorej/*.java ../mmstudio/src/org/json/*.java
+	javac -source 7 -target 1.7 mmcorej/*.java ../mmstudio/src/org/json/*.java
 	jar cvf $(JAR_FILE) mmcorej/*.class
 	@echo
 

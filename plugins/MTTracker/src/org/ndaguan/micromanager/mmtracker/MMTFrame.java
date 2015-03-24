@@ -16,7 +16,7 @@ import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JSeparator;
 import javax.swing.JToolBar;
 import javax.swing.SwingConstants;
-
+import com.swtdesigner.SwingResourceManager;
 import org.micromanager.MMStudioMainFrame;
 
 
@@ -246,19 +246,18 @@ public class MMTFrame extends JFrame {
 		final JToolBar toolBar = new JToolBar();
 		toolBar.setBounds(0,0, DEFAULT_WIDTH, toolbarheight);
 
-		Toolkit kit = Toolkit.getDefaultToolkit();
+		 
+		imgSet = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/Set.gif");
+		imgC = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/C.gif");
+		imgL = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/L.gif");
+		imgEnableC = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/EC.gif");
+		imgEnableL = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/EL.gif");
+		imgF = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/F.gif");
+		imgEnableF = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/EF.gif");
 
-		imgSet = kit.getImage("icons/Set.gif");
-		imgC = kit.getImage("icons/C.gif");
-		imgL = kit.getImage("icons/L.gif");
-		imgEnableC = kit.getImage("icons/EC.gif");
-		imgEnableL = kit.getImage("icons/EL.gif");
-		imgF = kit.getImage("icons/F.gif");
-		imgEnableF = kit.getImage("icons/EF.gif");
-
-		final	Image imgS = kit.getImage("icons/S.gif");
-		final	Image imgH = kit.getImage("icons/H.gif");
-		final	Image imgAuto = kit.getImage("icons/Auto.gif");
+		final	Image imgS = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/S.gif");
+		final	Image imgH = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/H.gif");
+		final	Image imgAuto = SwingResourceManager.getImage(MMTFrame.class,"/org/ndaguan/micromanager/icons/Auto.gif");
 
 		butCalibration = new JButton();
 		butLiveView = new JButton();
