@@ -40,7 +40,6 @@
 #include <sstream>
 #include <math.h>
 //#include <strsafe.h>
-//#include "../../MMCore/MMCore.h"
 #include "../../MMDevice/ModuleInterface.h"
 //#include "../../MMDevice/DeviceUtils.h"
 #include "XLed.h"
@@ -349,7 +348,7 @@ char* XLedCtrl::GetXLedStatus(unsigned char* sResp, char* sXLedStatus)
 
     if ((sResp == NULL) || (sXLedStatus == NULL)) return NULL;
 
-    int nIndx = strlen((const char*)sResp) - 1;
+    int nIndx = static_cast<int>(strlen((const char*)sResp)) - 1;
 
     while ((nIndx >= 0) && (sResp[nIndx] != ',')) nIndx--;
 
@@ -1649,7 +1648,7 @@ int XLedCtrl::XLedSerialIO(unsigned char* sCmd, unsigned char* sResp)
 int XLedCtrl::WriteCommand(const unsigned char* sCommand)
 {
     int ret = DEVICE_OK;
-    int nCmdLength = strlen((const char*)sCommand);
+    std::size_t nCmdLength = strlen((const char*)sCommand);
     ostringstream osMessage;
 
     if (XLed::Instance()->GetDebugLogFlag() > 1)
@@ -1657,7 +1656,7 @@ int XLedCtrl::WriteCommand(const unsigned char* sCommand)
         char sHex[3];
         osMessage.str("");
         osMessage << "<XLedCtrl::WriteCommand> (cmd ";
-        for (int n=0; n < nCmdLength; n++)
+        for (unsigned n=0; n < nCmdLength; n++)
         {
             XLed::Byte2Hex(sCommand[n], sHex);
             osMessage << "[" << n << "]=<" << sHex << ">";
@@ -1668,7 +1667,7 @@ int XLedCtrl::WriteCommand(const unsigned char* sCommand)
 
     // write command out
     ret = DEVICE_OK;
-    for (int nByte = 0; nByte < nCmdLength && ret == DEVICE_OK; nByte++)
+    for (unsigned nByte = 0; nByte < nCmdLength && ret == DEVICE_OK; nByte++)
     {
         ret = WriteToComPort(XLed::Instance()->GetSerialPort().c_str(), (const unsigned char*)&sCommand[nByte], 1);
         // CDeviceUtils::SleepMs(1);

@@ -24,12 +24,11 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-//
-// CVS:           $Id$
-//
 
 #ifndef _MODULE_INTERFACE_H_
 #define _MODULE_INTERFACE_H_
+
+#include "MMDevice.h"
 
 #ifdef WIN32
    #ifdef MODULE_EXPORTS
@@ -37,60 +36,106 @@
    #else
       #define MODULE_API __declspec(dllimport)
    #endif
-
 #else
    #define MODULE_API
 #endif
 
-#define MM_MODULE_ERR_OK 1000
-#define MM_MODULE_ERR_WRONG_INDEX   1001
-#define MM_MODULE_ERR_BUFFER_TOO_SMALL 1002
 
-///////////////////////////////////////////////////////////////////////////////
-// header version
-// NOTE: If any of the exported module API calls changes, the interface version
-// must be incremented
-// new version 5 supports device discoverability
-#define MODULE_INTERFACE_VERSION 7
+/// Module interface version.
+/**
+ * The Core ensures that any loaded device adapter modules have a matching
+ * version, to ensure ABI compatibility.
+ */
+// If any of the exported module API calls (below) changes, the interface
+// version must be incremented. Note that the signature and name of
+// GetModuleVersion() must never change.
+#define MODULE_INTERFACE_VERSION 10
 
-#ifdef WIN32
-const char* const LIB_NAME_PREFIX = "mmgr_dal_";
-#else
-const char* const LIB_NAME_PREFIX = "libmmgr_dal_";
-#endif
 
-#include "MMDevice.h"
-
-///////////////////////////////////////////////////////////////////////////////
-// Exported module interface
-///////////////////////////////////////////////////////////////////////////////
+/*
+ * Exported module interface
+ */
 extern "C" {
+   /// Initialize the device adapter module.
+   /**
+    * Device adapter modules must provide an implementation of this function.
+    *
+    * The implementation of this function should call RegisterDevice() to
+    * indicate the set of available devices in the module. The body of the
+    * function normally should not do any other processing.
+    *
+    * This function may be called multiple times and therefore must be
+    * idempotent (since RegisterDevice() is idempotent, nothing special has to
+    * be done in most cases).
+    *
+    * \see RegisterDevice()
+    */
+   MODULE_API void InitializeModuleData();
+
+   /// Instantiate the named device.
+   /**
+    * Device adapter modules must provide an implementation of this function.
+    *
+    * The implementation of this function should create an instance of the
+    * device and return a raw pointer to it.
+    *
+    * \see DeleteDevice()
+    */
    MODULE_API MM::Device* CreateDevice(const char* name);
+
+   /// Destroy a device instance.
+   /**
+    * Device adapter modules must provide an implementation of this function.
+    *
+    * The implementation of this function should deallocate (delete) the given
+    * device instance (which is guaranteed to be one that was previously
+    * returned by CreateDevice()).
+    *
+    * \see CreateDevice()
+    */
    MODULE_API void DeleteDevice(MM::Device* pDevice);
+
+   // A common implementation is provided for the following functions.
+   // Individual device adapters need not concern themselves with these
+   // details.
    MODULE_API long GetModuleVersion();
    MODULE_API long GetDeviceInterfaceVersion();
    MODULE_API unsigned GetNumberOfDevices();
    MODULE_API bool GetDeviceName(unsigned deviceIndex, char* name, unsigned bufferLength);
+   MODULE_API bool GetDeviceType(const char* deviceName, int* type);
    MODULE_API bool GetDeviceDescription(const char* deviceName, char* name, unsigned bufferLength);
-   /**
-    * Intializes the list of available devices and perhaps other global initialization tasks.
-    * The method may be called any number of times during the uManager session.
-    */
-   MODULE_API void InitializeModuleData();
+
+   // Function pointer types for module interface functions
+   // (Not for use by device adapters)
+#ifndef MODULE_EXPORTS
+   typedef void (*fnInitializeModuleData)();
+   typedef MM::Device* (*fnCreateDevice)(const char*);
+   typedef void (*fnDeleteDevice)(MM::Device*);
+   typedef long (*fnGetModuleVersion)();
+   typedef long (*fnGetDeviceInterfaceVersion) ();
+   typedef unsigned (*fnGetNumberOfDevices)();
+   typedef bool (*fnGetDeviceName)(unsigned, char*, unsigned);
+   typedef bool (*fnGetDeviceType)(const char*, int*);
+   typedef bool (*fnGetDeviceDescription)(const char*, char*, unsigned);
+#endif
 }
 
-// corresponding function pointers
-typedef void (*fnDeleteDevice)(MM::Device*);
-typedef MM::Device* (*fnCreateDevice)(const char*);
-typedef long (*fnGetModuleVersion)();
-typedef long (*fnGetDeviceInterfaceVersion) ();
-typedef unsigned (*fnGetNumberOfDevices)();
-typedef bool (*fnGetDeviceName)(unsigned, char*, unsigned);
-typedef bool (*fnGetDeviceDescription)(const char*, char*, unsigned);
-typedef bool (*fnGetDeviceIsDiscoverable)(char* , bool* );
-typedef void (*fnInitializeModuleData)();
 
-// functions for internal use within the module
-void AddAvailableDeviceName(const char* deviceName, const char* description = "Description N/A");
+/*
+ * Functions for use by the device adapter module
+ */
+
+/// Register a device class provided by the device adapter library.
+/**
+ * To be called in the device adapter module's implementation of
+ * InitializeModuleData().
+ *
+ * Calling this function indicates that the module provides a device with the
+ * given name and type, and provides a user-visible description string.
+ *
+ * \see InitializeModuleData()
+ */
+void RegisterDevice(const char* deviceName, MM::DeviceType deviceType, const char* description);
+
 
 #endif //_MODULE_INTERFACE_H_

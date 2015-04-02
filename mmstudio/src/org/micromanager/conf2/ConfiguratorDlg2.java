@@ -62,7 +62,7 @@ import javax.swing.text.DefaultCaret;
 import mmcorej.CMMCore;
 import mmcorej.StrVector;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.utils.FileDialogs;
 import org.micromanager.utils.HttpUtils;
 import org.micromanager.utils.MMDialog;
@@ -82,12 +82,12 @@ public class ConfiguratorDlg2 extends MMDialog {
     private PagePanel pages_[];
     private int curPage_ = 0;
     private MicroscopeModel microModel_;
-    private CMMCore core_;
+    private final CMMCore core_;
     private Preferences prefs_;
     private static final String APP_NAME = "Configurator";
     private JLabel titleLabel_;
     private JEditorPane helpTextPane_;
-    private String defaultPath_;
+    private final String defaultPath_;
 
     private static final String CFG_OKAY_TO_SEND = "CFG_Okay_To_Send";
 
@@ -99,7 +99,7 @@ public class ConfiguratorDlg2 extends MMDialog {
         super();
         core_ = core;
         defaultPath_ = defFile;
-        setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setModal(true);
         initialize();
     }
@@ -162,6 +162,7 @@ public class ConfiguratorDlg2 extends MMDialog {
 
         backButton_ = new JButton();
         backButton_.addActionListener(new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent arg0) {
                 setPage(curPage_ - 1);
             }
@@ -221,7 +222,7 @@ public class ConfiguratorDlg2 extends MMDialog {
             }
         }
 
-        int newPage = 0;
+        int newPage;
         if (i < 0) {
             newPage = 0;
         } else if (i >= pages_.length) {
@@ -325,8 +326,8 @@ public class ConfiguratorDlg2 extends MMDialog {
 
                 // can raw IP address have :'s in them? (ipv6??)
                 // try ensure valid and convenient UNIX file name
-                qualifiedConfigFileName.replace(':', '_');
-                qualifiedConfigFileName.replace(';', '_');
+                qualifiedConfigFileName = qualifiedConfigFileName.replace(':', '_');
+                qualifiedConfigFileName = qualifiedConfigFileName.replace(';', '_');
 
                 File fileToSend = new File(qualifiedConfigFileName);
 
@@ -351,7 +352,7 @@ public class ConfiguratorDlg2 extends MMDialog {
 
                     URL url = new URL("http://valelab.ucsf.edu/~MM/upload_file.php");
 
-                    List flist = new ArrayList<File>();
+                    List<File> flist = new ArrayList<File>();
                     flist.add(fileToSend);
                     // for each of a colleciton of files to send...
                     for (Object o0 : flist) {
@@ -449,7 +450,7 @@ public class ConfiguratorDlg2 extends MMDialog {
 
     private void saveConfiguration() {
         File f = FileDialogs.save(this,
-                "Create a config file", MMStudioMainFrame.MM_CONFIG_FILE);
+                "Create a config file", MMStudio.MM_CONFIG_FILE);
 
         if (f == null) {
             return;

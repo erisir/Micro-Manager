@@ -102,7 +102,6 @@ public:
 
 private:
    bool initialized_;
-   bool open_;
    std::string name_;  
    MM::MMTime changedTime_;
 };
@@ -130,9 +129,9 @@ public:
 
 private:
    bool initialized_;
-   int intensity_;
-   bool open_;
    std::string name_;  
+   bool open_;
+   int intensity_;
    MM::MMTime changedTime_;
 };
 
@@ -202,9 +201,8 @@ public:
 
 private:                                                                     
    double stepSize_um_;
-   std::string name_;  
-   bool busy_;
    bool initialized_;
+   std::string name_;  
    double lowerLimit_;
    double upperLimit_;
    long upperThreshold_;
@@ -233,7 +231,6 @@ public:
    int OnRotationMode(MM::PropertyBase* pProp, MM::ActionType eAct);                
 
 private:                                                                     
-   bool open_;
    bool initialized_;                                                        
    std::string name_;  
    long  pos_;

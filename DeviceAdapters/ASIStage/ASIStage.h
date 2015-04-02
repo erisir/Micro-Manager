@@ -28,7 +28,6 @@
 #include "../../MMDevice/MMDevice.h"
 #include "../../MMDevice/DeviceBase.h"
 #include <string>
-#include <map>
 
 //////////////////////////////////////////////////////////////////////////////
 // Error codes
@@ -56,22 +55,13 @@
 
 MM::DeviceDetectionStatus ASICheckSerialPort(MM::Device& device, MM::Core& core, std::string port, double ato);
 
-class ASIBase;
-
-class ASIDeviceBase : public CDeviceBase<MM::Device, ASIDeviceBase>
-{
-public:
-   ASIDeviceBase() { }
-   ~ASIDeviceBase() { }
-
-   friend class ASIBase;
-};
-
+// N.B. Concrete device classes deriving ASIBase must set core_ in
+// Initialize().
 class ASIBase
 {
 public:
    ASIBase(MM::Device *device, const char *prefix);
-   ~ASIBase();
+   virtual ~ASIBase();
 
    int ClearPort(void);
    int CheckDeviceStatus(void);
@@ -83,9 +73,9 @@ protected:
    bool oldstage_;
    MM::Core *core_;
    bool initialized_;
-   std::string port_;
-   ASIDeviceBase *device_;
+   MM::Device *device_;
    std::string oldstagePrefix_;
+   std::string port_;
 };
 
 class XYStage : public CXYStageBase<XYStage>, public ASIBase
@@ -130,24 +120,32 @@ public:
 
 
 private:
+   int OnAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnBacklash(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnFinishError(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnError(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnOverShoot(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnWait(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnSpeed(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnMaxSpeed(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int GetMaxSpeed(char * maxSpeedStr);
    int OnMotorCtrl(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnVersion(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnCompileDate(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnBuildName(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnNrMoveRepetitions(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnJSMirror(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnJSSwapXY(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnJSFastSpeed(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnJSSlowSpeed(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnSerialCommand(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnSerialResponse(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnSerialCommandOnlySendChanged(MM::PropertyBase* pProp, MM::ActionType eAct);
    int GetPositionStepsSingle(char axis, long& steps);
    int SetAxisDirection();
    bool hasCommand(std::string commnand);
    void Wait();
+   static std::string EscapeControlCharacters(const std::string v);
+   static std::string UnescapeControlCharacters(const std::string v0 );
   
    double stepSizeXUm_;
    double stepSizeYUm_;
@@ -155,13 +153,15 @@ private:
    // This variable convert the floating point number provided by ASI (expressing 10ths of microns) into a long
    double ASISerialUnit_;
    bool motorOn_;
-   long nrMoveRepetitions_;
    int joyStickSpeedFast_;
    int joyStickSpeedSlow_;
    bool joyStickMirror_;
-   bool joyStickSwapXY_;
+   long nrMoveRepetitions_;
    double answerTimeoutMs_;
    bool stopSignal_;
+   bool serialOnlySendChanged_;        // if true the serial command is only sent when it has changed
+   std::string manualSerialAnswer_; // last answer received when the SerialCommand property was used
+   bool post2010firmware_;      // true if compile date is 2010 or later
 };
 
 class ZStage : public CStageBase<ZStage>, public ASIBase
@@ -196,6 +196,8 @@ public:
    int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnAxis(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnSequence(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnFastSequence(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnRingBufferSize(MM::PropertyBase* pProp, MM::ActionType eAct);
 
    // Sequence functions
    int IsStageSequenceable(bool& isSequenceable) const {isSequenceable = sequenceable_; return DEVICE_OK;}
@@ -207,20 +209,34 @@ public:
    int SendStageSequence();
 
 private:
+   int OnAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnBacklash(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnFinishError(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnError(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnOverShoot(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnWait(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnSpeed(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int GetMaxSpeed(char * maxSpeedStr);
+   int OnMotorCtrl(MM::PropertyBase* pProp, MM::ActionType eAct);
    bool HasRingBuffer();
    int GetControllerInfo();
    int ExecuteCommand(const std::string& cmd, std::string& response);
    int Autofocus(long param);
    //int GetResolution(double& res);
+   bool hasCommand(std::string commnand);
 
    std::vector<double> sequence_;
    std::string axis_;
+   unsigned int axisNr_;
    double stepSizeUm_;
    double answerTimeoutMs_;
    bool sequenceable_;
+   bool runningFastSequence_;
    bool hasRingBuffer_;
    long nrEvents_;
    long curSteps_;
+   double maxSpeed_;
+   bool motorOn_;
 };
 
 
@@ -261,10 +277,10 @@ private:
    int GetPositionUm(double& pos);
 
    bool justCalibrated_;
+   std::string axis_;
    double stepSizeUm_;
    std::string focusState_;
    long waitAfterLock_;
-   std::string axis_;
 };
 
 
@@ -310,6 +326,7 @@ public:
    int OnFocusCurveData(MM::PropertyBase* pProp, MM::ActionType eAct, long index);
    int OnSNR(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnDitherError(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnLogAmpAGC(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
    int GetFocusState(std::string& focusState);
@@ -319,13 +336,11 @@ private:
 
    static const int SIZE_OF_FC_ARRAY = 24;
    std::string focusCurveData_[SIZE_OF_FC_ARRAY];
-   bool justCalibrated_;
+   std::string axis_;
    long ledIntensity_;
-   double stepSizeUm_;
    double na_;
    std::string focusState_;
    long waitAfterLock_;
-   std::string axis_;
    int answerTimeoutMs_;
 };
 
@@ -348,9 +363,37 @@ public:
 
 private:
    long numPos_;                                                             
-   bool busy_;       
    MM::MMTime changedTime_;                                                  
    long position_; 
+};
+
+class StateDevice : public CStateDeviceBase<StateDevice>, public ASIBase
+{
+public:
+   StateDevice();
+   ~StateDevice();
+
+   //MMDevice API
+   bool Busy();
+   void GetName(char* pszName) const;
+   unsigned long GetNumberOfPositions()const {return numPos_;}
+
+   int Initialize();
+   int Shutdown();
+   MM::DeviceDetectionStatus DetectDevice(void);
+
+   int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnNumPositions(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnAxis(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+private:
+   long numPos_;
+   std::string axis_;
+   long position_;
+   double answerTimeoutMs_;
+
+   int UpdateCurrentPosition();
 };
 
 class LED : public CShutterBase<LED>, public ASIBase

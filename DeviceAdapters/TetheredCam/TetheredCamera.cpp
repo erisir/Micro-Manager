@@ -104,7 +104,6 @@
 #include <string>
 #include <math.h>
 #include "../../MMDevice/ModuleInterface.h"
-#include "../../MMCore/Error.h"
 #include <sstream>
 #include <comdef.h>
 
@@ -149,26 +148,6 @@ const char* g_ImageDecoder_Raw = "Raw";
 const char* g_ImageDecoder_Raw_No_Gamma = "Raw (no gamma compensation)";
 const char* g_ImageDecoder_Raw_No_White_Balance = "Raw (no gamma compensation; no white balance)";
 
-// TODO: linux entry code
-
-// windows DLL entry code
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                      DWORD  ul_reason_for_call, 
-                      LPVOID /*lpReserved*/
-                      )
-{
-   switch (ul_reason_for_call)
-   {
-   case DLL_PROCESS_ATTACH:
-   case DLL_THREAD_ATTACH:
-   case DLL_THREAD_DETACH:
-   case DLL_PROCESS_DETACH:
-      break;
-   }
-   return TRUE;
-}
-#endif
 
 // Windows COM safe release code
 #ifdef WIN32
@@ -187,15 +166,9 @@ inline void SafeRelease(T *&p)
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 
-/**
- * List all supperted hardware devices here
- * Do not discover devices at runtime.  To avoid warnings about missing DLLs, Micro-Manager
- * maintains a list of supported device (MMDeviceList.txt).  This list is generated using 
- * information supplied by this function, so runtime discovery will create problems.
- */
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_CameraDeviceName, g_CameraDeviceDescription);
+   RegisterDevice(g_CameraDeviceName, MM::CameraDevice, g_CameraDeviceDescription);
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -981,7 +954,7 @@ bool CTetheredCamera::GetBoolProperty(const char* const propName)
    bool boolVal;
 
    int ret = this->GetProperty(propName, val);
-   assert(ret == DEVICE_OK);
+   assert(ret == DEVICE_OK); ret; // Prevent unused var warning.
    boolVal = strcmp(val, "1") == 0 ? true : false;
    return boolVal;
 }

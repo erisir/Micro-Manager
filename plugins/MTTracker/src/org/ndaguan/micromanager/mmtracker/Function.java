@@ -1,6 +1,7 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import ij.IJ;
+
 import ij.ImagePlus;
 import ij.ImageStack;
 import ij.WindowManager;
@@ -31,13 +32,13 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.utils.MMScriptException;
 
 public class Function {
 
 	private static Function instance_;
-	private MMStudioMainFrame gui_;
+	private MMStudio gui_;
 	private CMMCore core_;
 
 	private double currxpos_;
@@ -61,7 +62,7 @@ public class Function {
 	public void clearROI(){
 		Kernel.getInstance().roiList_.clear();
 	}
-	public Function(MMStudioMainFrame gui, List<RoiItem> roiList) {
+	public Function(MMStudio gui, List<RoiItem> roiList) {
 		core_ = gui.getMMCore();
 		gui_ = gui;
 		roiList_ = roiList;
@@ -74,7 +75,7 @@ public class Function {
 
 	}
 
-	public static Function getInstance(MMStudioMainFrame gui,List<RoiItem> roiList) {
+	public static Function getInstance(MMStudio gui,List<RoiItem> roiList) {
 		if(instance_ == null)
 			instance_ = new Function(gui,roiList);
 
@@ -894,7 +895,7 @@ public class Function {
 				double target = start+i*stepsize;
 				setStageZPosition(target);
 				for (int j = 0; j <imageNum; j++){ 
-					gui_.snapAndAddToImage5D();
+					 gui_.snapSingleImage();
 					TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 					MMT.logMessage(String.format("currZPos:\t%f(%d/%d)\timageNum:\t%d/%d", target,i,len,j,imageNum));
 				}

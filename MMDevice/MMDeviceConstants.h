@@ -18,7 +18,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: MMDeviceConstants.h 13599 2014-06-04 16:24:20Z cweisiger $
 //
 
 #ifndef _MMDEVICE_CONSTANTS_H_
@@ -143,7 +143,6 @@ namespace MM {
 
 
    // image annotations
-   const char* const g_Keyword_Metadata_Z           = "Z-um";
    const char* const g_Keyword_Meatdata_Exposure    = "Exposure-ms";
    const char* const g_Keyword_Metadata_Score       = "Score";
    const char* const g_Keyword_Metadata_ImageNumber = "ImageNumber";
@@ -210,12 +209,9 @@ namespace MM {
       AutoFocusDevice,
       CoreDevice,
       ImageProcessorDevice,
-      ImageStreamerDevice,
       SignalIODevice,
       MagnifierDevice,
-      ProgrammableIODevice,
       SLMDevice,
-      CommandDispatchDevice,
       HubDevice,
       GalvoDevice
    };
@@ -240,7 +236,8 @@ namespace MM {
    enum PortType {
       InvalidPort,
       SerialPort,
-      USBPort
+      USBPort,
+      HIDPort
    };
 
    //////////////////////////////////////////////////////////////////////////////

@@ -73,36 +73,14 @@ const char* g_ReadoutPort_Multiplier = "EM";
 const char* g_ReadoutPort_LowNoise = "LowNoise";
 const char* g_ReadoutPort_HighCap = "HighCap";
 
-// windows DLL entry code
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-      break;
-  	   case DLL_THREAD_ATTACH:
-      break;
-   	case DLL_THREAD_DETACH:
-      break;
-   	case DLL_PROCESS_DETACH:
-   	break;
-   	}
-       return TRUE;
-   }
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceUniversal_1, "Princeton Instruments interface - camera slot 1");
-   AddAvailableDeviceName(g_DeviceUniversal_2, "Princeton Instruments interface - camera slot 2");
+   RegisterDevice(g_DeviceUniversal_1, MM::CameraDevice, "Princeton Instruments interface - camera slot 1");
+   RegisterDevice(g_DeviceUniversal_2, MM::CameraDevice, "Princeton Instruments interface - camera slot 2");
 }
 
 MODULE_API void DeleteDevice(MM::Device* pDevice)

@@ -31,7 +31,7 @@ const char* g_SC10Name = "SC10";
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_SC10Name, "ThorLabs SC10 shutter controller" );
+   RegisterDevice(g_SC10Name, MM::ShutterDevice, "ThorLabs SC10 shutter controller");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -62,8 +62,7 @@ SC10::SC10() :
    initialized_(false),
    deviceInfo_(""),
    port_("Undefined"),
-   lastCommand_("Undefined"),
-   actionDelay_(2.0)
+   lastCommand_("Undefined")
 {
    InitializeDefaultErrorMessages();
 

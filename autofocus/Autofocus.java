@@ -37,12 +37,9 @@ import java.util.Date;
 import java.util.prefs.Preferences;
 
 import mmcorej.CMMCore;
-import mmcorej.MMCoreJ;
 import mmcorej.StrVector;
 
-import org.micromanager.acquisition.AcquisitionData;
 import org.micromanager.api.ScriptInterface;
-import org.micromanager.utils.AutofocusManager;
 import org.micromanager.utils.AutofocusBase;
 import org.micromanager.utils.MMException;
 import org.micromanager.utils.PropertyItem;
@@ -167,8 +164,10 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
       //######################## START THE ROUTINE ###########
 
       try{
-         IJ.write("Autofocus started.");
+         IJ.log("Autofocus started.");
+         boolean shutterOpen = core_.getShutterOpen();
          core_.setShutterOpen(true);
+         boolean autoShutter = core_.getAutoShutter();
          core_.setAutoShutter(false);
 
 
@@ -202,7 +201,7 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
          core_.waitForDevice(core_.getFocusDevice());
          delay_time(300);
 
-         IJ.write(" Before rough search: " +String.valueOf(curDist));
+         IJ.log(" Before rough search: " +String.valueOf(curDist));
 
 
          //Rough search
@@ -220,7 +219,7 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
 
 
 
-            curSh = sharpNess(ipCurrent_);
+            curSh = computeScore(ipCurrent_);
 
             if(curSh > bestSh){
                bestSh = curSh;
@@ -231,11 +230,11 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
             }
             tcur = System.currentTimeMillis()-tPrev;
 
-            //===IJ.write(String.valueOf(curDist)+" "+String.valueOf(curSh)+" " +String.valueOf(tcur));	
+            //===IJ.log(String.valueOf(curDist)+" "+String.valueOf(curSh)+" " +String.valueOf(tcur));	
          }
 
 
-         //===IJ.write("BEST_DIST_FIRST"+String.valueOf(bestDist)+" BEST_SH_FIRST"+String.valueOf(bestSh));
+         //===IJ.log("BEST_DIST_FIRST"+String.valueOf(bestDist)+" BEST_SH_FIRST"+String.valueOf(bestSh));
 
          baseDist = bestDist-SIZE_SECOND*NUM_SECOND;
          core_.setPosition(core_.getFocusDevice(),baseDist);
@@ -254,7 +253,7 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
             snapSingleImage();
             // indx =0;    
 
-            curSh = sharpNess(ipCurrent_);
+            curSh = computeScore(ipCurrent_);
 
             if(curSh > bestSh){
                bestSh = curSh;
@@ -265,21 +264,21 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
             }
             tcur = System.currentTimeMillis()-tPrev;
 
-            //===IJ.write(String.valueOf(curDist)+" "+String.valueOf(curSh)+" "+String.valueOf(tcur));
+            //===IJ.log(String.valueOf(curDist)+" "+String.valueOf(curSh)+" "+String.valueOf(tcur));
          }
 
 
-         IJ.write("BEST_DIST_SECOND"+String.valueOf(bestDist)+" BEST_SH_SECOND"+String.valueOf(bestSh));
+         IJ.log("BEST_DIST_SECOND"+String.valueOf(bestDist)+" BEST_SH_SECOND"+String.valueOf(bestSh));
 
          core_.setPosition(core_.getFocusDevice(),bestDist);
          // indx =1;
          snapSingleImage();
          // indx =0;  
-         core_.setShutterOpen(false);
-         core_.setAutoShutter(true);
+         core_.setShutterOpen(shutterOpen);
+         core_.setAutoShutter(autoShutter);
 
 
-         IJ.write("Total Time: "+ String.valueOf(System.currentTimeMillis()-t0));
+         IJ.log("Total Time: "+ String.valueOf(System.currentTimeMillis()-t0));
       }
       catch(Exception e)
       {
@@ -297,7 +296,7 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
          implus.getProcessor().setPixels(img);
          ipCurrent_ = implus.getProcessor();
       } catch (Exception e) {
-         IJ.write(e.getMessage());
+         IJ.log(e.getMessage());
          IJ.error(e.getMessage());
          return false;
       }
@@ -358,8 +357,12 @@ public class Autofocus extends AutofocusBase implements org.micromanager.api.Aut
    }
 
 
-   /*calculate the sharpness of a given image (in "impro").*/
-   private double sharpNess(ImageProcessor impro){
+   /**
+    * calculate the sharpness of a given image (in "impro").
+    * @param impro ImageJ Processor
+    * @return sharpness score
+    */
+   public double computeScore(final ImageProcessor impro){
 
 
       int width =  (int)(CROP_SIZE*core_.getImageWidth());

@@ -19,6 +19,7 @@
 
 #include "MMITC18.h"
 #include "../../MMDevice/ModuleInterface.h"
+#include "../../MMDevice/DeviceUtils.h"
 
 
 #define PIPELINE 3 // Size of ITC-18 hardware pipeline
@@ -70,33 +71,17 @@ std::string g_range = g_ITC18_AD_RANGE_10VString;
 
 void *itc;
 
-#ifdef WIN32
-// Windows dll entry routine
-bool APIENTRY DllMain( HANDLE /*hModule*/, 
-                       DWORD  ul_reason_for_call, 
-                       LPVOID /*lpReserved*/ ) {
-     switch (ul_reason_for_call) {
-          case DLL_PROCESS_ATTACH:
-          break;
-          case DLL_THREAD_ATTACH:
-          case DLL_THREAD_DETACH:
-          case DLL_PROCESS_DETACH:
-          break;
-     }
-  return TRUE;
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-    AddAvailableDeviceName(g_DeviceNameITC18Hub, "Hub");
-    AddAvailableDeviceName(g_DeviceNameITC18Shutter, "Shutter");
-    AddAvailableDeviceName(g_DeviceNameITC18DAC, "DAC");
-    AddAvailableDeviceName(g_DeviceNameITC18ADC, "ADC");
-    AddAvailableDeviceName(g_DeviceNameITC18Protocol, "Protocol");
+    RegisterDevice(g_DeviceNameITC18Hub, MM::GenericDevice, "Hub");
+    RegisterDevice(g_DeviceNameITC18Shutter, MM::ShutterDevice, "Shutter");
+    RegisterDevice(g_DeviceNameITC18DAC, MM::SignalIODevice, "DAC");
+    RegisterDevice(g_DeviceNameITC18ADC, MM::SignalIODevice, "ADC");
+    RegisterDevice(g_DeviceNameITC18Protocol, MM::GenericDevice, "Protocol");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -179,11 +164,7 @@ CITC18Hub::~CITC18Hub()
     g_seqThread->Stop();
     //g_seqThread->wait();
 
-    #ifdef WIN32
-    Sleep(10);
-    #else 
-    usleep(10 * 1000);
-    #endif
+    CDeviceUtils::SleepMs(10);
     
     delete g_seqThread;
     g_seqThread = NULL;
@@ -255,7 +236,7 @@ int CITC18Hub::Initialize()
         free (itc);
         exit(DEVICE_ERR);
     }
-    busy_ = (bool)busy;
+    busy_ = (busy != 0);
 
     if (ITC18_Initialize(itc,deviceNumber)) 
     {
@@ -473,11 +454,7 @@ int CITC18Protocol::RunProtocolFile()
     
     do 
     {
-        #ifdef WIN32
-        Sleep(10);
-        #else 
-        usleep(10 * 1000);
-        #endif
+        CDeviceUtils::SleepMs(10);
     } while (g_seqThread->Busy() == true);
     //g_seqThread->wait();
 
@@ -524,7 +501,7 @@ int CITC18Protocol::RunProtocolFile()
     
     // must be loaded after sequence is loaded
     //fprintf(stderr," CITC18Hub::RunProtocolFile() SetInterval()\n");
-    g_seqThread->SetInterval(SLOW_SAMP_INTERVAL_US);
+    g_seqThread->SetInterval(static_cast<float>(SLOW_SAMP_INTERVAL_US));
     
     
     // mode 1 = one shot, using the runonce mode
@@ -537,7 +514,7 @@ int CITC18Protocol::RunProtocolFile()
 
 void CITC18Protocol::BuildBuffer(short *pBuffer, int start, int end) // in units of time, at the given rate, but at the number of buffer points
 {
-    int DACposition[MAX_DACHANNELS];
+    unsigned DACposition[MAX_DACHANNELS];
     int y = 0;
 
     //fprintf(stderr,"CITC18Hub::BuildBuffer() MaxChannels_ %d start %d end %d\n",MaxChannels_,start,end);
@@ -566,20 +543,20 @@ void CITC18Protocol::BuildBuffer(short *pBuffer, int start, int end) // in units
     }
 
     // build TTL buffer, if needed 
-    // #define myremainder(a,b) ((a) - (int)((a) / (b)) * (b))
     if (b_TTLOUT_) 
     {
+        unsigned TTLposition;
         if (start > StartTTL_)
-            TTLposition_= myremainder (start,v_TTLOUT_.size());
-        else TTLposition_ = start;
+            TTLposition = myremainder (start,v_TTLOUT_.size());
+        else TTLposition = start;
         
         for (int index = (start + MaxChannels_ - 1); index < (end * MaxChannels_); index += MaxChannels_)
         {
             //fprintf(stderr,"CITC18Hub::BuildBuffer() building b_TTLOUT_ %d\n",index);
-            if (TTLposition_ >= v_TTLOUT_.size()) TTLposition_ = StartTTL_; // restart at the beginning of the DAC0 buffer
+            if (TTLposition >= v_TTLOUT_.size()) TTLposition = StartTTL_; // restart at the beginning of the DAC0 buffer
 
-            pBuffer[index]    = v_TTLOUT_.at(TTLposition_); // increment AFTER, since it is zero indexed
-            TTLposition_++;
+            pBuffer[index]    = v_TTLOUT_.at(TTLposition); // increment AFTER, since it is zero indexed
+            TTLposition++;
         }
     }
 
@@ -943,7 +920,7 @@ int CITC18Protocol::OnRunProtocolFile (MM::PropertyBase* pProp, MM::ActionType p
         std::string command;
         pProp->Get(command);
 
-        if (g_protocol_file.c_str() == "undefined") return DEVICE_OK;
+        if (g_protocol_file == "undefined") return DEVICE_OK;
         if (command == g_Run) RunProtocolFile();
         pProp->Set(g_Stop);
     }
@@ -1221,7 +1198,7 @@ int CITC18Shutter::ITC18RunOnce(short value)
     g_seqThread->SetDataOut(ONESHOTDATASIZE * ONESHOTSEQUENCESIZE,g_OneShotDataOut);
     g_seqThread->SetDataIn(ONESHOTDATASIZE * ONESHOTSEQUENCESIZE,g_OneShotDataIn);
     // must be loaded after sequence is loaded
-    g_seqThread->SetInterval(FAST_SAMP_INTERVAL_US);
+    g_seqThread->SetInterval(static_cast<float>(FAST_SAMP_INTERVAL_US));
     // mode 1 = one shot
     g_seqThread->Start(1);
 
@@ -1449,19 +1426,19 @@ int CITC18DAC::ITC18RunOnce(double value)
     for (int i = 0; i < ONESHOTDATASIZE; i++) {
         // TTL Data for controlling shutters
         g_OneShotDataOut[(i * ONESHOTSEQUENCESIZE) + DACPort_] = (short)answer;
-        //fprintf(stderr,"CITC18DAC::ITC18RunOnce() DACPort_ %d memory %d\n",DACPort_,(i * ONESHOTSEQUENCESIZE) + DACPort_);
+        //fprintf(stderr,"CITC18DAC::ITC18RunOnce() DACPort_ %u memory %d\n",DACPort_,(i * ONESHOTSEQUENCESIZE) + DACPort_);
     }
 
     if (g_seqThread->Busy() == false) 
     {
         g_seqThread->Stop();
         //g_seqThread->wait();
-        //fprintf(stderr,"CITC18DAC::ITC18RunOnce() DACPort_ %d memory %d\n",DACPort_,(i * ONESHOTSEQUENCESIZE) + DACPort_);
+        //fprintf(stderr,"CITC18DAC::ITC18RunOnce() DACPort_ %u memory %d\n",DACPort_,(i * ONESHOTSEQUENCESIZE) + DACPort_);
         g_seqThread->SetSequence(ONESHOTSEQUENCESIZE,g_OneShotInstructions);
         g_seqThread->SetDataOut(ONESHOTDATASIZE * ONESHOTSEQUENCESIZE,g_OneShotDataOut);
         g_seqThread->SetDataIn(ONESHOTDATASIZE * ONESHOTSEQUENCESIZE,g_OneShotDataIn);
         // must be loaded after sequence is loaded
-        g_seqThread->SetInterval(FAST_SAMP_INTERVAL_US);
+        g_seqThread->SetInterval(static_cast<float>(FAST_SAMP_INTERVAL_US));
         // mode 1 = one shot
         g_seqThread->Start(1);
     }  else fprintf(stderr, "CITC18ADC::ITC18RunOnce svc already running\n");
@@ -1534,7 +1511,7 @@ CITC18ADC::CITC18ADC() :
     busy_(false),
     volts_(0.0),
     ADCPort_(0),
-    maxChannel_(8),
+    maxChannel_(MAX_ADCHANNELS),
     gateOpen_(true),
     range_(g_ITC18_AD_RANGE_10VString),
     name_(g_DeviceNameITC18ADC)
@@ -1645,7 +1622,7 @@ double CITC18ADC::GetRangeFactor()
 }
 
 
-int CITC18ADC::SetGateOpen(bool open)
+int CITC18ADC::SetGateOpen(bool /*open*/)
 {
 
     return DEVICE_OK;
@@ -1671,7 +1648,7 @@ int CITC18ADC::ITC18RunOnce(double &value)
         g_seqThread->SetDataOut(ONESHOTDATASIZE * ONESHOTSEQUENCESIZE,g_OneShotDataOut);
         g_seqThread->SetDataIn(ONESHOTDATASIZE * ONESHOTSEQUENCESIZE,g_OneShotDataIn);
         // must be loaded after sequence is loaded
-        g_seqThread->SetInterval(FAST_SAMP_INTERVAL_US);
+        g_seqThread->SetInterval(static_cast<float>(FAST_SAMP_INTERVAL_US));
         // mode 1 = one shot
         g_seqThread->Start(1);
     }
@@ -1712,7 +1689,7 @@ int CITC18ADC::OnVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
     {
         double volts;
         GetSignal(volts);
-        //fprintf(stderr,"CITC18ADC::OnVolts() volts %2.0g on ADC %d at %d time\n",volts,ADCPort_,g_currentTime);
+        //fprintf(stderr,"CITC18ADC::OnVolts() volts %2.0g on ADC %u at %d time\n",volts,ADCPort_,g_currentTime);
         if (g_currentTime == 0) pProp->Set(CDeviceUtils::ConvertToString(volts));  
         else pProp->Set(CDeviceUtils::ConvertToString((g_currentAD[ADCPort_] * GetRangeFactor())/32767));
     }
@@ -1820,11 +1797,7 @@ int AcqSequenceThread::svc(void)
     {
         //while (!stop_) {   
             ITC18_SmallRun(itc_, sequenceSize_, sequenceInstructions_, ticks_, externalClock_, dataSizeOut_, dataOut_, dataSizeIn_, dataIn_, externalTrigger_,outputEnabled_);
-            #ifdef WIN32
-            Sleep(waitTime_);
-            #else 
-            usleep(waitTime_ * 1000);
-            #endif
+            CDeviceUtils::SleepMs(waitTime_);
         //}
     }
     if (mode_ == 1)
@@ -1858,11 +1831,7 @@ int AcqSequenceThread::svc(void)
 
         while (!stop_) {   
             Poll();
-    #ifdef WIN32
-            Sleep(waitTime_);
-    #else 
-            usleep(waitTime_ * 1000);
-    #endif
+            CDeviceUtils::SleepMs(waitTime_);
         }
     }
 

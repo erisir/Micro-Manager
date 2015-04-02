@@ -1,31 +1,35 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
+
 package org.micromanager.acquisition;
 
 import java.awt.Color;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.prefs.Preferences;
+import java.util.Set;
+
 import javax.swing.JOptionPane;
+
 import mmcorej.CMMCore;
 import mmcorej.Configuration;
 import mmcorej.PropertySetting;
 import mmcorej.StrVector;
 import mmcorej.TaggedImage;
+
 import org.json.JSONObject;
-import org.micromanager.api.AcquisitionEngine;
 import org.micromanager.api.DataProcessor;
 import org.micromanager.api.ImageCache;
 import org.micromanager.api.IAcquisitionEngine2010;
+import org.micromanager.api.PositionList;
 import org.micromanager.api.ScriptInterface;
+import org.micromanager.api.SequenceSettings;
+import org.micromanager.events.EventManager;
+import org.micromanager.events.PipelineEvent;
+import org.micromanager.events.ProcessorEvent;
 import org.micromanager.internalinterfaces.AcqSettingsListener;
-import org.micromanager.navigation.PositionList;
 import org.micromanager.utils.AcqOrderMode;
 import org.micromanager.utils.AutofocusManager;
 import org.micromanager.utils.ChannelSpec;
@@ -33,7 +37,6 @@ import org.micromanager.utils.ContrastSettings;
 import org.micromanager.utils.MMException;
 import org.micromanager.utils.NumberUtils;
 import org.micromanager.utils.ReportingUtils;
-import org.zephyre.micromanager.AcqNameTagger;
 
 /**
  *
@@ -42,7 +45,7 @@ import org.zephyre.micromanager.AcqNameTagger;
 public class AcquisitionWrapperEngine implements AcquisitionEngine {
 
    private CMMCore core_;
-   protected ScriptInterface gui_;
+   protected ScriptInterface studio_;
    private PositionList posList_;
    private String zstage_;
    private double sliceZStepUm_;
@@ -65,8 +68,8 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    private int acqOrderMode_;
    private boolean useAutoFocus_;
    private int afSkipInterval_;
+   protected HashMap<String, Class<? extends DataProcessor<TaggedImage>>> nameToProcessorClass_;
    protected List<DataProcessor<TaggedImage>> taggedImageProcessors_;
-   private List<Class> imageRequestProcessors_;
    private boolean absoluteZ_;
    private IAcquisitionEngine2010 acquisitionEngine2010;
    private ArrayList<Double> customTimeIntervalsMs_;
@@ -74,22 +77,27 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    protected JSONObject summaryMetadata_;
    protected ImageCache imageCache_;
    private ArrayList<AcqSettingsListener> settingsListeners_;
+   private AcquisitionManager acqManager_;
 
-   public AcquisitionWrapperEngine() {
-      imageRequestProcessors_ = new ArrayList<Class>();
+   public AcquisitionWrapperEngine(AcquisitionManager mgr) {
+      nameToProcessorClass_ = new HashMap<String, Class<? extends DataProcessor<TaggedImage>>>();
       taggedImageProcessors_ = new ArrayList<DataProcessor<TaggedImage>>();
       useCustomIntervals_ = false;
       settingsListeners_ = new ArrayList<AcqSettingsListener>();
+      acqManager_ = mgr;
    }
 
+   @Override
    public String acquire() throws MMException {
-      return runAcquisition(getSequenceSettings());
+      return runAcquisition(getSequenceSettings(), acqManager_);
    }
 
+   @Override
    public void addSettingsListener(AcqSettingsListener listener) {
        settingsListeners_.add(listener);
    }
    
+   @Override
    public void removeSettingsListener(AcqSettingsListener listener) {
        settingsListeners_.remove(listener);
    }
@@ -102,33 +110,70 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    
    protected IAcquisitionEngine2010 getAcquisitionEngine2010() {
       if (acquisitionEngine2010 == null) {
-         acquisitionEngine2010 = gui_.getAcquisitionEngine2010();
+         acquisitionEngine2010 = studio_.getAcquisitionEngine2010();
       }
       return acquisitionEngine2010;
    }
 
-   protected String runAcquisition(SequenceSettings acquisitionSettings) {
+   protected String runAcquisition(SequenceSettings acquisitionSettings, 
+           AcquisitionManager acqManager) {
       //Make sure computer can write to selected location and that there is enough space to do so
       if (saveFiles_) {
          File root = new File(rootName_);
          if (!root.canWrite()) {
-            ReportingUtils.showError("Unable to save data to selected location: check that location exists");
-            return null;
+            int result = JOptionPane.showConfirmDialog(null, 
+                    "The specified root directory\n" + root.getAbsolutePath() +
+                    "\ndoes not exist. Create it?", "Directory not found.", 
+                    JOptionPane.YES_NO_OPTION);
+            if (result == JOptionPane.YES_OPTION) {
+               root.mkdirs();
+               if (!root.canWrite()) {
+                  ReportingUtils.showError(
+                          "Unable to save data to selected location: check that location exists.\nAcquisition canceled.");
+                  return null;
+               }
+            } else {
+               ReportingUtils.showMessage("Acquisition canceled.");
+               return null;
+            }
          } else if (!this.enoughDiskSpace()) {
-            ReportingUtils.showError("Not enough space on disk to save the requested image set; acquisition canceled.");
+            ReportingUtils.showError(
+                    "Not enough space on disk to save the requested image set; acquisition canceled.");
             return null;
          }
       }
       try {
-         DefaultTaggedImagePipeline taggedImagePipeline = new DefaultTaggedImagePipeline(
-                 getAcquisitionEngine2010(),
-                 acquisitionSettings,
-                 taggedImageProcessors_,
-                 gui_,
-                 acquisitionSettings.save);
-         summaryMetadata_ = taggedImagePipeline.summaryMetadata_;
-         imageCache_ = taggedImagePipeline.imageCache_;
-         return taggedImagePipeline.acqName_;
+         // Start up the acquisition engine
+         BlockingQueue<TaggedImage> engineOutputQueue = getAcquisitionEngine2010().run(
+                 acquisitionSettings, true,
+                 studio_.getPositionList(),
+                 studio_.getAutofocusManager().getDevice());
+         summaryMetadata_ = getAcquisitionEngine2010().getSummaryMetadata();
+
+         // Run the Acquisition Engine output through a pipeline of ImageProcessors
+         BlockingQueue<TaggedImage> procStackOutputQueue = ProcessorStack.run(
+                 engineOutputQueue, taggedImageProcessors_);
+
+         // Create an MMAcquisition object, which will result in an ImageCache
+         // and VirtualImageDisplay if desired
+         String acqName = acqManager.createAcquisition(
+                 summaryMetadata_, acquisitionSettings.save, this,
+                 studio_.getHideMDADisplayOption());
+         MMAcquisition acq = acqManager.getAcquisition(acqName);
+         imageCache_ = acq.getImageCache();
+
+         // Start pumping processed images into the ImageCache
+         DefaultTaggedImageSink sink = new DefaultTaggedImageSink(
+                 procStackOutputQueue, imageCache_);
+         sink.start(new Runnable() {
+            @Override
+            public void run() {
+               getAcquisitionEngine2010().stop();
+            }
+         });
+        
+         return acqName;
+
       } catch (Throwable ex) {
          ReportingUtils.showError(ex);
          return null;
@@ -139,7 +184,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       int numChannels = 0;
       if (useChannels_) {
          for (ChannelSpec channel : channels_) {
-            if (channel.useChannel_) {
+            if (channel.useChannel) {
                ++numChannels;
             }
          }
@@ -149,6 +194,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return numChannels;
    }
 
+   @Override
    public int getNumFrames() {
       int numFrames = numFrames_;
       if (!useFrames_) {
@@ -166,11 +212,14 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    }
 
    private int getNumSlices() {
-      int numSlices = useSlices_ ? (int) (1 + Math.abs(sliceZTopUm_ - sliceZBottomUm_) / sliceZStepUm_) : 1;
       if (!useSlices_) {
-         numSlices = 1;
+         return 1;
       }
-      return numSlices;
+      if (sliceZStepUm_ == 0) {
+         // XXX How should this be handled?
+         return Integer.MAX_VALUE;
+      }
+      return 1 + (int)Math.abs((sliceZTopUm_ - sliceZBottomUm_) / sliceZStepUm_);
    }
 
    private int getTotalImages() {
@@ -179,14 +228,14 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    }
 
    private long getTotalMB() {
-      CMMCore core = gui_.getMMCore();
+      CMMCore core = studio_.getMMCore();
       long totalMB = core.getImageWidth() * core.getImageHeight() * core.getBytesPerPixel() * ((long) getTotalImages()) / 1048576L;
       return totalMB;
    }
 
    private void updateChannelCameras() {
       for (ChannelSpec channel : channels_) {
-         channel.camera_ = getSource(channel);
+         channel.camera = getSource(channel);
       }
    }
 
@@ -196,6 +245,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
     * at all values of that index. For example, if the first argument is -1,
     * then the runnable will execute at every frame.
     */
+   @Override
    public void attachRunnable(int frame, int position, int channel, int slice, Runnable runnable) {
       getAcquisitionEngine2010().attachRunnable(frame, position, channel, slice, runnable);
    }
@@ -203,14 +253,14 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
     * Clear all attached runnables from the acquisition engine.
     */
 
+   @Override
    public void clearRunnables() {
       getAcquisitionEngine2010().clearRunnables();
    }
 
    private String getSource(ChannelSpec channel) {
-      PropertySetting setting;
       try {
-         Configuration state = core_.getConfigGroupState(channel.config_);
+         Configuration state = core_.getConfigState(core_.getChannelGroup(), channel.config);
          if (state.isPropertyIncluded("Core", "Camera")) {
             return state.getSetting("Core", "Camera").getPropertyValue();
          } else {
@@ -222,37 +272,97 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       }
    }
 
-   /**
-    * @deprecated
-    */
-   public void addImageProcessor(Class taggedImageProcessorClass) {
-      try {
-         taggedImageProcessors_.add(
-                 (DataProcessor<TaggedImage>) taggedImageProcessorClass.newInstance());
-      } catch (InstantiationException ex) {
-         ReportingUtils.logError(ex);
-      } catch (IllegalAccessException ex) {
-         ReportingUtils.logError(ex);
-      }
-   }
-
-   /**
-    * @deprecated
-    */
-   public void removeImageProcessor(Class taggedImageProcessorClass) {
-      for (DataProcessor<TaggedImage> proc:taggedImageProcessors_) {
-         if (proc.getClass() == taggedImageProcessorClass) {
-            taggedImageProcessors_.remove(proc);
-         }
-      }
-   }
-
+   @Override
    public void addImageProcessor(DataProcessor<TaggedImage> taggedImageProcessor) {
-      taggedImageProcessors_.add(taggedImageProcessor);
+      if (!taggedImageProcessors_.contains(taggedImageProcessor)) {
+         taggedImageProcessors_.add(taggedImageProcessor);
+         EventManager.post(new PipelineEvent(taggedImageProcessors_));
+      }
    }
 
+   @Override
    public void removeImageProcessor(DataProcessor<TaggedImage> taggedImageProcessor) {
       taggedImageProcessors_.remove(taggedImageProcessor);
+      taggedImageProcessor.dispose();
+      EventManager.post(new PipelineEvent(taggedImageProcessors_));
+   }
+
+   @Override
+   public void setImageProcessorPipeline(List<DataProcessor<TaggedImage>> pipeline) {
+      taggedImageProcessors_.clear();
+      taggedImageProcessors_.addAll(pipeline);
+      EventManager.post(new PipelineEvent(taggedImageProcessors_));
+   }
+
+   @Override
+   public ArrayList<DataProcessor<TaggedImage>> getImageProcessorPipeline() {
+      return new ArrayList<DataProcessor<TaggedImage>>(taggedImageProcessors_);
+   }
+
+   @Override
+   public void registerProcessorClass(Class<? extends DataProcessor<TaggedImage>> processorClass, String name) {
+      if (nameToProcessorClass_.get(name) != null) {
+         ReportingUtils.logError("Tried to register an additional DataProcessor under the name \"" + name + "\"; ignoring it.");
+      }
+      else {
+         nameToProcessorClass_.put(name, processorClass);
+         // Post an event informing listeners that there's a newly-registered
+         // DataProcessor class.
+         EventManager.post(new ProcessorEvent(name, processorClass));
+      }
+   }
+
+   @Override
+   public List<String> getSortedDataProcessorNames() {
+      Set<String> keys = nameToProcessorClass_.keySet();
+      ArrayList<String> sortedKeys = new ArrayList<String>();
+      sortedKeys.addAll(keys);
+      Collections.sort(sortedKeys);
+      return sortedKeys;
+   }
+
+   @Override
+   public DataProcessor<TaggedImage> makeProcessor(String name, ScriptInterface gui) {
+      Class<? extends DataProcessor<TaggedImage>> processorClass = nameToProcessorClass_.get(name);
+      DataProcessor<TaggedImage> newProcessor;
+      try {
+         newProcessor = processorClass.newInstance();
+         newProcessor.setApp(gui);
+         addImageProcessor(newProcessor);
+      }
+      catch (Exception ex) {
+         ReportingUtils.logError("Failed to create processor " + name + " mapped to class " + processorClass + ": " + ex);
+         newProcessor = null;
+      }
+      return newProcessor;
+   }
+
+   @Override
+   public DataProcessor<TaggedImage> getProcessorRegisteredAs(String name) {
+      Class<? extends DataProcessor<TaggedImage>> processorClass = nameToProcessorClass_.get(name);
+      for (DataProcessor<TaggedImage> processor : taggedImageProcessors_) {
+         if (processor.getClass() == processorClass) {
+            return processor;
+         }
+      }
+      return null;
+   }
+
+   @Override
+   public String getNameForProcessorClass(Class<? extends DataProcessor<TaggedImage>> processorClass) {
+      for (String name : nameToProcessorClass_.keySet()) {
+         if (nameToProcessorClass_.get(name) == processorClass) {
+            return name;
+         }
+      }
+      return null;
+   }
+
+   @Override
+   public void disposeProcessors() {
+      for (DataProcessor<TaggedImage> processor : taggedImageProcessors_) {
+         processor.dispose();
+      }
    }
 
    public SequenceSettings getSequenceSettings() {
@@ -273,18 +383,20 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
          acquisitionSettings.numFrames = 0;
       }
 
-
-
       // Slices
       if (useSlices_) {
-         if (sliceZTopUm_ > sliceZBottomUm_) {
-            for (double z = sliceZBottomUm_; z <= sliceZTopUm_; z += sliceZStepUm_) {
-               acquisitionSettings.slices.add(z);
-            }
-         } else {
-            for (double z = sliceZBottomUm_; z >= sliceZTopUm_; z -= sliceZStepUm_) {
-               acquisitionSettings.slices.add(z);
-            }
+         double start = sliceZBottomUm_;
+         double stop = sliceZTopUm_;
+         double step = Math.abs(sliceZStepUm_);
+         if (step == 0.0) {
+            throw new UnsupportedOperationException("zero Z step size");
+         }
+         int count = getNumSlices();
+         if (start > stop) {
+            step = -step;
+         }
+         for (int i = 0; i < count; i++) {
+            acquisitionSettings.slices.add(start + i * step);
          }
       }
 
@@ -300,17 +412,12 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
 
       if (this.useChannels_) {
          for (ChannelSpec channel : channels_) {
-            if (channel.useChannel_) {
+            if (channel.useChannel) {
                acquisitionSettings.channels.add(channel);
             }
          }
+         acquisitionSettings.channelGroup = core_.getChannelGroup();
       }
-
-      // Positions
-      if (this.useMultiPosition_) {
-         acquisitionSettings.positions.addAll(Arrays.asList(posList_.getPositions()));
-      }
-
 
       //timeFirst = true means that time points are collected at each position
       acquisitionSettings.timeFirst = (acqOrderMode_ == AcqOrderMode.POS_TIME_CHANNEL_SLICE
@@ -330,10 +437,85 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
          acquisitionSettings.prefix = dirName_;
       }
       acquisitionSettings.comment = comment_;
+      acquisitionSettings.usePositionList = this.useMultiPosition_;
       return acquisitionSettings;
    }
 
+   public void setSequenceSettings(SequenceSettings ss) {
+      
+      updateChannelCameras();
+
+      // Frames
+      useFrames_ = true;
+      if (useCustomIntervals_) {
+         customTimeIntervalsMs_ = ss.customIntervalsMs;
+         numFrames_ = ss.customIntervalsMs.size();
+      } else {
+         numFrames_ = ss.numFrames;
+         interval_ = ss.intervalMs;
+      }
+
+      // Slices
+      useSlices_ = true;
+      if (ss.slices.size() == 0)
+         useSlices_ = false;
+      else if (ss.slices.size() == 1) {
+         sliceZBottomUm_ = ss.slices.get(0);
+         sliceZTopUm_ = sliceZBottomUm_;
+         sliceZStepUm_ = 0.0;
+      } else {
+         sliceZBottomUm_ = ss.slices.get(0);
+         sliceZTopUm_ = ss.slices.get(ss.slices.size()-1);
+         sliceZStepUm_ = ss.slices.get(1) - ss.slices.get(0);
+         if (sliceZBottomUm_ > sliceZBottomUm_)
+            sliceZStepUm_ = -sliceZStepUm_;
+      }
+
+      absoluteZ_ = !ss.relativeZSlice;
+      // NOTE: there is no adequate setting for ss.zReference
+      
+      // Channels
+      if (ss.channels.size() > 0)
+         useChannels_ = true;
+      else
+         useChannels_ = false;
+         
+      channels_ = ss.channels;
+       // no channel group
+
+      //timeFirst = true means that time points are collected at each position      
+      if (ss.timeFirst && ss.slicesFirst) {
+         acqOrderMode_ = AcqOrderMode.POS_TIME_CHANNEL_SLICE;
+      }
+      
+      if (ss.timeFirst && !ss.slicesFirst) {
+         acqOrderMode_ = AcqOrderMode.POS_TIME_SLICE_CHANNEL;
+      }
+      
+      if (!ss.timeFirst && ss.slicesFirst) {
+         acqOrderMode_ = AcqOrderMode.TIME_POS_CHANNEL_SLICE;
+      }
+
+      if (!ss.timeFirst && !ss.slicesFirst) {
+         acqOrderMode_ = AcqOrderMode.TIME_POS_SLICE_CHANNEL;
+      }
+
+      useAutoFocus_ = ss.useAutofocus;
+      afSkipInterval_ = ss.skipAutofocusCount;
+
+      keepShutterOpenForChannels_ = ss.keepShutterOpenChannels;
+      keepShutterOpenForStack_ = ss.keepShutterOpenSlices;
+
+      saveFiles_ = ss.save;
+      rootName_ = ss.root;
+      dirName_ = ss.prefix;
+      comment_ = ss.comment;
+      
+      useMultiPosition_ = ss.usePositionList;
+   }
+
 //////////////////// Actions ///////////////////////////////////////////
+   @Override
    public void stop(boolean interrupted) {
       try {
          if (acquisitionEngine2010 != null) {
@@ -344,14 +526,17 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       }
    }
 
+   @Override
    public boolean abortRequest() {
       if (isAcquisitionRunning()) {
-         int result = JOptionPane.showConfirmDialog(null,
+         String[] options = { "Abort", "Cancel" };
+         int result = JOptionPane.showOptionDialog(null,
                  "Abort current acquisition task?",
-                 "Micro-Manager", JOptionPane.YES_NO_OPTION,
-                 JOptionPane.INFORMATION_MESSAGE);
-
-         if (result == JOptionPane.YES_OPTION) {
+                 "Micro-Manager",
+                 JOptionPane.DEFAULT_OPTION,
+                 JOptionPane.QUESTION_MESSAGE, null,
+                 options, options[1]);
+         if (result == 0) {
             stop(true);
             return true;
          }
@@ -359,14 +544,17 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return false;
    }
 
+   @Override
    public boolean abortRequested() {
       return acquisitionEngine2010.stopHasBeenRequested();
    }
 
+   @Override
    public void shutdown() {
       stop(true);
    }
 
+   @Override
    public void setPause(boolean state) {
       if (state) {
          acquisitionEngine2010.pause();
@@ -376,6 +564,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    }
 
 //// State Queries /////////////////////////////////////////////////////
+   @Override
    public boolean isAcquisitionRunning() {
       if (acquisitionEngine2010 != null) {
          return acquisitionEngine2010.isRunning();
@@ -384,6 +573,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       }
    }
 
+   @Override
    public boolean isFinished() {
       if (acquisitionEngine2010 != null) {
          return acquisitionEngine2010.isFinished();
@@ -392,56 +582,69 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       }
    }
 
+   @Override
    public boolean isMultiFieldRunning() {
       throw new UnsupportedOperationException("Not supported yet.");
    }
 
+   @Override
    public long getNextWakeTime() {
       return acquisitionEngine2010.nextWakeTime();
    }
 
 
 //////////////////// Setters and Getters ///////////////////////////////
+   @Override
    public void setCore(CMMCore core_, AutofocusManager afMgr) {
       this.core_ = core_;
    }
 
+   @Override
    public void setPositionList(PositionList posList) {
       posList_ = posList;
    }
 
+   @Override
    public void setParentGUI(ScriptInterface parent) {
-      gui_ = parent;
+      studio_ = parent;
    }
 
+   @Override
    public void setZStageDevice(String stageLabel_) {
       zstage_ = stageLabel_;
    }
 
+   @Override
    public void setUpdateLiveWindow(boolean b) {
       // do nothing
    }
 
+   @Override
    public void setFinished() {
       throw new UnsupportedOperationException("Not supported yet.");
    }
 
+   @Override
    public int getCurrentFrameCount() {
       return 0;
    }
 
+   @Override
    public double getFrameIntervalMs() {
       return interval_;
    }
 
+   @Override
    public double getSliceZStepUm() {
       return sliceZStepUm_;
    }
 
+   @Override
    public double getSliceZBottomUm() {
       return sliceZBottomUm_;
    }
 
+   @Override
    public void setChannel(int row, ChannelSpec channel) {
       channels_.set(row, channel);
    }
@@ -449,6 +652,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    /**
     * Get first available config group
     */
+   @Override
    public String getFirstConfigGroup() {
       if (core_ == null) {
          return "";
@@ -467,6 +671,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
     * Find out which channels are currently available for the selected channel group.
     * @return - list of channel (preset) names
     */
+   @Override
    public String[] getChannelConfigs() {
       if (core_ == null) {
          return new String[0];
@@ -474,10 +679,12 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return core_.getAvailableConfigs(core_.getChannelGroup()).toArray();
    }
 
+   @Override
    public String getChannelGroup() {
       return core_.getChannelGroup();
    }
 
+   @Override
    public boolean setChannelGroup(String group) {
       if (groupIsEligibleChannel(group)) {
          try {
@@ -486,7 +693,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
             try {
                core_.setChannelGroup("");
             } catch (Exception ex) {
-               ReportingUtils.showError(e);
+                ReportingUtils.showError(ex);
             }
             return false;
          }
@@ -499,6 +706,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    /**
     * Resets the engine.
     */
+   @Override
    public void clear() {
       if (channels_ != null) {
          channels_.clear();
@@ -506,15 +714,18 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       numFrames_ = 0;
    }
 
+   @Override
    public void setFrames(int numFrames, double interval) {
       numFrames_ = numFrames;
       interval_ = interval;
    }
 
+   @Override
    public double getMinZStepUm() {
       return minZStepUm_;
    }
 
+   @Override
    public void setSlices(double bottom, double top, double step, boolean absolute) {
       sliceZBottomUm_ = bottom;
       sliceZTopUm_ = top;
@@ -523,86 +734,107 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       this.settingsChanged();
    }
 
+   @Override
    public boolean getZAbsoluteMode() {
        return absoluteZ_;
    }
    
+   @Override
    public boolean isFramesSettingEnabled() {
       return useFrames_;
    }
 
+   @Override
    public void enableFramesSetting(boolean enable) {
       useFrames_ = enable;
    }
 
+   @Override
    public boolean isChannelsSettingEnabled() {
       return useChannels_;
    }
 
+   @Override
    public void enableChannelsSetting(boolean enable) {
       useChannels_ = enable;
    }
 
+   @Override
    public boolean isZSliceSettingEnabled() {
       return useSlices_;
    }
 
+   @Override
    public double getZTopUm() {
       return sliceZTopUm_;
    }
 
+   @Override
    public void keepShutterOpenForStack(boolean open) {
       keepShutterOpenForStack_ = open;
    }
 
+   @Override
    public boolean isShutterOpenForStack() {
       return keepShutterOpenForStack_;
    }
 
+   @Override
    public void keepShutterOpenForChannels(boolean open) {
       keepShutterOpenForChannels_ = open;
    }
 
+   @Override
    public boolean isShutterOpenForChannels() {
       return keepShutterOpenForChannels_;
    }
 
+   @Override
    public void enableZSliceSetting(boolean boolean1) {
       useSlices_ = boolean1;
    }
 
+   @Override
    public void enableMultiPosition(boolean selected) {
       useMultiPosition_ = selected;
    }
 
+   @Override
    public boolean isMultiPositionEnabled() {
       return useMultiPosition_;
    }
 
+   @Override
    public ArrayList<ChannelSpec> getChannels() {
       return channels_;
    }
 
+   @Override
    public void setChannels(ArrayList<ChannelSpec> channels) {
       channels_ = channels;
    }
 
+   @Override
    public String getRootName() {
       return rootName_;
    }
 
+   @Override
    public void setRootName(String absolutePath) {
       rootName_ = absolutePath;
    }
 
+   @Override
    public void setCameraConfig(String cfg) {
       // do nothing
    }
 
+   @Override
    public void setDirName(String text) {
       dirName_ = text;
    }
 
+   @Override
    public void setComment(String text) {
       comment_ = text;
       settingsChanged();
@@ -626,17 +858,18 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
     * @param c
     * @return - true if successful
     */
+   @Override
    public boolean addChannel(String config, double exp, Boolean doZStack, double zOffset, ContrastSettings con, int skip, Color c, boolean use) {
       if (isConfigAvailable(config)) {
          ChannelSpec channel = new ChannelSpec();
-         channel.config_ = config;
-         channel.useChannel_ = use;
-         channel.exposure_ = exp;
-         channel.doZStack_ = doZStack;
-         channel.zOffset_ = zOffset;
-         channel.contrast_ = con;
-         channel.color_ = c;
-         channel.skipFactorFrame_ = skip;
+         channel.config = config;
+         channel.useChannel = use;
+         channel.exposure = exp;
+         channel.doZStack = doZStack;
+         channel.zOffset = zOffset;
+         channel.contrast = con;
+         channel.color = c;
+         channel.skipFactorFrame = skip;
          channels_.add(channel);
          return true;
       } else {
@@ -655,48 +888,59 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
     * @param c16
     * @param c
     * @return - true if successful
-    * @deprecated
+    * @Deprecated
     */
+   @Override
    public boolean addChannel(String config, double exp, double zOffset, ContrastSettings c8, ContrastSettings c16, int skip, Color c) {
       return addChannel(config, exp, true, zOffset, c16, skip, c, true);
    }
 
+   @Override
    public void setSaveFiles(boolean selected) {
       saveFiles_ = selected;
    }
 
+   @Override
    public boolean getSaveFiles() {
       return saveFiles_;
    }
 
+   @Override
    public void setDisplayMode(int mode) {
       //Ignore
    }
 
+   @Override
    public int getAcqOrderMode() {
       return acqOrderMode_;
    }
 
+   @Override
    public int getDisplayMode() {
       return 0;
    }
 
+   @Override
    public void setAcqOrderMode(int mode) {
       acqOrderMode_ = mode;
    }
 
+   @Override
    public void enableAutoFocus(boolean enabled) {
       useAutoFocus_ = enabled;
    }
 
+   @Override
    public boolean isAutoFocusEnabled() {
       return useAutoFocus_;
    }
 
+   @Override
    public int getAfSkipInterval() {
       return afSkipInterval_;
    }
 
+   @Override
    public void setAfSkipInterval(int interval) {
       afSkipInterval_ = interval;
    }
@@ -705,14 +949,17 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       // do nothing
    }
 
+   @Override
    public void setSingleFrame(boolean selected) {
       //Ignore
    }
 
+   @Override
    public void setSingleWindow(boolean selected) {
       //Ignore
    }
 
+   @Override
    public String installAutofocusPlugin(String className) {
       throw new UnsupportedOperationException("Not supported yet.");
    }
@@ -730,6 +977,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return (1.25 * getTotalMB()) < usableMB;
    }
 
+   @Override
    public String getVerboseSummary() {
       int numFrames = getNumFrames();
       int numSlices = getNumSlices();
@@ -751,9 +999,6 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       double remainSec = totalDurationSec - hrs * 3600;
       int mins = (int) (remainSec / 60);
       remainSec = remainSec - mins * 60;
-
-      Runtime rt = Runtime.getRuntime();
-      rt.gc();
 
       String txt;
       txt =
@@ -809,6 +1054,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
     * This method should be used to verify if the acquisition protocol is consistent
     * with the current settings.
     */
+   @Override
    public boolean isConfigAvailable(String config) {
       StrVector vcfgs = core_.getAvailableConfigs(core_.getChannelGroup());
       for (int i = 0; i < vcfgs.size(); i++) {
@@ -819,6 +1065,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return false;
    }
 
+   @Override
    public String[] getCameraConfigs() {
       if (core_ == null) {
          return new String[0];
@@ -826,6 +1073,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return core_.getAvailableConfigs(cameraGroup_).toArray();
    }
 
+   @Override
    public String[] getAvailableGroups() {
       StrVector groups;
       try {
@@ -844,6 +1092,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return strGroups.toArray(new String[0]);
    }
 
+   @Override
    public double getCurrentZPos() {
       if (isFocusStageAvailable()) {
          double z = 0.0;
@@ -859,6 +1108,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return 0;
    }
 
+   @Override
    public boolean isPaused() {
       return acquisitionEngine2010.isPaused();
    }
@@ -906,6 +1156,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       return taggedImageProcessors_;
    }
 
+   @Override
    public void setCustomTimeIntervals(double[] customTimeIntervals) {
       if (customTimeIntervals == null || customTimeIntervals.length == 0) {
          customTimeIntervalsMs_ = null;
@@ -919,6 +1170,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
       }
    }
 
+   @Override
    public double[] getCustomTimeIntervals() {
       if (customTimeIntervalsMs_ == null) {
          return null;
@@ -931,10 +1183,12 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
 
    }
 
+   @Override
    public void enableCustomTimeIntervals(boolean enable) {
       useCustomIntervals_ = enable;
    }
 
+   @Override
    public boolean customTimeIntervalsEnabled() {
       return useCustomIntervals_;
    }
@@ -942,6 +1196,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    /*
     * Returns the summary metadata associated with the most recent acquisition.
     */
+   @Override
    public JSONObject getSummaryMetadata() {
       return summaryMetadata_;
    }
@@ -949,6 +1204,7 @@ public class AcquisitionWrapperEngine implements AcquisitionEngine {
    /*
     * Returns the image cache associated with the most recent acquisition.
     */
+   @Override
    public ImageCache getImageCache() {
       return imageCache_;
    }

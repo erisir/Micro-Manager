@@ -19,52 +19,33 @@
 //
 // AUTHOR:        Nenad Amodaj - Mark I - use CSerial class
 //                Karl Hoover - Mark II - use boost, also simplify handling of terminators
-//
-// CVS:           $Id$
-//
 
-#ifdef WIN32
-   #define WIN32_LEAN_AND_MEAN
-   #include <windows.h>
-   #define snprintf _snprintf 
-#endif
+#include "SerialManager.h"
 
-#ifdef __APPLE__    
+#include "AsioClient.h"
 
-#define BOOST_ASIO_DISABLE_KQUEUE  // suggested to fix "Operation not supported" on OS X
+#include "ModuleInterface.h"
+#include "DeviceUtils.h"
+
+#ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOBSD.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/serial/IOSerialKeys.h>
-#if defined(MAC_OS_X_VERSION_10_3) && (MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_3)
-   #include <IOKit/serial/ioss.h>
-#endif
-#include <IOKit/IOBSD.h>
 #endif
 
-#ifdef linux
+#ifdef __linux__
 #include <dirent.h>
 #endif
 
-#include "../../MMDevice/ModuleInterface.h"
-#include "../../MMDevice/DeviceUtils.h"
-#include "SerialManager.h"
+#include <boost/bind.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <boost/format.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/thread.hpp>
+
+#include <iostream>
 #include <sstream>
-#include <cstdio>
-
-#include <deque> 
-#include <iostream> 
-
-
-#include <boost/bind.hpp> 
-#include <boost/asio.hpp> 
-#include <boost/asio/serial_port.hpp> 
-#include <boost/thread.hpp> 
-#include <boost/lexical_cast.hpp> 
-#include <boost/date_time/posix_time/posix_time_types.hpp> 
-
-
-// serial device implementation class
-#include "AsioClient.h"
 
 
 SerialManager g_serialManager;
@@ -106,25 +87,6 @@ const char* g_Parity_Even = "Even";
 const char* g_Parity_Mark = "Mark";
 const char* g_Parity_Space = "Space";
 
-#ifdef WIN32
-#include <time.h>
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-
-   	case DLL_THREAD_ATTACH:
-   	case DLL_THREAD_DETACH:
-   	case DLL_PROCESS_DETACH:
-   		break;
-   	}
-       return TRUE;
-   }
-#endif
 
 /*
  * Tests whether given serial port can be used by opening it
@@ -220,16 +182,16 @@ void SerialPortLister::ListPorts(std::vector<std::string> &availablePorts)
    // Serial devices are instances of class IOSerialBSDClient          
    classesToMatch = IOServiceMatching(kIOSerialBSDServiceValue); 
    if (classesToMatch == NULL) {                                 
-       printf("IOServiceMatching returned a NULL dictionary.\n");  
-   } else {                                                   
+      std::cerr << "IOServiceMatching returned a NULL dictionary.\n";
+   } else {
        CFDictionarySetValue(classesToMatch,                         
                            CFSTR(kIOSerialBSDTypeKey),        
                            CFSTR(kIOSerialBSDAllTypes));   
    }
    kernResult = IOServiceGetMatchingServices(kIOMasterPortDefault, classesToMatch, &serialPortIterator);
    if (KERN_SUCCESS != kernResult) {
-      printf("IOServiceGetMatchingServices returned %d\n", kernResult);
-   }                           
+      std::cerr << "IOServiceGetMatchingServices returned " << kernResult << "\n";
+   }
                                                                         
    // Given an iterator across a set of modems, return the BSD path to the first one.
    // If no modems are found the path name is set to an empty string.            
@@ -306,7 +268,7 @@ MODULE_API void InitializeModuleData()
       /*  work-around for spurious duplicate device names on OS X
       if( std::string::npos == (*it).find("KeySerial"))
       */
-           AddAvailableDeviceName((*it).c_str(), "Serial communication port");
+         RegisterDevice((*it).c_str(), MM::SerialDevice, "Serial communication port");
       it++;
    }
 
@@ -386,17 +348,16 @@ void SerialManager::DestroyPort(MM::Device* port)
 }
 
 SerialPort::SerialPort(const char* portName) :
-   refCount_(0),
-   pService_(0),
-   pPort_(0),
-   pThread_(0),
-   busy_(false),
    initialized_(false),
-   portTimeoutMs_(2000.0),
+   busy_(false),
    answerTimeoutMs_(500),
+   refCount_(0),
    transmitCharWaitMs_(0.0),
    stopBits_(g_StopBits_1),
    parity_(g_Parity_None),
+   pService_(0),
+   pPort_(0),
+   pThread_(0),
    verbose_(true)
 {
 
@@ -433,7 +394,6 @@ SerialPort::SerialPort(const char* portName) :
    AddAllowedValue(MM::g_Keyword_BaudRate, g_Baud_128000, (long)128000);
    AddAllowedValue(MM::g_Keyword_BaudRate, g_Baud_230400, (long)230400);
    AddAllowedValue(MM::g_Keyword_BaudRate, g_Baud_460800, (long)460800);
-   AddAllowedValue(MM::g_Keyword_BaudRate, g_Baud_500000, (long)500000);
    AddAllowedValue(MM::g_Keyword_BaudRate, g_Baud_500000, (long)500000);
    AddAllowedValue(MM::g_Keyword_BaudRate, g_Baud_921600, (long)921600);
 
@@ -527,22 +487,48 @@ int SerialPort::Initialize()
 
    try
    {
-      pPort_ = new AsioClient (*pService_, boost::lexical_cast<unsigned int>(baud), this->portName_,
-          boost::asio::serial_port_base::flow_control::type(handshake),
-          boost::asio::serial_port_base::parity::type(parity),
-          boost::asio::serial_port_base::stop_bits::type(sb),
-          this
-            ); 
+#ifdef _WIN32
+      // On Windows, we create the native port ourselves, instead of letting
+      // Boost.Asio do it. This is in order to work around an incompatibility
+      // between certain USB-serial drivers (some versions of Silicon Labs) and
+      // the manner in which Boost.Asio
+      // (boost::asio::detail::win_iocp_serial_port_service) initializes serial
+      // ports (the bug results in a stackoverflow or an error).
+      HANDLE portHandle;
+      int ret = OpenWin32SerialPort(portName_, portHandle);
+      if (ret != DEVICE_OK)
+      {
+         return ret;
+      }
+
+      pPort_ = new AsioClient(*pService_,
+            this->portName_,
+            portHandle,
+            boost::lexical_cast<unsigned int>(baud),
+            boost::asio::serial_port::flow_control::type(handshake),
+            boost::asio::serial_port::parity::type(parity),
+            boost::asio::serial_port::stop_bits::type(sb),
+            this);
+#else
+      pPort_ = new AsioClient(*pService_,
+            boost::lexical_cast<unsigned int>(baud),
+            this->portName_,
+            boost::asio::serial_port::flow_control::type(handshake),
+            boost::asio::serial_port::parity::type(parity),
+            boost::asio::serial_port::stop_bits::type(sb),
+            this);
+#endif
    }
-   catch( std::exception& what)
+   catch (std::exception& e)
    {
-      LogMessage(what.what(),false);
+      LogMessage(e.what());
       return DEVICE_ERR;
    }
 
    try
    {
-      pThread_ = new boost::thread(boost::bind(&boost::asio::io_service::run, pService_)); 
+      pThread_ = new boost::thread(boost::bind(
+               &boost::asio::io_service::run, pService_));
    }
    catch(std::exception& what)
    {
@@ -558,24 +544,102 @@ int SerialPort::Initialize()
    return DEVICE_OK;
 }
 
+#ifdef _WIN32
+int SerialPort::OpenWin32SerialPort(const std::string& portName,
+      HANDLE& portHandle)
+{
+   std::string portPath = portName[0] == '\\' ?
+      portName : "\\\\.\\" + portName;
+
+   portHandle = CreateFileA(portPath.c_str(),
+         GENERIC_READ | GENERIC_WRITE, 0, 0,
+         OPEN_EXISTING, FILE_FLAG_OVERLAPPED, 0);
+   if (portHandle == INVALID_HANDLE_VALUE)
+   {
+      DWORD err = GetLastError();
+      LogMessage(("Failed to open serial port " + portPath + ": "
+            "CreateFileA() returned Windows system error code " +
+            boost::lexical_cast<std::string>(err)).c_str());
+      return DEVICE_ERR;
+   }
+
+   DCB dcb;
+   memset(&dcb, 0, sizeof(DCB));
+   dcb.DCBlength = sizeof(DCB);
+   if (!GetCommState(portHandle, &dcb))
+   {
+      DWORD err = GetLastError();
+      LogMessage(("Failed to read serial port parameters: "
+            "GetCommState() returned Windows system error code " +
+            boost::lexical_cast<std::string>(err)).c_str());
+      CloseHandle(portHandle);
+      return DEVICE_ERR;
+   }
+
+   dcb.fBinary = TRUE;
+   dcb.fDsrSensitivity = FALSE;
+   dcb.fNull = FALSE;
+   dcb.fAbortOnError = FALSE;
+
+   // The following lines work around crashes caused by invalid or incorrect
+   // values returned by some serial port drivers (some versions of Silicon
+   // Labs USB-serial drivers).
+   if (dcb.XonLim > 4096)
+   {
+      dcb.XonLim = 2048;
+   }
+   if (dcb.XoffLim > 4096)
+   {
+      dcb.XoffLim = 512;
+   }
+   dcb.ByteSize = 8;
+   dcb.BaudRate = CBR_9600;
+   // End of workaround settings.
+
+   if (!SetCommState(portHandle, &dcb))
+   {
+      DWORD err = GetLastError();
+      LogMessage(("Failed to set serial port parameters: "
+            "SetCommState() returned Windows system error code " +
+            boost::lexical_cast<std::string>(err)).c_str());
+      CloseHandle(portHandle);
+      return DEVICE_ERR;
+   }
+
+   COMMTIMEOUTS timeouts;
+   memset(&timeouts, 0, sizeof(timeouts));
+   timeouts.ReadIntervalTimeout = 1;
+   if (!SetCommTimeouts(portHandle, &timeouts))
+   {
+      DWORD err = GetLastError();
+      LogMessage(("Failed to set serial port parameters: "
+            "SetCommTimeouts() returned Windows system error code " +
+            boost::lexical_cast<std::string>(err)).c_str());
+      CloseHandle(portHandle);
+      return DEVICE_ERR;
+   }
+
+   return DEVICE_OK;
+}
+#endif // _WIN32
+
 int SerialPort::Shutdown()
 {
    if (!initialized_)
       return DEVICE_OK;
 
-   do
+   if( 0 != pPort_)
    {
-      if( 0 != pPort_)
-      {
-         pPort_->ShutDownInProgress(true);
-         CDeviceUtils::SleepMs(100);
-         pPort_->Close();
-      }
-   }while(bfalse_s);
+      pPort_->ShutDownInProgress(true);
+      CDeviceUtils::SleepMs(100);
+      pPort_->Close();
+   }
+
    if( 0 != pThread_)
    {
       CDeviceUtils::SleepMs(100);
-      if (!pThread_->timed_join(boost::posix_time::millisec(100) )) {
+      if (!pThread_->timed_join(boost::posix_time::millisec(1000) )) {
+         LogMessage("Failed to cleanly close port (thread join timed out)");
          pThread_->detach();
          g_BlackListedPorts.push_back(portName_);
       }
@@ -603,33 +667,30 @@ int SerialPort::SetCommand(const char* command, const char* term)
    if (!initialized_)
       return ERR_PORT_NOTINITIALIZED;
 
-   int retv = DEVICE_OK;
    std::string sendText(command);
    if (term != 0)
       sendText += term;
 
-   // send characters one by one to accomodate slow devices
-   size_t written = 0;
+   if (sendText.size() == 0) {
+      return DEVICE_OK;
+   }
 
    if (transmitCharWaitMs_ < 0.001)
    {
-      pPort_->WriteCharactersAsynchronously(sendText.c_str(), (int) sendText.length() );
-      written = sendText.length();
+      pPort_->WriteCharactersAsynchronously(sendText.c_str(), sendText.length());
    }
    else
    {
-      for( std::string::iterator jj = sendText.begin(); jj != sendText.end(); ++jj)
+      for (std::string::iterator jj = sendText.begin(); jj != sendText.end(); ++jj)
       {
-         const MM::MMTime maxTime (5, 0);
-         MM::MMTime startTime (GetCurrentMMTime());
-         pPort_->WriteOneCharacterAsynchronously(*jj );
-         CDeviceUtils::SleepMs((long)(0.5+transmitCharWaitMs_));         
-         ++written;
+         pPort_->WriteOneCharacterAsynchronously(*jj);
+         CDeviceUtils::SleepMs(static_cast<long>(0.5 + transmitCharWaitMs_));
       }
    }
-   if( DEVICE_OK == retv)
-      LogMessage( (std::string("SetCommand -> ") + sendText.substr(0,written)).c_str(), true);
-   return retv;
+
+   LogAsciiCommunication("SetCommand", false, sendText);
+
+   return DEVICE_OK;
 }
 
 int SerialPort::GetAnswer(char* answer, unsigned bufLen, const char* term)
@@ -645,27 +706,13 @@ int SerialPort::GetAnswer(char* answer, unsigned bufLen, const char* term)
    std::ostringstream logMsg;
    unsigned long answerOffset = 0;
    memset(answer,0,bufLen);
-   char theData;
+   char theData = 0;
 
    MM::MMTime startTime = GetCurrentMMTime();
-   MM::MMTime retryWarnTime(0);
    MM::MMTime answerTimeout(answerTimeoutMs_ * 1000.0);
-   // warn of retries every 200 ms.
-   MM::MMTime retryWarnInterval(0, 200000);
-   int retryCounter = 0;
+   MM::MMTime nonTerminatedAnswerTimeout(5.0 * 1000.0); // For bug-compatibility
    while ((GetCurrentMMTime() - startTime)  < answerTimeout)
    {
-      MM::MMTime tNow = GetCurrentMMTime();
-      if ( retryWarnInterval < tNow - retryWarnTime)
-      {
-         retryWarnTime = tNow;
-         if( 1 < retryCounter)
-         {
-            LogMessage((std::string("GetAnswer # retries = ") + 
-                boost::lexical_cast<std::string,int>(retryCounter)).c_str(), true);
-         }
-        retryCounter++;
-      }
       bool anyRead =  pPort_->ReadOneCharacter(theData);        
       if( anyRead )
       {
@@ -681,44 +728,43 @@ int SerialPort::GetAnswer(char* answer, unsigned bufLen, const char* term)
       {
          //Yield to other threads:
          CDeviceUtils::SleepMs(1);
-         ++retryCounter;
       }
-      // look for the terminator
-      if( 0 != term)
+
+      // look for the terminator, if any
+      if (term && term[0])
       {
          // check for terminating sequence
          char* termPos = strstr(answer, term);
-         if (termPos != 0)
+         if (termPos != 0) // found the terminator
          {
-            // found the terminator!!
-            // erase the terminator from the answer;
-            for( unsigned int iterm = 1; iterm <= strlen(term); ++iterm)
-            {
-               char *pAnswer = answer + answerOffset - iterm;
-               if( answer <= pAnswer)
-                  pAnswer[0] =  '\0';
-            }
-            if( 2 < retryCounter )
-               LogMessage((std::string("GetAnswer # retries = ") + 
-                  boost::lexical_cast<std::string,int>(retryCounter)).c_str(), true);
-            LogMessage(( std::string("GetAnswer <- ") + std::string(answer)).c_str(), true);
+            LogAsciiCommunication("GetAnswer", true, answer);
+
+            // erase the terminator from the answer:
+            *termPos = '\0';
+
             return DEVICE_OK;
          }
       }
       else
       {
-         // a formatted answer without a terminator.
-         LogMessage((std::string("GetAnswer without terminator returned after ") + 
-            boost::lexical_cast<std::string,long>((long)((GetCurrentMMTime() - startTime).getMsec())) +
-            std::string("msec")).c_str(), true);
-         if( 4 < retryCounter)
+         // XXX Shouldn't it be an error to not have a terminator?
+         // TODO Make it a precondition check (immediate error) once we've made
+         // sure that no device adapter calls us without a terminator. For now,
+         // keep the behavior for the sake of bug-compatibility.
+
+         MM::MMTime elapsed = GetCurrentMMTime() - startTime;
+         if (elapsed > nonTerminatedAnswerTimeout)
          {
-            LogMessage(( std::string("GetAnswer <- ") + std::string(answer)).c_str(), true);
+            LogAsciiCommunication("GetAnswer", true, answer);
+            long millisecs = static_cast<long>(elapsed.getMsec());
+            LogMessage(("GetAnswer without terminator returning after " +
+                     boost::lexical_cast<std::string>(millisecs) +
+                     "msec").c_str(), true);
             return DEVICE_OK;
          }
       }
+   }
 
-   } // end while
    LogMessage("TERM_TIMEOUT error occured!");
    return ERR_TERM_TIMEOUT;
 }
@@ -728,31 +774,27 @@ int SerialPort::Write(const unsigned char* buf, unsigned long bufLen)
    if (!initialized_)
       return ERR_PORT_NOTINITIALIZED;
 
-   int ret = DEVICE_OK;
-   // send characters one by one to accomodate slow devices
-   std::ostringstream logMsg;
-   unsigned i;
-   for (i=0; i<bufLen; i++)
-   {
-
-      pPort_->WriteOneCharacterAsynchronously(*(buf + i));
-      /*{
-         LogMessage("write error!",false);
-         ret = DEVICE_ERR;
-         break;
-         
-      }*/
-      if( 0.001 < transmitCharWaitMs_)
-         CDeviceUtils::SleepMs((unsigned long)(0.5+transmitCharWaitMs_));
-      logMsg << (int) *(buf + i) << " ";
-   }
-   if( 0 < i)
-   {
-      if (verbose_)
-         LogBinaryMessage(false, buf, i, true);
+   if (bufLen == 0) {
+      return DEVICE_OK;
    }
 
-   return ret;
+   if (transmitCharWaitMs_ < 0.001)
+   {
+      pPort_->WriteCharactersAsynchronously(reinterpret_cast<const char*>(buf), bufLen);
+   }
+   else
+   {
+      for (size_t i = 0; i < bufLen; ++i)
+      {
+         pPort_->WriteOneCharacterAsynchronously(buf[i]);
+         CDeviceUtils::SleepMs(static_cast<long>(0.5 + transmitCharWaitMs_));
+      }
+   }
+
+   if (verbose_)
+      LogBinaryCommunication("Write", false, buf, bufLen);
+
+   return DEVICE_OK;
 }
  
 int SerialPort::Read(unsigned char* buf, unsigned long bufLen, unsigned long& charsRead)
@@ -790,7 +832,7 @@ int SerialPort::Read(unsigned char* buf, unsigned long bufLen, unsigned long& ch
       if( 0 < charsRead)
       {
          if(verbose_)
-            LogBinaryMessage(true, buf, charsRead, true);
+            LogBinaryCommunication("Read", true, buf, charsRead);
       }
    }
    else
@@ -939,42 +981,121 @@ int SerialPort::OnDelayBetweenCharsMs(MM::PropertyBase* pProp, MM::ActionType eA
    return DEVICE_OK;
 }
 
-void SerialPort::LogBinaryMessage( const bool isInput, const unsigned char*const pdata, const int length, bool debugOnly)
+
+// Helper functions for message logging
+// (TODO: Do these have any utility outside of SerialManager?)
+
+// Note: This returns true for ' ' (space).
+static bool ShouldEscape(char ch)
 {
-   std::vector<unsigned char> tmpString;
-   for( const unsigned char* p = pdata; p < pdata+length; ++ p)
-   {
-      tmpString.push_back(*p);
-   }
-   LogBinaryMessage(isInput, tmpString, debugOnly);
+   if (ch >= 0 && std::isgraph(ch))
+      if (std::string("\'\"\\").find(ch) == std::string::npos)
+         return false;
+   return true;
 }
 
-void SerialPort::LogBinaryMessage( const bool isInput, const std::vector<char>& data, bool debugOnly)
+static void PrintEscaped(std::ostream& strm, char ch)
 {
-   std::vector<unsigned char> tmpString;
-   for( std::vector<char>::const_iterator p = data.begin(); p != data.end(); ++ p)
+   switch (ch)
    {
-      tmpString.push_back((unsigned char)*p);
+      // We leave out some less common C escape sequences that are more handy
+      // to read as hex values (\a, \b, \f, \v).
+      case '\'': strm << "\\\'"; break;
+      case '\"': strm << "\\\""; break;
+      case '\\': strm << "\\\\"; break;
+      case '\0': strm << "\\0"; break;
+      case '\n': strm << "\\n"; break;
+      case '\r': strm << "\\r"; break;
+      case '\t': strm << "\\t"; break;
+      default:
+      {
+         // boost::format doesn't work with "%02hhx". Also note that the
+         // reinterpret_cast to unsigned char is necessary to prevent sign
+         // extension.
+         unsigned char byte = *reinterpret_cast<unsigned char*>(&ch);
+         strm << boost::format("\\x%02x") % static_cast<unsigned int>(byte);
+         break;
+      }
    }
-   LogBinaryMessage(isInput, tmpString, debugOnly);
 }
 
-#define DECIMALREPRESENTATIONOFCONTROLCHARACTERS 1
-void SerialPort::LogBinaryMessage( const bool isInput, const std::vector<unsigned char>& data, bool debugOnly)
+static void FormatAsciiContent(std::ostream& strm, const char* begin, const char* end)
 {
-   std::string messs;
-   // input or output
-   messs += (isInput ? "<- " : "-> ");
-   for( std::vector<unsigned char>::const_iterator ii = data.begin(); ii != data.end(); ++ii)
+   // We log ASCII data in an unambiguous format free of control characters and
+   // spaces. The format used is a valid C escaped string (without the
+   // surrounding quotes), with the exception of '?' not being escaped even if
+   // it constitutes part of a trigraph.
+
+   // We want to escape leading and trailing spaces, but not internal spaces,
+   // for maximum readability and zero ambiguity.
+   bool hasEncounteredNonSpace = false;
+   unsigned pendingSpaces = 0;
+
+   for (const char* p = begin; p != end; ++p)
    {
-#ifndef DECIMALREPRESENTATIONOFCONTROLCHARACTERS
-      // caret representation:
-            messs +=   ( 31 < *ii) ? boost::lexical_cast<std::string, unsigned char>(*ii) : 
-         ("^" + boost::lexical_cast<std::string, unsigned char>(64+*ii));
-#else
-      messs +=   ( 31 < *ii)    ?  boost::lexical_cast<std::string, unsigned char>(*ii) : 
-         ("<" + boost::lexical_cast<std::string, unsigned short>((unsigned short)*ii) + ">");
-#endif
+      if (*p == ' ')
+      {
+         if (!hasEncounteredNonSpace)
+            PrintEscaped(strm, ' '); // Leading space
+         else
+            ++pendingSpaces; // Don't know yet if internal or trailing space
+      }
+      else // *p != ' '
+      {
+         if (!hasEncounteredNonSpace)
+            hasEncounteredNonSpace = true;
+         else
+         {
+            while (pendingSpaces > 0)
+            {
+               strm << ' '; // Internal space
+               --pendingSpaces;
+            }
+         }
+
+         if (ShouldEscape(*p))
+            PrintEscaped(strm, *p);
+         else
+            strm << *p;
+      }
    }
-   LogMessage(messs.c_str(),debugOnly);
+
+   while (pendingSpaces > 0)
+   {
+      PrintEscaped(strm, ' '); // Trailing space
+      --pendingSpaces;
+   }
+}
+
+static void FormatBinaryContent(std::ostream& strm, const unsigned char* begin, const unsigned char* end)
+{
+   for (const unsigned char* p = begin; p != end; ++p)
+   {
+      if (p != begin)
+         strm << ' ';
+      strm << boost::format("%02x") % static_cast<unsigned int>(*p);
+   }
+}
+
+static void PrintCommunicationPrefix(std::ostream& strm, const char* prefix, bool isInput)
+{
+   strm << prefix;
+   strm << (isInput ? " <- " : " -> ");
+}
+
+void SerialPort::LogAsciiCommunication(const char* prefix, bool isInput, const std::string& data)
+{
+   std::ostringstream oss;
+   PrintCommunicationPrefix(oss, prefix, isInput);
+   FormatAsciiContent(oss, data.c_str(), data.c_str() + data.size());
+   LogMessage(oss.str().c_str(), true);
+}
+
+void SerialPort::LogBinaryCommunication(const char* prefix, bool isInput, const unsigned char* pdata, std::size_t length)
+{
+   std::ostringstream oss;
+   PrintCommunicationPrefix(oss, prefix, isInput);
+   oss << "(hex) ";
+   FormatBinaryContent(oss, pdata, pdata + length);
+   LogMessage(oss.str().c_str(), true);
 }

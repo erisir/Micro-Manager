@@ -30,22 +30,24 @@ import java.awt.geom.Point2D;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import mmcorej.CMMCore;
 
+import org.micromanager.api.MultiStagePosition;
+import org.micromanager.api.PositionList;
 import org.micromanager.api.ScriptInterface;
-import org.micromanager.navigation.PositionList;
-import org.micromanager.navigation.MultiStagePosition;
+import org.micromanager.api.StagePosition;
 //import org.micromanager.slideexplorer.SlideExplorer.CoordinateMap;
 import org.micromanager.utils.MMScriptException;
 
 import ij.gui.Roi;
 import ij.gui.ShapeRoi;
+
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
-import org.micromanager.navigation.StagePosition;
+
 import org.micromanager.utils.JavaUtils;
 import org.micromanager.utils.ReportingUtils;
 
@@ -111,7 +113,7 @@ public class RoiManager extends ij.plugin.frame.RoiManager{
         ArrayList<Point> minAcqTraj = new ArrayList<Point>();
         for (Point pt : acqTraj) {
             Roi tileRoi = new Roi(pt.x-frameDimensions.width/2, pt.y-frameDimensions.height/2, frameDimensions.width, frameDimensions.height);
-            Rectangle br = (new ShapeRoi(acqRoiOnMap)).and(new ShapeRoi(tileRoi)).getBoundingRect();
+            Rectangle br = (new ShapeRoi(acqRoiOnMap)).and(new ShapeRoi(tileRoi)).getBounds();
             if (br.width > 0 || br.height > 0) {
                 minAcqTraj.add(pt);
             }
@@ -169,7 +171,7 @@ public class RoiManager extends ij.plugin.frame.RoiManager{
     public ArrayList<Point> generateRoiTrajectory(Roi acqRoiOffScreen) {
         Rectangle frameRect = slideexplorerCoords_.offScreenToRoiRect(new Point(0,0));
         Dimension frameDimensions = new Dimension(frameRect.width, frameRect.height);
-		Rectangle acqRect = acqRoiOffScreen.getBoundingRect();
+		Rectangle acqRect = acqRoiOffScreen.getBounds();
         System.out.println("acqRect: "+acqRect);
 
         ArrayList<Point> latticeInRectangle = getFrameCentersOnRoiBoundingRect(acqRect, frameDimensions);
@@ -244,7 +246,7 @@ public class RoiManager extends ij.plugin.frame.RoiManager{
 		System.out.println("Position list: ");
 		for (int i=0;i<posList.getNumberOfPositions();++i) {
 			MultiStagePosition pos = posList.getPosition(i);
-			System.out.println("    ["+pos.getX() +","+ pos.getY()+"]");
+			System.out.println("    ["+pos.get(0).x +","+ pos.get(0).y +"]");
 		}
 	}
 

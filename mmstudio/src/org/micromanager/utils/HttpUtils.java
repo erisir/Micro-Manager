@@ -1,7 +1,4 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
+
 package org.micromanager.utils;
 
 import java.io.DataOutputStream;
@@ -18,7 +15,7 @@ import java.net.URL;
 public class HttpUtils {
 
     public void upload(URL url, File f) throws Exception {
-        final String boundary = new String(HttpBoundaryString());
+        final String boundary = HttpBoundaryString();
         HttpURLConnection anURLConnection = (HttpURLConnection) url.openConnection();
         anURLConnection.setDoOutput(true);
         anURLConnection.setDoInput(true);

@@ -19,7 +19,7 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
 // NOTE:          This adapter is unfinished and does not work.
-// CVS:           $Id$
+// CVS:           $Id: StanfordPhotonics.h 2 2007-02-27 23:33:17Z nenad $
 //
 #ifndef _STANFORD_PHOTONICS_H_
 #define _STANFORD_PHOTONICS_H_

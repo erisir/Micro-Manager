@@ -1,10 +1,15 @@
-package edu.valelab.GaussianFit;
+package edu.valelab.gaussianfit;
 
 
+import edu.valelab.gaussianfit.algorithm.GaussianFit;
+import edu.valelab.gaussianfit.data.GaussianInfo;
+import edu.valelab.gaussianfit.data.SpotData;
+import edu.valelab.gaussianfit.fitting.ZCalibrator;
 import ij.ImagePlus;
 import ij.process.ImageProcessor;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import org.micromanager.utils.ReportingUtils;
 
 
 /**
@@ -17,8 +22,8 @@ public class GaussianFitStackThread extends GaussianInfo implements Runnable {
    boolean stopNow_ = false;
 
 
-   public GaussianFitStackThread(BlockingQueue<GaussianSpotData> sourceList,
-           List<GaussianSpotData> resultList, ImagePlus siPlus, int halfSize,
+   public GaussianFitStackThread(BlockingQueue<SpotData> sourceList,
+           List<SpotData> resultList, ImagePlus siPlus, int halfSize,
            int shape, int fitMode) {
       siPlus_ = siPlus;
       halfSize_ = halfSize;
@@ -47,13 +52,14 @@ public class GaussianFitStackThread extends GaussianInfo implements Runnable {
          t_.join();
    }
 
+   @Override
    public void run() {
       GaussianFit gs_ = new GaussianFit(shape_, fitMode_);
       double cPCF = photonConversionFactor_ / gain_;
       ZCalibrator zc = DataCollectionForm.zc_;
 
       while (!stopNow_) {
-         GaussianSpotData spot;
+         SpotData spot;
          synchronized (gfsLock_) {
             try {
                spot = sourceList_.take();
@@ -71,9 +77,9 @@ public class GaussianFitStackThread extends GaussianInfo implements Runnable {
          try {
             // Note: the implementation will try to return a cached version of the ImageProcessor
             ImageProcessor ip = spot.getSpotProcessor(siPlus_, halfSize_);
-            double[] paramsOut = gs_.doGaussianFit(ip, maxIterations_);
+            double[] paramsOut = gs_.dogaussianfit(ip, maxIterations_);
             // Note that the copy constructor will not copy pixel data, so we loose those when spot goes out of scope
-            GaussianSpotData spotData = new GaussianSpotData(spot);
+            SpotData spotData = new SpotData(spot);
             double sx = 0;
             double sy = 0;
             double a = 1;
@@ -123,8 +129,11 @@ public class GaussianFitStackThread extends GaussianInfo implements Runnable {
 
             }
          } catch (Exception ex) {
-            ij.IJ.log("Thread run out of memory  " + Thread.currentThread().getName());
-            ij.IJ.error("Fitter out of memory", "Out of memory error");
+            ReportingUtils.logError(ex);
+            ReportingUtils.logError("Thread run out of memory  " + 
+                    Thread.currentThread().getName());
+            ReportingUtils.showError("Fitter out of memory.\n" +
+                    "Out of memory error");
             return;
          }
       }

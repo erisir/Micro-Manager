@@ -26,27 +26,10 @@
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#pragma warning(disable : 4996) // disable warning for deperecated CRT functions on Windows 
 #endif
 
 #include "../../MMDevice/ModuleInterface.h"
 #include "PVCAMAdapter.h"
-
-#ifdef WIN32
-#include "../../../3rdpartypublic/Photometrics/PVCAM/SDK/Headers/master.h"
-#include "../../../3rdpartypublic/Photometrics/PVCAM/SDK/Headers/pvcam.h"
-#endif
-
-#ifdef __APPLE__
-#define __mac_os_x
-#include <PVCAM/master.h>
-#include <PVCAM/pvcam.h>
-#endif
-
-#ifdef linux
-#include <pvcam/master.h>
-#include <pvcam/pvcam.h>
-#endif
 
 #include <string>
 #include <sstream>
@@ -71,38 +54,16 @@ const char* g_ReadoutPort_Multiplier = "EM";
 const char* g_ReadoutPort_LowNoise = "LowNoise";
 const char* g_ReadoutPort_HighCap = "HighCap";
 
-// windows DLL entry code
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-      break;
-  	   case DLL_THREAD_ATTACH:
-      break;
-   	case DLL_THREAD_DETACH:
-      break;
-   	case DLL_PROCESS_DETACH:
-   	break;
-   	}
-       return TRUE;
-   }
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceUniversal_1, "Universal PVCAM interface - camera slot 1");
-   AddAvailableDeviceName(g_DeviceUniversal_2, "Universal PVCAM interface - camera slot 2");
-   AddAvailableDeviceName(g_DeviceUniversal_3, "Universal PVCAM interface - camera slot 3");
-   AddAvailableDeviceName(g_DeviceUniversal_4, "Universal PVCAM interface - camera slot 4");
+   RegisterDevice(g_DeviceUniversal_1, MM::CameraDevice, "Universal PVCAM interface - camera slot 1");
+   RegisterDevice(g_DeviceUniversal_2, MM::CameraDevice, "Universal PVCAM interface - camera slot 2");
+   RegisterDevice(g_DeviceUniversal_3, MM::CameraDevice, "Universal PVCAM interface - camera slot 3");
+   RegisterDevice(g_DeviceUniversal_4, MM::CameraDevice, "Universal PVCAM interface - camera slot 4");
 }
 
 MODULE_API void DeleteDevice(MM::Device* pDevice)

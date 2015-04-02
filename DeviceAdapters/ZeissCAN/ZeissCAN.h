@@ -120,9 +120,9 @@ class ZeissScope : public HubBase<ZeissScope>
       int DetectInstalledDevices();
 
    private:
-      double answerTimeoutMs_;
       bool initialized_;
       bool IsMCU28Present();
+      int GetMCU28Version(std::string& ver);
       std::vector<std::string> peripherals_;
       std::map<int,std::string>* pTurretIDMap_;
 
@@ -164,6 +164,7 @@ private:
    unsigned shutterNr_;
    bool external_;
    bool state_;
+   MM::MMTime changedTime_;
 };
 
 class ZeissShutterMF : public CShutterBase<ZeissShutterMF>
@@ -248,8 +249,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool GetPresence(bool& present);
    bool initialized_;
    std::string name_;
@@ -278,8 +279,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool initialized_;
    std::string name_;
    long pos_;
@@ -307,8 +308,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool initialized_;
    std::string name_;
    long pos_;
@@ -336,8 +337,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool GetPresence(bool& present);
    bool initialized_;
    std::string name_;
@@ -367,8 +368,8 @@ public:
    int OnAperture(MM::PropertyBase *pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool GetPresence(bool& present);
 
    int SetAperture(long aperture);
@@ -404,8 +405,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool GetPresence(bool& present);
    bool initialized_;
    std::string name_;
@@ -434,8 +435,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool GetPresence(bool& present);
    bool initialized_;
    std::string name_;
@@ -464,8 +465,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool GetPresence(bool& present);
    bool initialized_;
    std::string name_;
@@ -517,7 +518,6 @@ private:
    double stepSize_um_;
    std::string focusFirmware_;
    std::string firmware_;
-   bool busy_;
    bool initialized_;
    double lowerLimit_;
    double upperLimit_;
@@ -549,8 +549,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int SetPosition(int position);
-   int GetPosition(int &position);
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
    bool GetPresence(bool& present);
    int wheelNr_;
    bool initialized_;
@@ -590,12 +590,12 @@ public:
    // ----------------
    int OnX(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnY(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnStepSizeUm(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
    int GetXYFirmwareVersion();
    std::string xyFirmware_;
    std::string firmware_;
-   bool busy_;
    bool initialized_;
    double stepSizeUm_;
 };
@@ -651,7 +651,6 @@ private:
    double stepSize_um_;
    std::string focusFirmware_;
    std::string firmware_;
-   bool busy_;
    bool initialized_;
    double lowerLimit_;
    double upperLimit_;
@@ -661,4 +660,38 @@ private:
    } ZmStatFlags;
 
 };
+
+// Axiophot2 Photomodule
+
+class PhotoModule : public CStateDeviceBase<PhotoModule>
+{
+public:
+   PhotoModule();
+   ~PhotoModule();
+
+   // MMDevice API
+   // ------------
+   int Initialize();
+   int Shutdown();
+    
+   void GetName(char* pszName) const;
+   bool Busy();
+   unsigned long GetNumberOfPositions()const {return numPos_;};
+
+   // action interface
+   // ---------------
+   int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnUpperPrism(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+private:
+   int SetTurretPosition(int position);
+   int GetTurretPosition(int &position);
+   int SetUpperPrism(int position);
+   bool initialized_;
+   std::string name_;
+   long pos_;
+   long upperPrismPos_;
+   int numPos_;
+};
+      
 #endif // _ZeissCAN_H_

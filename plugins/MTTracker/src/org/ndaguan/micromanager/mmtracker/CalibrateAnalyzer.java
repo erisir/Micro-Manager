@@ -1,7 +1,8 @@
 package org.ndaguan.micromanager.mmtracker;
 import mmcorej.TaggedImage;
 
-import org.micromanager.MMStudioMainFrame;
+
+import org.micromanager.MMStudio;
 import org.micromanager.acquisition.TaggedImageQueue;
 import org.micromanager.api.TaggedImageAnalyzer;
 
@@ -34,7 +35,7 @@ public class CalibrateAnalyzer extends TaggedImageAnalyzer {
 		try {
 			pos = Function.getInstance().getStagePosition();//new double[]{kernel_.xPosProfiles[MMT.calibrateIndex_],kernel_.yPosProfiles[MMT.calibrateIndex_],kernel_.zPosProfiles[MMT.calibrateIndex_]};
 			boolean ret = kernel_.calibration(taggedImage.pix, MMT.calibrateIndex_,pos[0],pos[1],pos[2]);
-			Function.getInstance().reDraw(MMStudioMainFrame.SIMPLE_ACQ,MMT.calibrateIndex_, true,true);
+			Function.getInstance().reDraw(MMStudio.SIMPLE_ACQ,MMT.calibrateIndex_, true,true);
 			if(!ret) 
 			{
 				MMT.isCalibrationRunning_ = false;

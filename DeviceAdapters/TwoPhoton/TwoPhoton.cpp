@@ -62,31 +62,8 @@ const char* g_PropertyColor_R = "R";
 const char* g_PropertyColor_G = "G";
 const char* g_PropertyColor_B = "B";
 
-// Mai Tai device
-extern const char* g_MaiTaiDeviceName;
-extern const char* g_DemoLaserDeviceName;
 extern const char* g_VShutterDeviceName;
 
-
-
-// windows DLL entry code
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                      DWORD  ul_reason_for_call, 
-                      LPVOID /*lpReserved*/
-                      )
-{
-   switch (ul_reason_for_call)
-   {
-   case DLL_PROCESS_ATTACH:
-   case DLL_THREAD_ATTACH:
-   case DLL_THREAD_DETACH:
-   case DLL_PROCESS_DETACH:
-      break;
-   }
-   return TRUE;
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
@@ -94,12 +71,10 @@ BOOL APIENTRY DllMain( HANDLE /*hModule*/,
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_BitFlowCameraDeviceName, "BitFlow frame grabber");
-   AddAvailableDeviceName(g_BitFlowCameraDeviceName2, "BitFlow dual frame grabber");
-   AddAvailableDeviceName(g_MaiTaiDeviceName, "Mai Tai laser");
-   AddAvailableDeviceName(g_DemoLaserDeviceName, "Demo laser");
-   AddAvailableDeviceName(g_VShutterDeviceName, "Virtual dual shutter");
-   // AddAvailableDeviceName(g_TwoPhotonFilterDeviceName, "2-photon filter wheel");
+   RegisterDevice(g_BitFlowCameraDeviceName, MM::CameraDevice, "BitFlow frame grabber");
+   RegisterDevice(g_BitFlowCameraDeviceName2, MM::CameraDevice, "BitFlow dual frame grabber");
+   RegisterDevice(g_VShutterDeviceName, MM::ShutterDevice, "Virtual dual shutter");
+   // RegisterDevice(g_TwoPhotonFilterDeviceName, MM::StateDevice, "2-photon filter wheel");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -117,16 +92,6 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
    {
       // create camera
       return new BitFlowCamera(true);
-   }
-   else if (strcmp(deviceName, g_MaiTaiDeviceName) == 0)
-   {
-      // create claser
-      return new MaiTai();
-   }
-   else if (strcmp(deviceName, g_DemoLaserDeviceName) == 0)
-   {
-      // create demo laser
-      return new DemoLaser();
    }
    else if (strcmp(deviceName, g_VShutterDeviceName) == 0)
    {
@@ -178,7 +143,7 @@ BitFlowCamera::BitFlowCamera(bool dual) :
    bfDev_(dual)
 {
 	if (dual)
-		numChannels_ = 7;
+		numChannels_ = 6;
 	else
 		numChannels_ = 4;
 
@@ -571,6 +536,7 @@ int BitFlowCamera::SnapImage()
 
       for (int k=0; k<expNumFrames_; k++)
       {
+		  GetCoreCallback()->LogMessage(this,CDeviceUtils::ConvertToString(k),true);
          unsigned char* buf = const_cast<unsigned char*>(bfDev_.GetImageCont());
          
          if (buf == 0)
@@ -581,9 +547,7 @@ int BitFlowCamera::SnapImage()
             bfDev_.StopSequence();
             return ERR_SNAP_FAILED;
          }
-         
          unsigned bufLen = bfDev_.GetBufferSize();
-         
          MM::MMTime startProcessingTime = GetCoreCallback()->GetCurrentMMTime();
          if (deinterlace_)
          {
@@ -600,10 +564,8 @@ int BitFlowCamera::SnapImage()
       }
       bfDev_.StopSequence(); //stop streaming mode
       MM::MMTime startProcessingTime = GetCoreCallback()->GetCurrentMMTime();
-      
       for (unsigned i=0; i<img_.size(); i++)
          img_[i].Scale(1.0/expNumFrames_); // average
-
       processingTime = processingTime + (GetCoreCallback()->GetCurrentMMTime() - startProcessingTime);
    }
 
@@ -1083,8 +1045,8 @@ int BitFlowCamera::OnMode(MM::PropertyBase* pProp, MM::ActionType eAct)
             // new mode is hardware
             if (!bfDev_.isInitialized())
             {
-               int ret = bfDev_.Initialize();
-               if (ret != DEVICE_OK)
+				int ret = bfDev_.Initialize(this, this->GetCoreCallback());
+			   if (ret != DEVICE_OK)
                {
                   demoMode_ = true; // return to demo
                   return ret;

@@ -17,7 +17,7 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
+// CVS:           $Id: Property.h 12694 2014-01-30 00:24:40Z mark $
 //
 
 #ifndef _MMPROPERTY_H_
@@ -29,10 +29,6 @@
 #include <cstdlib>
 #include <vector>
 #include <map>
-
-#ifdef WIN32
-#pragma warning(disable : 4996) // disable warning for deprecated CRT functions on Windows 
-#endif
 
 namespace MM {
 
@@ -287,14 +283,6 @@ public:
       return DEVICE_OK;  // Return an error instead???
    }
 
-   // virtual API
-   // ~~~~~~~~~~~
-   virtual Property* Clone() const = 0;
-
-   // operators
-   // ~~~~~~~~~
-   Property& operator=(const Property& rhs);
-
 protected:
    bool readOnly_;
    ActionFunctor* fpAction_;
@@ -303,11 +291,14 @@ protected:
    bool initStatus_;
    bool limits_;
    bool sequenceable_;
+   long sequenceMaxSize_;
+   std::vector<std::string> sequenceEvents_;
    double lowerLimit_;
    double upperLimit_;
-   long sequenceMaxSize_;
    std::map<std::string, long> values_; // allowed values
-   std::vector<std::string> sequenceEvents_;
+
+private:
+   Property& operator=(const Property&);
 };
 
 /**
@@ -332,12 +323,9 @@ public:
 
    bool SetLimits(double /*lowerLimit*/, double /*upperLimit*/) {return false;}
 
-   Property* Clone() const;
-
-   // operators
-   StringProperty& operator=(const StringProperty& rhs);
-
 private:
+   StringProperty& operator=(const StringProperty&);
+
    std::string value_;
 };
 
@@ -347,8 +335,15 @@ private:
 class FloatProperty : public Property
 {
 public:
-   FloatProperty(): Property(), value_(0.0), decimalPlaces_(4) {}      
-   virtual ~FloatProperty() {};
+   FloatProperty(): Property(), value_(0.0), decimalPlaces_(4)
+   {
+      int rms = 1;
+      for (int i = 0; i < decimalPlaces_; ++i)
+         rms *= 10;
+      reciprocalMinimalStep_ = rms;
+   }
+
+   virtual ~FloatProperty() {}
             
    PropertyType GetType() {return Float;}
    
@@ -361,15 +356,17 @@ public:
    bool Get(long& val) const ;
    bool Get(std::string& val) const;
 
-   Property* Clone() const;
-
-   // operators
-   FloatProperty& operator=(const FloatProperty& rhs);
+   bool SetLimits(double lowerLimit, double upperLimit);
 
 private:
+   FloatProperty& operator=(const FloatProperty&);
+
    double Truncate(double dVal);
+   double TruncateDown(double dVal);
+   double TruncateUp(double dVal);
    double value_;
    int decimalPlaces_;
+   double reciprocalMinimalStep_;
 };
 
 /**
@@ -392,12 +389,9 @@ public:
    bool Get(long& val) const ;
    bool Get(std::string& val) const;
 
-   Property* Clone() const;
-
-   // operators
-   IntegerProperty& operator=(const IntegerProperty& rhs);
-
 private:
+   IntegerProperty& operator=(const IntegerProperty&);
+
    long value_;
 };
 
@@ -410,7 +404,7 @@ public:
    PropertyCollection();
    ~PropertyCollection();
 
-   int CreateProperty(const char* name, const char* value, PropertyType eType, bool bReadOnly, ActionFunctor* pAct=0, bool initStatus=false);
+   int CreateProperty(const char* name, const char* value, PropertyType eType, bool bReadOnly, ActionFunctor* pAct=0, bool isPreInitProperty=false);
    int RegisterAction(const char* name, ActionFunctor* fpAct);
    int SetAllowedValues(const char* name, std::vector<std::string>& values);
    int ClearAllowedValues(const char* name);

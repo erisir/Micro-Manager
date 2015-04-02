@@ -20,7 +20,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: CoreUtils.h 13408 2014-05-15 00:22:55Z mark $
 //
 
 #pragma once
@@ -40,11 +40,61 @@
 #pragma warning( pop )
 #endif
 
+#include <boost/lexical_cast.hpp>
+#include <string>
 
-///////////////////////////////////////////////////////////////////////////////
-// Utility classes
-// ---------------
 
+template <typename T>
+inline std::string ToString(const T& d)
+{ return boost::lexical_cast<std::string>(d); }
+
+template <>
+inline std::string ToString<const char*>(char const* const& d)
+{
+   if (!d) 
+      return "(null)";
+   return d;
+}
+
+template <>
+inline std::string ToString<const MM::DeviceType>(const MM::DeviceType& d)
+{
+   // TODO Any good way to ensure this doesn't get out of sync with the enum
+   // definition?
+   switch (d)
+   {
+      case MM::UnknownType: return "Unknown";
+      case MM::AnyType: return "Any";
+      case MM::CameraDevice: return "Camera";
+      case MM::ShutterDevice: return "Shutter";
+      case MM::StateDevice: return "State";
+      case MM::StageDevice: return "Stage";
+      case MM::XYStageDevice: return "XYStageDevice";
+      case MM::SerialDevice: return "Serial";
+      case MM::GenericDevice: return "Generic";
+      case MM::AutoFocusDevice: return "Autofocus";
+      case MM::CoreDevice: return "Core";
+      case MM::ImageProcessorDevice: return "ImageProcessor";
+      case MM::SignalIODevice: return "SignalIO";
+      case MM::MagnifierDevice: return "Magnifier";
+      case MM::SLMDevice: return "SLM";
+      case MM::HubDevice: return "Hub";
+      case MM::GalvoDevice: return "Galvo";
+   }
+   return "Invalid";
+}
+
+template <typename T>
+inline std::string ToQuotedString(const T& d)
+{ return "\"" + ToString(d) + "\""; }
+
+template <>
+inline std::string ToQuotedString<const char*>(char const* const& d)
+{
+   if (!d) // Don't quote if null
+      return ToString(d);
+   return "\"" + ToString(d) + "\"";
+}
 
 
 //NB we are starting the 'epoch' on 2000 01 01

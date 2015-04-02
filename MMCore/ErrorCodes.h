@@ -21,7 +21,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: ErrorCodes.h 9688 2012-07-29 14:52:46Z nico $
 //
 #ifndef _ERRORCODES_H_
 #define _ERRORCODES_H_

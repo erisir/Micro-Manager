@@ -23,6 +23,7 @@
 //
 package org.micromanager.conf2;
 
+import java.awt.Cursor;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
@@ -32,7 +33,7 @@ import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JRadioButton;
 import javax.swing.JTextField;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 
 import org.micromanager.utils.FileDialogs;
 import org.micromanager.utils.ReportingUtils;
@@ -145,12 +146,16 @@ public class IntroPage extends PagePanel {
 
    public boolean exitPage(boolean toNextPage) {
       if (modifyRadioButton_.isSelected() && (!initialized_ || filePathField_.getText().compareTo(model_.getFileName()) != 0)) {
+         Cursor oldCur = getCursor();
+			setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
          try {
             model_.loadFromFile(filePathField_.getText());
          } catch (MMConfigFileException e) {
             ReportingUtils.showError(e);
             model_.reset();
             return false;
+         } finally {
+            setCursor(oldCur);
          }
          initialized_ = true;
       }
@@ -163,7 +168,7 @@ public class IntroPage extends PagePanel {
    
    private void loadConfiguration() {
       File f = FileDialogs.openFile(parent_, "Choose a config file",
-              MMStudioMainFrame.MM_CONFIG_FILE);
+              MMStudio.MM_CONFIG_FILE);
       if (f == null)
          return;
       filePathField_.setText(f.getAbsolutePath());

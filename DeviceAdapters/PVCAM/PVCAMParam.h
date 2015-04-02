@@ -4,8 +4,6 @@
 #include "../../MMDevice/DeviceBase.h"
 #include "PVCAMAdapter.h"
 
-#define MAX_ENUM_STR_LEN 100
-
 #ifndef WIN32
 typedef long long long64;
 #endif
@@ -13,18 +11,18 @@ typedef long long long64;
 /***
 * A base class for PVCAM parameters. This is used for easy access to specific camera parameters.
 */
-
 class PvParamBase
 {
 public:
 
-    PvParamBase( std::string aName, uns32 aParamId, Universal* aCamera )
+    PvParamBase( std::string aName, uns32 aParamId, Universal* aCamera ) :
+        mId( aParamId ), mCamera( aCamera ), mName( aName),
+        mAvail( FALSE ), mAccess( ACC_READ_ONLY ), mType( TYPE_INT32 )
     {
-       this->mId = aParamId;
-       this->mName = aName;
-       this->mCamera = aCamera;
        initialize();
     }
+
+    virtual ~PvParamBase() {}
 
     bool IsAvailable() { return (mAvail == TRUE); }
     bool IsReadOnly()  { return (mAccess == ACC_READ_ONLY); }
@@ -70,6 +68,123 @@ private:
 
 };
 
+
+#ifdef PVCAM_SMART_STREAMING_SUPPORTED
+template<>
+class PvParam <smart_stream_type>: public PvParamBase
+{
+    public:
+    PvParam( std::string aName, uns32 aParamId, Universal* aCamera ) : PvParamBase( aName, aParamId, aCamera )
+    {
+        mCurrent.entries=SMART_STREAM_MAX_EXPOSURES;
+        mCurrent.params = new uns32[SMART_STREAM_MAX_EXPOSURES];
+        if (IsAvailable())
+        {
+            Update();
+        }
+    }
+    
+    ~PvParam()
+    {
+        delete[] mCurrent.params;
+    }
+    
+
+
+    // Getters
+    smart_stream_type     Current()   { return mCurrent; }
+    smart_stream_type     Max()       { return mMax; }
+    smart_stream_type     Min()       { return mMin; }
+    smart_stream_type     Increment() { return mIncrement; }
+    smart_stream_type     Count()     { return mCount; }
+
+/***
+    * Returns the current parameter value as string (useful for settings MM property)
+    */
+    virtual std::string ToString()
+    {
+       std::ostringstream os;
+       for (int i = 0; i < mCurrent.entries; i++)
+          os << mCurrent.params[i] << ';';
+       return os.str();
+
+    }
+
+    /***
+    * Sets the parameter value but does not apply the settings. Use Write() to 
+    * send the parameter to the camera.
+    * TODO: Revisit the method name (might be confusing to have Set/Apply/Update methods)
+    */
+    int Set(smart_stream_type aValue)
+    {
+       mCurrent = aValue;
+       return DEVICE_OK;
+    }
+
+    /***
+    * Reads the current parameter value and range from the camera
+    */
+    int Update()
+    {
+       // must be set to max exposures number so we can retrieve current number of exposures
+       // from the camera in case new requested exposures count is greater than the previous  
+       mCurrent.entries=SMART_STREAM_MAX_EXPOSURES;
+       if (pl_get_param(mCamera->Handle(), mId, ATTR_CURRENT, &mCurrent ) != PV_OK)
+       {
+           mCamera->LogCamError(__LINE__, "pl_get_param ATTR_CURRENT");
+           mCurrent.entries = 0;
+           return DEVICE_ERR;
+       }
+       if (pl_get_param(mCamera->Handle(), mId, ATTR_MIN, &mMin ) != PV_OK)
+       {
+           mCamera->LogCamError(__LINE__, "pl_get_param ATTR_MIN");
+           return DEVICE_ERR;
+       }
+       if (pl_get_param(mCamera->Handle(), mId, ATTR_MAX, &mMax ) != PV_OK)
+       {
+           mCamera->LogCamError(__LINE__, "pl_get_param ATTR_MAX");
+           return DEVICE_ERR;
+       }
+       if (pl_get_param(mCamera->Handle(), mId, ATTR_COUNT, &mCount ) != PV_OK)
+       {
+           mCamera->LogCamError(__LINE__, "pl_get_param ATTR_COUNT");
+           return DEVICE_ERR;
+       }
+       if (pl_get_param(mCamera->Handle(), mId, ATTR_INCREMENT, &mIncrement ) != PV_OK)
+       {
+           mCamera->LogCamError(__LINE__, "pl_get_param ATTR_INCREMENT");
+           return DEVICE_ERR;
+       }
+       return DEVICE_OK;
+    }
+
+
+    /***
+    * Sends the parameter value to the camera
+    */
+    int Apply()
+    {
+        // Write the current value to camera
+        if (pl_set_param(mCamera->Handle(), mId, (void_ptr)&mCurrent) != PV_OK)
+        {
+           Update(); // On failure we need to update the cache with actual camera value
+           mCamera->LogCamError(__LINE__, "pl_set_param");
+           return DEVICE_CAN_NOT_SET_PROPERTY;
+        }
+        return DEVICE_OK;
+    }
+
+protected:
+
+    smart_stream_type mCurrent;
+    smart_stream_type mMax;
+    smart_stream_type mMin;
+    smart_stream_type mCount;     // PARAM_SMART_STREAM_EXP_PARAMS is the only parameter where ATTR_COUNT is not uns32 type
+    smart_stream_type mIncrement;
+
+};
+#endif
+
 /***
 * Template class for PVCAM parameters. This class makes the access to PVCAM parameters easier.
 * The user must use the correct parameter type as defined in PVCAM manual.
@@ -79,8 +194,9 @@ template<class T>
 class PvParam : public PvParamBase
 {
 public:
-    PvParam( std::string aName, uns32 aParamId, Universal* aCamera )
-        : PvParamBase( aName, aParamId, aCamera )
+    PvParam( std::string aName, uns32 aParamId, Universal* aCamera ) :
+        PvParamBase( aName, aParamId, aCamera ),
+        mCurrent(0), mMax(0), mMin(0), mCount(0), mIncrement(0)
     {
        if (IsAvailable())
        {
@@ -169,7 +285,7 @@ protected:
     T           mCurrent;
     T           mMax;
     T           mMin;
-    T           mCount;
+    uns32       mCount;     // ATTR_COUNT is always TYPE_UNS32
     T           mIncrement;
 
 private:
@@ -180,7 +296,7 @@ private:
 * A special case of PvParam that contains supporting functions for reading the enumerable parameter
 * types.
 */
-class PvEnumParam : public PvParam<uns32>
+class PvEnumParam : public PvParam<int32>
 {
 public:
 
@@ -188,32 +304,28 @@ public:
     * Initializes the enumerable PVCAM parameter type
     */
     PvEnumParam( std::string aName, uns32 aParamId, Universal* aCamera )
-        : PvParam<uns32>( aName, aParamId, aCamera )
+        : PvParam<int32>( aName, aParamId, aCamera )
     {
-        mEnumStrings.clear();
-
-        int32 enumVal;
-        char enumStr[MAX_ENUM_STR_LEN];
-        for ( uns32 i = 0; i < mCount; i++ )
+        if ( IsAvailable() )
         {
-            if ( pl_get_enum_param( mCamera->Handle(), mId, i, &enumVal, enumStr, MAX_ENUM_STR_LEN ) != PV_OK )
-            {
-                mCamera->LogCamError(__LINE__, "pl_get_enum_param");
-                mEnumStrings.push_back( "Unable to read" );
-            }
-            else
-            {
-                mEnumStrings.push_back( std::string( enumStr ) );
-            }
+            enumerate();
         }
     }
 
     /***
-    * Overloaded function. Return the enum string instead of value only.
+    * Overrided function. Instead of returning the current enum index, we return the value.
+    */
+    int32 Current()
+    {
+        return mEnumValues[mCurrent];
+    }
+
+    /***
+    * Overrided function. Return the enum string instead of the value only.
     */
     std::string ToString()
     {
-       return mEnumStrings[mCurrent];
+        return mEnumStrings[mCurrent];
     }
 
     /***
@@ -224,17 +336,22 @@ public:
         return mEnumStrings;
     }
 
+    std::vector<int32>& GetEnumValues()
+    {
+        return mEnumValues;
+    }
+
     /***
     * Sets the enumerable PVCAM parameter from string. The string agrument must be exactly the
     * same as obtained from ToString() or GetEnumStrings().
     */
-    int Set(std::string aValue)
+    int Set(const std::string& aValue)
     {
-        for ( uns32 i = 0; i < mEnumStrings.size(); i++)
+        for ( unsigned i = 0; i < mEnumStrings.size(); ++i )
         {
             if ( mEnumStrings[i].compare( aValue ) == 0 )
             {
-                mCurrent = i;
+                mCurrent = i; // mCurrent contains an index of the current value
                 return DEVICE_OK;
             }
         }
@@ -242,10 +359,78 @@ public:
         return DEVICE_CAN_NOT_SET_PROPERTY;
     }
 
+    /***
+    * Sets the enumerable PVCAM parameter from value. The value agrument must be exactly the
+    * same as obtained from GetEnumValues().
+    */
+    int Set(const int32 aValue)
+    {
+        for ( unsigned i = 0; i < mEnumValues.size(); ++i)
+        {
+            if ( mEnumValues[i] == aValue )
+            {
+                mCurrent = i; // mCurrent contains an index of the current value
+                return DEVICE_OK;
+            }
+        }
+        mCamera->LogCamError(__LINE__, "PvEnumParam::Set() invalid argument");
+        return DEVICE_CAN_NOT_SET_PROPERTY;
+    }
+
+    /**
+    * Overrided function. If we want to re-read the parameter, we also need to re-enumerate the values.
+    */
+    int Update()
+    {
+        int err = PvParam<int32>::Update();
+        if (err != DEVICE_OK)
+            return err;
+        enumerate();
+        return DEVICE_OK;
+    }
+
 
 private:
 
-   std::vector<std::string> mEnumStrings; // All string representation of enum values
+    /**
+    * Read all the enum values and correspondig string descriptions
+    */
+    void enumerate()
+    {
+        mEnumStrings.clear();
+        mEnumValues.clear();
+
+        int32 enumVal;
+        // Enumerate the parameter with the index and find actual values and descriptions
+        for ( uns32 i = 0; i < mCount; i++ )
+        {
+            uns32 enumStrLen = 0;
+            if ( pl_enum_str_length( mCamera->Handle(), mId, i, &enumStrLen ) != PV_OK )
+            {
+                mCamera->LogCamError(__LINE__, "pl_enum_str_length");
+                break;
+            }
+            char* enumStrBuf = new char[enumStrLen+1];
+            enumStrBuf[enumStrLen] = '\0';
+            if ( pl_get_enum_param( mCamera->Handle(), mId, i, &enumVal, enumStrBuf, enumStrLen ) != PV_OK )
+            {
+                mCamera->LogCamError(__LINE__, "pl_get_enum_param");
+                mEnumStrings.push_back( "Unable to read" );
+                mEnumValues.push_back(0);
+                break;
+            }
+            else
+            {
+                mEnumStrings.push_back( std::string( enumStrBuf ) );
+                mEnumValues.push_back( enumVal );
+            }
+            delete[] enumStrBuf;
+        }
+   }
+
+   // Enum values and their corresponding names
+   std::vector<std::string> mEnumStrings;
+   std::vector<int32>       mEnumValues;
 
 };
 
@@ -265,7 +450,7 @@ typedef union
     int16      int16_val;
     uns16      uns16_val;
     int32      int32_val;
-    uns32      enum_val;
+    int32      enum_val;
     uns32      uns32_val;
     flt64      flt64_val;
     long64     long64_val;
@@ -278,8 +463,8 @@ typedef union
 * The initial idea probably was to have all the PVCAM parameters as universal so we'd not
 * have to implement separate handlers (On**Property()) for every parameter. However due to
 * PVCAM nature it's impossible to create such universal class. The MM supports Long, String,
-* and Double parameter values, but PVCAM supports much more types, there are many parameters
-* that requires special handling (e.g. value conversion) and a change in some parameter
+* and Double parameter values, but PVCAM supports many more types, there are many parameters
+* that require special handling (e.g. value conversion) and a change in some parameter
 * requires update of other parameter.
 *
 * This class is not perfect. It can handle only some types of PVCAM parameters and it's kept here
@@ -318,7 +503,9 @@ protected:
     PvUniversalParamValue mValueMax;
     PvUniversalParamValue mValueMin;
     
+    // Enum values and their corresponding names obtained by pl_get_enum_param
     std::vector<std::string> mEnumStrings;
+    std::vector<int>         mEnumValues;
 
 private:
 

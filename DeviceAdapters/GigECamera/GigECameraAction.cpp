@@ -4,9 +4,9 @@
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   An adapter for Gigbit-Ethernet cameras using an
-//				  SDK from JAI, Inc.  Users and developers will 
-//				  need to download and install the JAI SDK and control tool.
-//                
+//                SDK from JAI, Inc.  Users and developers will
+//                need to download and install the JAI SDK and control tool.
+//
 // AUTHOR:        David Marshburn, UNC-CH, marshbur@cs.unc.edu, Jan. 2011
 //
 
@@ -34,10 +34,10 @@ int CGigECamera::OnBinning( MM::PropertyBase* pProp, MM::ActionType eAct )
 			// try to set the vertical and horizontal binning
 			long binFactor;
 			pProp->Get( binFactor );
-			if( nodes->isAvailable( BINNING_VERTICAL ) )
-				ret |= SetProperty( MM::g_Keyword_Binning_Vertical, CDeviceUtils::ConvertToString( binFactor ) );
-			if( nodes->isAvailable( BINNING_HORIZONTAL ) )
-				ret |= SetProperty( MM::g_Keyword_Binning_Horizontal, CDeviceUtils::ConvertToString( binFactor ) );
+			if( HasProperty( g_Keyword_Binning_Vertical ) )
+				ret |= SetProperty( g_Keyword_Binning_Vertical, CDeviceUtils::ConvertToString( binFactor ) );
+			if( HasProperty( g_Keyword_Binning_Horizontal ) )
+				ret |= SetProperty( g_Keyword_Binning_Horizontal, CDeviceUtils::ConvertToString( binFactor ) );
 		}
 		break;
 	case MM::BeforeGet:
@@ -81,29 +81,33 @@ int CGigECamera::OnBinningV( MM::PropertyBase* pProp, MM::ActionType eAct )
 				else
 				{
 					// new limits
-					int64_t high, low;
-					high = nodes->getMax( HEIGHT );
-					low = nodes->getMin( HEIGHT );
-					SetPropertyLimits( MM::g_Keyword_Image_Height, (double) low, (double) high );
-
-					// new height
-					int64_t dim;
-					nodes->get( dim, HEIGHT );
-					if( dim == oldh ) // this camera doesn't auto-adjust its height w/ binning change
+					if( HasProperty( g_Keyword_Image_Height ) )
 					{
-						dim = dim * oldBin / binFactor;
+						int64_t high, low;
+						// Assuming getMin(), getMax() won't fail if they worked previously
+						nodes->getMax( HEIGHT, high );
+						nodes->getMin( HEIGHT, low );
+						SetPropertyLimits( g_Keyword_Image_Height, (double) low, (double) high );
+
+						// new height
+						int64_t dim;
+						nodes->get( dim, HEIGHT );
+						if( dim == oldh ) // this camera doesn't auto-adjust its height w/ binning change
+						{
+							dim = dim * oldBin / binFactor;
+						}
+						SetProperty( g_Keyword_Image_Height, CDeviceUtils::ConvertToString( (long) dim ) );
+						UpdateProperty( g_Keyword_Image_Height );
+						LogMessage( (std::string) "setting v bin to " + boost::lexical_cast<std::string>( binFactor ) 
+									+ " and height to " + boost::lexical_cast<std::string>( dim ) 
+									+ " (oldBin:  " + boost::lexical_cast<std::string>( oldBin ) + ")  " 
+									+ " new limits (" + boost::lexical_cast<std::string>( low ) + 
+									+ " " + boost::lexical_cast<std::string>( high ) + ")", true );
 					}
-					SetProperty( MM::g_Keyword_Image_Height, CDeviceUtils::ConvertToString( (long) dim ) );
-					UpdateProperty( MM::g_Keyword_Image_Height );
-					LogMessage( (std::string) "setting v bin to " + boost::lexical_cast<std::string>( binFactor ) 
-								+ " and height to " + boost::lexical_cast<std::string>( dim ) 
-								+ " (oldBin:  " + boost::lexical_cast<std::string>( oldBin ) + ")  " 
-								+ " new limits (" + boost::lexical_cast<std::string>( low ) + 
-								+ " " + boost::lexical_cast<std::string>( high ) + ")", true );
 
-					if( nodes->isAvailable( HEIGHT_MAX ) )
+					if( HasProperty( g_Keyword_Image_Height_Max ) )
 					{
-						UpdateProperty( MM::g_Keyword_Image_Height_Max );
+						UpdateProperty( g_Keyword_Image_Height_Max );
 					}
 					OnPropertiesChanged();
 					ret = DEVICE_OK;
@@ -154,26 +158,34 @@ int CGigECamera::OnBinningH( MM::PropertyBase* pProp, MM::ActionType eAct )
 				}
 				else
 				{
-					int64_t dim;
-					nodes->get( dim, WIDTH );
-					if( dim == oldw )
+					// new limits
+					if( HasProperty( g_Keyword_Image_Width ) )
 					{
-						dim = dim * oldBin / binFactor;
+						int64_t high, low;
+						// Assuming getMin(), getMax() won't fail if they worked previously
+						nodes->getMax( WIDTH, high );
+						nodes->getMin( WIDTH, low );
+						SetPropertyLimits( g_Keyword_Image_Width, (double) low, (double) high );
+
+						int64_t dim;
+						nodes->get( dim, WIDTH );
+						if( dim == oldw )
+						{
+							dim = dim * oldBin / binFactor;
+						}
+						SetProperty( g_Keyword_Image_Width, CDeviceUtils::ConvertToString( (long) dim ) );
+						SetPropertyLimits( g_Keyword_Image_Width, (double) low, (double) high );
+						UpdateProperty( g_Keyword_Image_Width );
+						LogMessage( (std::string) "setting h bin to " + boost::lexical_cast<std::string>( binFactor ) 
+									+ " and width to " + boost::lexical_cast<std::string>( dim ) 
+									+ " (oldBin:  " + boost::lexical_cast<std::string>( oldBin ) + ")  " 
+									+ " new limits (" + boost::lexical_cast<std::string>( low ) + 
+									+ " " + boost::lexical_cast<std::string>( high ) + ")", true );
 					}
-					SetProperty( MM::g_Keyword_Image_Width, CDeviceUtils::ConvertToString( (long) dim ) );
-					int64_t high, low;
-					high = nodes->getMax( WIDTH );
-					low = nodes->getMin( WIDTH );
-					SetPropertyLimits( MM::g_Keyword_Image_Width, (double) low, (double) high );
-					UpdateProperty( MM::g_Keyword_Image_Width );
-					LogMessage( (std::string) "setting h bin to " + boost::lexical_cast<std::string>( binFactor ) 
-								+ " and width to " + boost::lexical_cast<std::string>( dim ) 
-								+ " (oldBin:  " + boost::lexical_cast<std::string>( oldBin ) + ")  " 
-								+ " new limits (" + boost::lexical_cast<std::string>( low ) + 
-								+ " " + boost::lexical_cast<std::string>( high ) + ")", true );
-					if( nodes->isAvailable( WIDTH_MAX ) )
+
+					if( HasProperty( g_Keyword_Image_Width_Max ) )
 					{
-						UpdateProperty( MM::g_Keyword_Image_Width_Max );
+						UpdateProperty( g_Keyword_Image_Width_Max );
 					}
 					OnPropertiesChanged();
 					ret = DEVICE_OK;
@@ -271,6 +283,8 @@ int CGigECamera::OnImageHeightMax( MM::PropertyBase* pProp, MM::ActionType eAct 
 */
 int CGigECamera::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
+	LogMessage("OnPixelType was called", true);
+
 	int ret = DEVICE_OK;
 	switch(eAct)
 	{
@@ -281,6 +295,7 @@ int CGigECamera::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 			std::string displayName, pixelType;
 			pProp->Get( displayName );
+
 			std::map<std::string, std::string>::iterator it = pixelFormatMap.find( displayName );
 			if( it == pixelFormatMap.end() )
 			{
@@ -288,80 +303,21 @@ int CGigECamera::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
 				return DEVICE_INTERNAL_INCONSISTENCY;
 			}
 			pixelType = it->second;
-			if( pixelType.compare(g_PixelType_8bit) == 0 
-				// || pixelType.compare(g_PixelType_8bitSigned) == 0
-				)
+
+			if( nodes->set( pixelType, PIXEL_FORMAT ) )
 			{
-				if( nodes->set( pixelType, PIXEL_FORMAT ) )
-				{
-					img_.Resize(img_.Width(), img_.Height(), 1);
-					bitDepth_ = 8;
-					ret=DEVICE_OK;
-				}
-				else
-					ret = DEVICE_INVALID_PROPERTY_VALUE;
-			}
-			else if( pixelType.compare(g_PixelType_10bit) == 0 
-				// || pixelType.compare(g_PixelType_10bitPacked) == 0
-				)
-			{
-				if( nodes->set( pixelType, PIXEL_FORMAT ) )
-				{
-					img_.Resize(img_.Width(), img_.Height(), 2);
-					bitDepth_ = 10;
-					ret=DEVICE_OK;
-				}
-				else
-					ret = DEVICE_INVALID_PROPERTY_VALUE;
-			}
-			else if( pixelType.compare( g_PixelType_12bit ) == 0
-				// || pixelType.compare(g_PixelType_12bitPacked) == 0
-				)
-			{
-				if( nodes->set( pixelType, PIXEL_FORMAT ) )
-				{
-					img_.Resize(img_.Width(), img_.Height(), 2);
-					bitDepth_ = 12;
-					ret=DEVICE_OK;
-				}
-				else
-					ret = DEVICE_INVALID_PROPERTY_VALUE;
-			}
-			else if( pixelType.compare( g_PixelType_14bit ) == 0 )
-			{
-				if( nodes->set( pixelType, PIXEL_FORMAT ) )
-				{
-					img_.Resize(img_.Width(), img_.Height(), 2);
-					bitDepth_ = 14;
-					ret=DEVICE_OK;
-				}
-				else
-					ret = DEVICE_INVALID_PROPERTY_VALUE;
-			}
-			else if( pixelType.compare( g_PixelType_16bit ) == 0 )
-			{
-				if( nodes->set( pixelType, PIXEL_FORMAT ) )
-				{
-					img_.Resize(img_.Width(), img_.Height(), 2);
-					bitDepth_ = 16;
-					ret=DEVICE_OK;
-				}
-				else
-					ret = DEVICE_INVALID_PROPERTY_VALUE;
+				LogMessage("OnPixelType: Set pixel type to " + boost::lexical_cast<std::string>(pixelType),false);
+				ret=DEVICE_OK;
 			}
 			else
-			{
-				ret = ERR_UNKNOWN_MODE;
-			}
+				return DEVICE_INVALID_PROPERTY_VALUE;
 
+			// in here we check if color mode is present
+			ret = ResizeImageBuffer();
 			if( ret != DEVICE_OK )
 			{
-				// on error switch to default pixel type
-				nodes->set( g_PixelType_8bit, PIXEL_FORMAT );
-				bitDepth_ = 8;
-				img_.Resize( img_.Width(), img_.Height(), 1 );
-				pProp->Set( g_PixelType_8bit );
-				OnPropertiesChanged();
+				LogMessage("OnPixelType: ERROR: somthing went wrong, we dont set default pixel type", true);
+				return DEVICE_INTERNAL_INCONSISTENCY;
 			}
 		} 
 		break;
@@ -375,12 +331,54 @@ int CGigECamera::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
 			else
 				pProp->Set( s.c_str() );
 			ret=DEVICE_OK;
+			LogMessage("OnPixelType: BeforeGet: try to set type to: " + it->second, true);
 		}
 		break;
 	}
 	return ret; 
 }
 
+int CGigECamera::onAcquisitionMode( MM::PropertyBase* pProp, MM::ActionType eAct )
+{
+	int ret = DEVICE_OK;
+	switch(eAct)
+	{
+	case MM::AfterSet:
+		{
+			if(IsCapturing())
+				return DEVICE_CAMERA_BUSY_ACQUIRING;
+
+			std::string displayName, acqMode;
+			pProp->Get( displayName );
+			std::map<std::string, std::string>::iterator it = acqModeMap.find( displayName );
+			if( it == acqModeMap.end() )
+			{
+				LogMessage( (std::string) "internal error:  inconsistency in acquisition mode map (" + acqMode + ")", false );
+				return DEVICE_INTERNAL_INCONSISTENCY;
+			}
+			acqMode = it->second;
+
+			if (nodes->set( acqMode, ACQUISITION_MODE ))
+			{
+				ret = DEVICE_OK;
+			}
+		}
+		break;
+	case MM::BeforeGet:
+		{
+			std::string s;
+			nodes->get( s, ACQUISITION_MODE );
+			std::map<std::string, std::string>::iterator it = acqModeMap.find( s );
+			if( it != acqModeMap.end() )
+				pProp->Set( it->second.c_str() );
+			else
+				pProp->Set( s.c_str() );
+			ret = DEVICE_OK;
+		}
+		break;
+	}
+	return ret;
+}
 
 int CGigECamera::OnCameraChoice( MM::PropertyBase* pProp, MM::ActionType eAct )
 {
@@ -400,7 +398,7 @@ int CGigECamera::OnCameraChoice( MM::PropertyBase* pProp, MM::ActionType eAct )
 		{
 			LogMessage( (std::string) "Opening camera:  " + realName );
 			J_STATUS_TYPE retval = J_Camera_Close( hCamera );				
-			retval = J_Camera_Open( hFactory, const_cast<char*>(realName.c_str()), &hCamera );
+			retval = J_Camera_Open( hFactory, cstr2jai( realName.c_str() ), &hCamera );
 			// XXX this should really refresh all the camera parameters after opening a new camera,
 			// possibly enabling or removing some properties.
 			if( retval != J_ST_SUCCESS )
@@ -548,28 +546,28 @@ int CGigECamera::OnExposure( MM::PropertyBase* pProp, MM::ActionType eAct )
 
 void CGigECamera::UpdateExposureRange()
 {
-	if( nodes->isAvailable( EXPOSURE_TIME ) )
+	if( useExposureTime )
 	{
-		double low, high;
-		high = nodes->getMax( EXPOSURE_TIME ) / 1000.0; // us to ms
-		low = nodes->getMin( EXPOSURE_TIME ) / 1000.0; // us to ms
-		SetPropertyLimits( MM::g_Keyword_Exposure, low, high );
+		double lowUs, highUs;
+		nodes->getMin( EXPOSURE_TIME, lowUs );
+		nodes->getMax( EXPOSURE_TIME, highUs );
+		SetPropertyLimits( MM::g_Keyword_Exposure, lowUs / 1000.0, highUs / 1000.0 );
 		OnPropertiesChanged();
 	}
-	else if( nodes->isAvailable( EXPOSURE_TIME_ABS ) )
+	else if( useExposureTimeAbs )
 	{
-		double low, high;
-		high = nodes->getMax( EXPOSURE_TIME_ABS ) / 1000.0; // us to ms
-		low = nodes->getMin( EXPOSURE_TIME_ABS ) / 1000.0; // us to ms
-		SetPropertyLimits( MM::g_Keyword_Exposure, low, high );
+		double lowUs, highUs;
+		nodes->getMax( EXPOSURE_TIME_ABS, lowUs );
+		nodes->getMin( EXPOSURE_TIME_ABS, highUs );
+		SetPropertyLimits( MM::g_Keyword_Exposure, lowUs / 1000.0, highUs / 1000.0 );
 		OnPropertiesChanged();
 	}
-	else if( nodes->isAvailable( EXPOSURE_TIME_ABS_INT ) )
+	else if( useExposureTimeAbsInt )
 	{
-		double low, high;
-		high = nodes->getMax( EXPOSURE_TIME_ABS_INT ) / 1000.0; // us to ms
-		low = nodes->getMin( EXPOSURE_TIME_ABS_INT ) / 1000.0; // us to ms
-		SetPropertyLimits( MM::g_Keyword_Exposure, low, high );
+		int64_t lowUs, highUs;
+		nodes->getMax( EXPOSURE_TIME_ABS_INT, lowUs );
+		nodes->getMin( EXPOSURE_TIME_ABS_INT, highUs );
+		SetPropertyLimits( MM::g_Keyword_Exposure, static_cast<double>( lowUs ) / 1000.0, static_cast<double>( highUs ) / 1000.0 );
 		OnPropertiesChanged();
 	}
 }
@@ -672,5 +670,3 @@ int CGigECamera::OnFrameRate( MM::PropertyBase* pProp, MM::ActionType eAct )
 
 	return nRet;
 }
-
-

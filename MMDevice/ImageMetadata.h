@@ -29,6 +29,8 @@
 #pragma warning( disable : 4290 )
 #endif
 
+#include "MMDeviceConstants.h"
+
 #include <string>
 #include <vector>
 #include <map>
@@ -289,10 +291,8 @@ public:
    std::vector<std::string> GetKeys() const
    {
       std::vector<std::string> keyList;
-      TagIterator it = tags_.begin();
-      while(it != tags_.end())
-         keyList.push_back(it++->first);
-
+      for (TagIterator it = tags_.begin(), end = tags_.end(); it != end; ++it)
+         keyList.push_back(it->first);
       return keyList;
    }
 
@@ -321,19 +321,19 @@ public:
 
    void SetTag(MetadataTag& tag)
    {
-      // create a tag copy
       MetadataTag* newTag = tag.Clone();
-
-      // delete existing tag with the same key (if any)
-      tags_.erase(tag.GetQualifiedName());
-
-      // adding a new tag
-      tags_[tag.GetQualifiedName()] = newTag;
+      RemoveTag(tag.GetQualifiedName().c_str());
+      tags_.insert(std::make_pair(tag.GetQualifiedName(), newTag));
    }
 
    void RemoveTag(const char* key)
    {
-      tags_.erase(key);
+      TagIterator it = tags_.find(key);
+      if (it != tags_.end())
+      {
+         delete it->second;
+         tags_.erase(key);
+      }
    }
 
    /*
@@ -367,6 +367,7 @@ public:
       PutImageTag(key, value);
    }
 
+#ifndef SWIG
    Metadata& operator=(const Metadata& rhs)
    {
       Clear();
@@ -378,6 +379,7 @@ public:
 
       return *this;
    }
+#endif
 
    void Merge(const Metadata& newTags)
    {     
@@ -421,16 +423,17 @@ public:
       return os.str();
    }
 
-   std::string readLine(std::istringstream &is)
+   std::string readLine(std::istringstream &iss)
    {
 		char str[MM::MaxStrLength];
-		is.getline(str, MM::MaxStrLength);
+		iss.getline(str, MM::MaxStrLength);
 		return std::string(str);
    }
 
    bool Restore(const char* stream)
    {
-      tags_.clear();
+      Clear();
+
       std::istringstream is(stream);
       size_t sz;
       is >> sz;
@@ -453,7 +456,7 @@ public:
             ms.SetValue(readLine(is).c_str());
 
             MetadataTag* newTag = ms.Clone();
-            tags_[ms.GetQualifiedName()] = newTag;
+            tags_.insert(std::make_pair(ms.GetQualifiedName(), newTag));
          }
          else if (id.compare("a") == 0)
          {
@@ -470,7 +473,7 @@ public:
             }
 
             MetadataTag* newTag = as.Clone();
-            tags_[as.GetQualifiedName()] = newTag;
+            tags_.insert(std::make_pair(as.GetQualifiedName(), newTag));
          }
          else
          {

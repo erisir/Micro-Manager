@@ -10,7 +10,7 @@
 
 
 #ifndef _AQUINAS_H_
-#define _AQUINAS_H
+#define _AQUINAS_H_
 
 #include "../../MMDevice/MMDevice.h"
 #include "../../MMDevice/DeviceBase.h"
@@ -48,11 +48,10 @@ private:
    int SetValveState();
 
    std::string port_;
-   bool busy_;
    bool initialized_;
    double pressureSetPoint_;
-   std::string id_;
    unsigned char valveState_;
+   std::string id_;
 };
 
-#endif
+#endif // _AQUINAS_H_

@@ -32,16 +32,17 @@ import javax.swing.JOptionPane;
 import mmcorej.CMMCore;
 import mmcorej.MMCoreJ;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
+import org.micromanager.internalinterfaces.LiveModeListener;
 import org.micromanager.utils.ReportingUtils;
 
 /**
  * @author OD
  *
  */
-public final class XYZKeyListener implements KeyListener {
-	private CMMCore core_;
-   private MMStudioMainFrame gui_;
+public final class XYZKeyListener implements KeyListener, LiveModeListener {
+	private final CMMCore core_;
+   private final MMStudio studio_;
 	private ImageCanvas canvas_;
 	private static boolean isRunning_ = false;
 	private boolean mirrorX_;
@@ -58,14 +59,15 @@ public final class XYZKeyListener implements KeyListener {
 	private double stepX;
 	private double stepY;
 
-	public XYZKeyListener(CMMCore core, MMStudioMainFrame gui) {
+	public XYZKeyListener(CMMCore core, MMStudio gui) {
 		core_ = core;
-      gui_ = gui;
+      studio_ = gui;
 	}
 
+   @Override
 	public void keyPressed(KeyEvent e) {
 
-		core_.logMessage(Integer.toString(e.getKeyCode()));
+		//core_.logMessage(Integer.toString(e.getKeyCode()));
 
 		switch (e.getKeyCode()) {
 		case KeyEvent.VK_LEFT:
@@ -122,9 +124,11 @@ public final class XYZKeyListener implements KeyListener {
 		}
 	}
 
+   @Override
 	public void keyReleased(KeyEvent arg0) {
 	}
 
+   @Override
 	public void keyTyped(KeyEvent arg0) {
 	}
 
@@ -218,13 +222,13 @@ public final class XYZKeyListener implements KeyListener {
 		}
 
       // Cheap way to update XY position in GUI
-      gui_.updateXYPosRelative(mXUm, mYUm);
+      studio_.updateXYPosRelative(mXUm, mYUm);
 	}
 
 	public void IncrementZ(int step) {
 		// Get needed info from core
 		String zStage = core_.getFocusDevice();
-		if (zStage == null)
+		if (zStage == null || zStage.length() == 0)
 			return;
 
 		double moveIncrement = zmoveIncrement_;
@@ -238,9 +242,7 @@ public final class XYZKeyListener implements KeyListener {
 			core_.setRelativePosition(zStage, moveIncrement * step);
 		} catch (Exception ex) {
 			ReportingUtils.showError(ex);
-			return;
 		}
-
 	}
 
 	public void getOrientation() {
@@ -252,32 +254,27 @@ public final class XYZKeyListener implements KeyListener {
 		}
 		try {
 			String tmp = core_.getProperty(camera, "TransposeCorrection");
-			if (tmp.equals("0"))
-				correction_ = false;
-			else
-				correction_ = true;
+         correction_ = !tmp.equals("0");
 			tmp = core_.getProperty(camera, MMCoreJ
 					.getG_Keyword_Transpose_MirrorX());
-			if (tmp.equals("0"))
-				mirrorX_ = false;
-			else
-				mirrorX_ = true;
+         mirrorX_ = !tmp.equals("0");
 			tmp = core_.getProperty(camera, MMCoreJ
 					.getG_Keyword_Transpose_MirrorY());
-			if (tmp.equals("0"))
-				mirrorY_ = false;
-			else
-				mirrorY_ = true;
+         mirrorY_ = !tmp.equals("0");
 			tmp = core_.getProperty(camera, MMCoreJ
 					.getG_Keyword_Transpose_SwapXY());
-			if (tmp.equals("0"))
-				transposeXY_ = false;
-			else
-				transposeXY_ = true;
+         transposeXY_ = !tmp.equals("0");
 		} catch (Exception exc) {
 			ReportingUtils.showError(exc);
-			return;
 		}
 	}
 
+   @Override
+   public void liveModeEnabled(boolean enabled) {
+      if (enabled) {
+         start();
+      } else {
+         stop();
+      }
+   }
 }

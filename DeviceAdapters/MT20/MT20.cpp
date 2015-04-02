@@ -28,7 +28,6 @@
 
 #include "MT20.h"
 #include "../../MMDevice/ModuleInterface.h"
-#include "../../MMCore/Error.h"
 
 const char* g_MT20HUB = "MT20-HUB";
 const char* g_MT20Burner = "MT20-Burner";
@@ -38,22 +37,6 @@ const char* g_MT20Attenuator = "MT20-Attenuator";
 
 #ifdef WIN32
 	#define snprintf _snprintf
-
-	BOOL APIENTRY DllMain( HANDLE /*hModule*/,
-							DWORD ul_reason_for_call,
-							LPVOID /*lpReserved*/
-							)
-	{
-		switch (ul_reason_for_call)
-		{
-		case DLL_PROCESS_ATTACH:
-		case DLL_THREAD_ATTACH:
-		case DLL_THREAD_DETACH:
-		case DLL_PROCESS_DETACH:
-			break;
-		}
-		return TRUE;
-	}
 #endif
 
 // instantiate MT20hub object, which will handle communication with device
@@ -65,11 +48,11 @@ MT20hub mt20;
 
 MODULE_API void InitializeModuleData()
 {
-	AddAvailableDeviceName(g_MT20HUB, "Olympus MT20 hub device");
-	AddAvailableDeviceName(g_MT20Burner, "Olympus MT20 burner");
-	AddAvailableDeviceName(g_MT20Shutter, "Olympus MT20 shutter");
-	AddAvailableDeviceName(g_MT20Filterwheel, "Olympus MT20 filterwheel");
-	AddAvailableDeviceName(g_MT20Attenuator, "Olympus MT20 attenuator");
+	RegisterDevice(g_MT20HUB, MM::GenericDevice, "Olympus MT20 hub device");
+	RegisterDevice(g_MT20Burner, MM::StateDevice, "Olympus MT20 burner");
+	RegisterDevice(g_MT20Shutter, MM::ShutterDevice, "Olympus MT20 shutter");
+	RegisterDevice(g_MT20Filterwheel, MM::StateDevice, "Olympus MT20 filterwheel");
+	RegisterDevice(g_MT20Attenuator, MM::StateDevice, "Olympus MT20 attenuator");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)

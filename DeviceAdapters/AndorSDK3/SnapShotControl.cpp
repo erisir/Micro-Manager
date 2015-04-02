@@ -1,6 +1,8 @@
 #include "SnapShotControl.h"
 #include "EventsManager.h"
 #include "atcore++.h"
+#include "DeviceUtils.h"
+#include <string.h>
 
 using namespace andor;
 using namespace std;
@@ -165,6 +167,7 @@ int SnapShotControl::getTransferTime()
 
 void SnapShotControl::poiseForSnapShot()
 {
+   is_poised_ = true;
    IEnum* cycleMode = cameraDevice->GetEnum(L"CycleMode");
    cycleMode->Set(L"Continuous");
    cameraDevice->Release(cycleMode);
@@ -181,7 +184,6 @@ void SnapShotControl::poiseForSnapShot()
       bufferControl->Queue(image_buffer_, static_cast<int>(ImageSize));
    }
    startAcquisitionCommand->Do();
-   is_poised_ = true;
    mono12PackedMode_ = false;
    IEnum* pixelEncoding = cameraDevice->GetEnum(L"PixelEncoding");
    if (pixelEncoding->GetStringByIndex(pixelEncoding->GetIndex()).compare(L"Mono12Packed") == 0)
@@ -208,7 +210,7 @@ bool SnapShotControl::takeSnapShot()
          if (in_software_)
          {
             // wait until event is set
-            b_ret = eventsManager_->WaitForEvent(CEventsManager::EV_EXPOSURE_END_EVENT, INFINITE);
+            b_ret = eventsManager_->WaitForEvent(CEventsManager::EV_EXPOSURE_END_EVENT, AT_INFINITE);
          }
          else
          {
@@ -218,7 +220,8 @@ bool SnapShotControl::takeSnapShot()
       }
       else
       {
-         Sleep(exposure_ms);
+         CDeviceUtils::SleepMs(exposure_ms);
+         b_ret = true;
       }
    }
 
@@ -229,30 +232,26 @@ void SnapShotControl::getData(unsigned char *& return_buffer)
 {
    int buffer_size = 0;
 
-   bool got_image = bufferControl->Wait(return_buffer, buffer_size, getTransferTime());
+   int timeout_ms = getTransferTime() + WAIT_DATA_TIMEOUT_BUFFER_MILLISECONDS;
+   bool got_image = bufferControl->Wait(return_buffer, buffer_size, timeout_ms);
    if (got_image)
    {
       bufferControl->Queue(return_buffer, buffer_size);
    }
-   else
-   {
-      got_image = bufferControl->Wait(return_buffer, buffer_size, getTransferTime());
-      if (got_image)
-      {
-         bufferControl->Queue(return_buffer, buffer_size);
-      }
-   }
+}
+
+void SnapShotControl::resetCameraAcquiring()
+{
+   stopAcquisitionCommand->Do();
+   bufferControl->Flush();
+   resetTriggerMode();
 }
 
 void SnapShotControl::leavePoisedMode()
 {
-   stopAcquisitionCommand->Do();
-   bufferControl->Flush();
    is_poised_ = false;
-
+   resetCameraAcquiring();
    delete [] image_buffer_;
    image_buffer_ = NULL;
-
-   resetTriggerMode();
 }
 

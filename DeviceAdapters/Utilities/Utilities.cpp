@@ -38,6 +38,7 @@ const char* g_NoDevice = "None";
 const char* g_DeviceNameMultiShutter = "Multi Shutter";
 const char* g_DeviceNameMultiCamera = "Multi Camera";
 const char* g_DeviceNameDAShutter = "DA Shutter";
+const char* g_DeviceNameDAMonochromator = "DA Monochromator";
 const char* g_DeviceNameDAZStage = "DA Z Stage";
 const char* g_DeviceNameDAXYStage = "DA XY Stage";
 const char* g_DeviceNameAutoFocusStage = "AutoFocus Stage";
@@ -51,13 +52,14 @@ const char* g_PropertyMaxUm = "Stage High Position(um)";
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceNameMultiShutter, "Combine multiple physical shutters into a single logical shutter");
-   AddAvailableDeviceName(g_DeviceNameMultiCamera, "Combine multiple physical cameras into a single logical camera");
-   AddAvailableDeviceName(g_DeviceNameDAShutter, "DA used as a shutter");
-   AddAvailableDeviceName(g_DeviceNameDAZStage, "DA-controlled Z-stage");
-   AddAvailableDeviceName(g_DeviceNameDAXYStage, "DA-controlled XY-stage");
-   AddAvailableDeviceName(g_DeviceNameAutoFocusStage, "AutoFocus offset acting as a Z-stage");
-   AddAvailableDeviceName(g_DeviceNameStateDeviceShutter, "State device used as a shutter");
+   RegisterDevice(g_DeviceNameMultiShutter, MM::ShutterDevice, "Combine multiple physical shutters into a single logical shutter");
+   RegisterDevice(g_DeviceNameMultiCamera, MM::CameraDevice, "Combine multiple physical cameras into a single logical camera");
+   RegisterDevice(g_DeviceNameDAShutter, MM::ShutterDevice, "DA used as a shutter");
+   RegisterDevice(g_DeviceNameDAMonochromator, MM::ShutterDevice, "DA used to control a monochromator");
+   RegisterDevice(g_DeviceNameDAZStage, MM::StageDevice, "DA-controlled Z-stage");
+   RegisterDevice(g_DeviceNameDAXYStage, MM::XYStageDevice, "DA-controlled XY-stage");
+   RegisterDevice(g_DeviceNameAutoFocusStage, MM::StageDevice, "AutoFocus offset acting as a Z-stage");
+   RegisterDevice(g_DeviceNameStateDeviceShutter, MM::ShutterDevice, "State device used as a shutter");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)                  
@@ -71,6 +73,8 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
       return new MultiCamera();
    } else if (strcmp(deviceName, g_DeviceNameDAShutter) == 0) { 
       return new DAShutter();
+   } else if (strcmp(deviceName, g_DeviceNameDAMonochromator) == 0) {
+      return new DAMonochromator();
    } else if (strcmp(deviceName, g_DeviceNameDAZStage) == 0) { 
       return new DAZStage();
    } else if (strcmp(deviceName, g_DeviceNameDAXYStage) == 0) { 
@@ -264,7 +268,6 @@ int MultiShutter::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 // Multi Shutter implementation
 ///////////////////////////////////////////////////////////////////////////////
 MultiCamera::MultiCamera() :
-   bufferSize_(0),
    imageBuffer_(0),
    nrCamerasInUse_(0),
    initialized_(false)
@@ -272,6 +275,7 @@ MultiCamera::MultiCamera() :
    InitializeDefaultErrorMessages();
 
    SetErrorText(ERR_INVALID_DEVICE_NAME, "Please select a valid camera");
+   SetErrorText(ERR_NO_PHYSICAL_CAMERA, "No physical camera assigned");
 
    // Name                                                                   
    CreateProperty(MM::g_Keyword_Name, g_DeviceNameMultiCamera, MM::String, true); 
@@ -354,6 +358,9 @@ void MultiCamera::GetName(char* name) const
 
 int MultiCamera::SnapImage()
 {
+   if (nrCamerasInUse_ < 1)
+      return ERR_NO_PHYSICAL_CAMERA;
+
    CameraSnapThread t[MAX_NUMBER_PHYSICAL_CAMERAS];
    for (unsigned int i = 0; i < physicalCameras_.size(); i++)
    {
@@ -374,6 +381,9 @@ int MultiCamera::SnapImage()
  */
 const unsigned char* MultiCamera::GetImageBuffer()
 {
+   if (nrCamerasInUse_ < 1)
+      return 0;
+
    return GetImageBuffer(0);
 }
 
@@ -492,14 +502,20 @@ unsigned MultiCamera::GetImageBytesPerPixel() const
 
 unsigned MultiCamera::GetBitDepth() const
 {
+   // Return the maximum bit depth found in all channels.
    if (physicalCameras_[0] != 0)
    {
-      unsigned bitDepth = physicalCameras_[0]->GetBitDepth();
-      for (unsigned int i = 1; i < physicalCameras_.size(); i++)
+      unsigned bitDepth = 0;
+      for (unsigned int i = 0; i < physicalCameras_.size(); i++)
       {
-         if (physicalCameras_[i] != 0) 
-            if (bitDepth != physicalCameras_[i]->GetBitDepth())
-               return 0;
+         if (physicalCameras_[i] != 0)
+         {
+            unsigned nextBitDepth = physicalCameras_[i]->GetBitDepth();
+            if (nextBitDepth > bitDepth)
+            {
+               bitDepth = nextBitDepth;
+            }
+         }
       }
       return bitDepth;
    }
@@ -597,6 +613,9 @@ int MultiCamera::ClearROI()
 
 int MultiCamera::PrepareSequenceAcqusition()
 {
+   if (nrCamerasInUse_ < 1)
+      return ERR_NO_PHYSICAL_CAMERA;
+
    for (unsigned int i = 0; i < physicalCameras_.size(); i++)
    {
       if (physicalCameras_[i] != 0)
@@ -612,10 +631,20 @@ int MultiCamera::PrepareSequenceAcqusition()
 
 int MultiCamera::StartSequenceAcquisition(double interval)
 {
+   if (nrCamerasInUse_ < 1)
+      return ERR_NO_PHYSICAL_CAMERA;
+
    for (unsigned int i = 0; i < physicalCameras_.size(); i++)
    {
       if (physicalCameras_[i] != 0)
       {
+         std::ostringstream os;
+         os << i;
+         physicalCameras_[i]->AddTag(MM::g_Keyword_CameraChannelName, usedCameras_[i].c_str(),
+                 usedCameras_[i].c_str());
+         physicalCameras_[i]->AddTag(MM::g_Keyword_CameraChannelIndex, usedCameras_[i].c_str(),
+                 os.str().c_str());
+         
          int ret = physicalCameras_[i]->StartSequenceAcquisition(interval);
          if (ret != DEVICE_OK)
             return ret;
@@ -626,6 +655,9 @@ int MultiCamera::StartSequenceAcquisition(double interval)
 
 int MultiCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow)
 {
+   if (nrCamerasInUse_ < 1)
+      return ERR_NO_PHYSICAL_CAMERA;
+
    for (unsigned int i = 0; i < physicalCameras_.size(); i++)
    {
       if (physicalCameras_[i] != 0)
@@ -645,8 +677,16 @@ int MultiCamera::StopSequenceAcquisition()
       if (physicalCameras_[i] != 0)
       {
          int ret = physicalCameras_[i]->StopSequenceAcquisition();
+
+         // 
          if (ret != DEVICE_OK)
             return ret;
+         std::ostringstream os;
+         os << 0;
+         physicalCameras_[i]->AddTag(MM::g_Keyword_CameraChannelName, usedCameras_[i].c_str(),
+                 "");
+         physicalCameras_[i]->AddTag(MM::g_Keyword_CameraChannelIndex, usedCameras_[i].c_str(),
+                 os.str().c_str());
       }
    }
    return DEVICE_OK;
@@ -702,8 +742,8 @@ unsigned MultiCamera::GetNumberOfChannels() const
 int MultiCamera::GetChannelName(unsigned channel, char* name)
 {
    CDeviceUtils::CopyLimitedString(name, "");
-   unsigned int ch = Logical2Physical(channel);
-   if (ch >= 0 && ch < usedCameras_.size())
+   int ch = Logical2Physical(channel);
+   if (ch >= 0 && static_cast<unsigned>(ch) < usedCameras_.size())
    {
       CDeviceUtils::CopyLimitedString(name, usedCameras_[ch].c_str());
    }
@@ -815,6 +855,311 @@ void CameraSnapThread::Start()
 {
    activate();
 }
+/**********************************************************************
+ * DAShutter implementation
+ */
+DAMonochromator::DAMonochromator() :
+   DADevice_(0),
+   DADeviceName_ (""),
+   initialized_ (false),
+   open_(false),
+   minVoltage_(0.0),
+   maxVoltage_(10.0),
+   minWavelength_(200.0),
+   maxWavelength_(1000.0),
+   openWavelength_(400.0),
+   closedWavelength_(200.0),
+   openVoltage_(4.0),
+   closedVoltage_(0.0)
+{
+   InitializeDefaultErrorMessages();
+
+   SetErrorText(ERR_INVALID_DEVICE_NAME, "Please select a valid DA device");
+   SetErrorText(ERR_NO_DA_DEVICE, "No DA Device selected");
+   SetErrorText(ERR_NO_DA_DEVICE_FOUND, "No DA Device loaded");
+
+   // Name
+   CreateProperty(MM::g_Keyword_Name, g_DeviceNameDAShutter, MM::String, true);
+
+   // Description
+   CreateProperty(MM::g_Keyword_Description, "DA device used to control a monochromator", MM::String, true);
+
+   // minimum wavelength
+   CPropertyAction* pAct = new CPropertyAction (this, &DAMonochromator::OnMinWavelength);
+   CreateProperty("Minimum wavelength","",MM::Float, false, pAct,true);
+
+   // maximum wavelength
+   pAct = new CPropertyAction (this, &DAMonochromator::OnMaxWavelength);
+   CreateProperty("Maximum wavelength","",MM::Float, false, pAct,true);
+
+   // minimum voltage
+   pAct = new CPropertyAction (this, &DAMonochromator::OnMinVoltage);
+   CreateProperty("Minimum voltage","",MM::Float, false, pAct,true);
+
+   // maximum voltage
+   pAct = new CPropertyAction (this, &DAMonochromator::OnMaxVoltage);
+   CreateProperty("Maximum voltage","",MM::Float, false, pAct,true);
+
+   // off-state wavelength
+   pAct = new CPropertyAction (this, &DAMonochromator::OnClosedWavelength);
+   CreateProperty("Shutter Closed Wavelength","",MM::Float, false, pAct,true);
+}
+
+DAMonochromator::~DAMonochromator()
+{
+   Shutdown();
+}
+
+void DAMonochromator::GetName(char* Name) const
+{
+   CDeviceUtils::CopyLimitedString(Name, g_DeviceNameDAShutter);
+}
+
+int DAMonochromator::Initialize()
+{
+   // get list with available DA devices.
+   // TODO: this is a initialization parameter, which makes it harder for the end-user to set up!
+   availableDAs_.clear();
+   char deviceName[MM::MaxStrLength];
+   unsigned int deviceIterator = 0;
+   for(;;)
+   {
+      GetLoadedDeviceOfType(MM::SignalIODevice, deviceName, deviceIterator++);
+      if( 0 < strlen(deviceName))
+      {
+         availableDAs_.push_back(std::string(deviceName));
+      }
+      else
+         break;
+   }
+
+
+   CPropertyAction* pAct = new CPropertyAction (this, &DAMonochromator::OnDADevice);
+   std::string defaultDA = "Undefined";
+   if (availableDAs_.size() >= 1)
+      defaultDA = availableDAs_[0];
+   CreateProperty("DA Device", defaultDA.c_str(), MM::String, false, pAct, false);
+   if (availableDAs_.size() >= 1)
+      SetAllowedValues("DA Device", availableDAs_);
+   else
+      return ERR_NO_DA_DEVICE_FOUND;
+
+   // This is needed, otherwise DeviceDA_ is not always set resulting in crashes
+   // This could lead to strange problems if multiple DA devices are loaded
+   SetProperty("DA Device", defaultDA.c_str());
+
+   pAct = new CPropertyAction(this, &DAMonochromator::OnState);
+   CreateProperty("State", "0", MM::Integer, false, pAct);
+   AddAllowedValue("State", "0");
+   AddAllowedValue("State", "1");
+
+   pAct = new CPropertyAction(this, &DAMonochromator::OnOpenWavelength);
+   CreateProperty("Wavelength","0",MM::Float,false,pAct);
+   SetPropertyLimits("Wavelength", minWavelength_, maxWavelength_);
+
+   int ret = UpdateStatus();
+   if (ret != DEVICE_OK)
+      return ret;
+
+   initialized_ = true;
+
+   return DEVICE_OK;
+}
+
+bool DAMonochromator::Busy()
+{
+   if (DADevice_ != 0)
+      return DADevice_->Busy();
+
+   // If we are here, there is a problem.  No way to report it.
+   return false;
+}
+
+/*
+ * Opens or closes the shutter.  Remembers voltage from the 'open' position
+ */
+int DAMonochromator::SetOpen(bool open)
+{
+   if (DADevice_ == 0)
+      return ERR_NO_DA_DEVICE;
+   int ret = DEVICE_ERR;
+   double voltage = closedVoltage_;
+   if(open) voltage = openVoltage_;
+
+   ret = DADevice_->SetSignal(voltage);
+   if(ret == DEVICE_OK) open_ = open;
+
+   return ret;
+}
+
+int DAMonochromator::GetOpen(bool& open)
+{
+   open = open_;
+   return DEVICE_OK;
+}
+
+///////////////////////////////////////
+// Action Interface
+//////////////////////////////////////
+int DAMonochromator::OnDADevice(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(DADeviceName_.c_str());
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      // Make sure that the "old" DA device is open:
+      SetOpen(true);
+
+      std::string DADeviceName;
+      pProp->Get(DADeviceName);
+      MM::SignalIO* DADevice = (MM::SignalIO*) GetDevice(DADeviceName.c_str());
+      if (DADevice != 0) {
+         DADevice_ = DADevice;
+         DADeviceName_ = DADeviceName;
+      } else
+         return ERR_INVALID_DEVICE_NAME;
+
+      // Gates are open by default.  Start with shutter closed:
+      SetOpen(false);
+   }
+   return DEVICE_OK;
+}
+
+
+int DAMonochromator::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      bool open;
+      int ret = GetOpen(open);
+      if (ret != DEVICE_OK)
+         return ret;
+      long state = 0;
+      if (open)
+         state = 1;
+      pProp->Set(state);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      long state;
+      pProp->Get(state);
+      bool open = false;
+      if (state == 1)
+         open = true;
+      return SetOpen(open);
+   }
+   return DEVICE_OK;
+}
+
+int DAMonochromator::OnOpenWavelength(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(openWavelength_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      if (DADevice_ == 0)
+         return ERR_NO_DA_DEVICE;
+
+      double val;
+      pProp->Get(val);
+      openWavelength_ = val;
+
+      double volt = (openWavelength_ - minWavelength_) * (maxVoltage_ - minVoltage_) / (maxWavelength_ - minWavelength_) + minVoltage_;
+      if (volt > maxVoltage_ || volt < minVoltage_)
+         return ERR_POS_OUT_OF_RANGE;
+
+      openVoltage_ = volt;
+
+      if(open_){
+         int ret = DADevice_->SetSignal(openVoltage_);
+         if(ret != DEVICE_OK) return ret;
+      }
+   }
+   return DEVICE_OK;
+}
+int DAMonochromator::OnClosedWavelength(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(closedWavelength_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double val;
+      pProp->Get(val);
+      closedWavelength_ = val;
+
+      double volt = (closedWavelength_ - minWavelength_) * (maxVoltage_ - minVoltage_) / (maxWavelength_ - minWavelength_) + minVoltage_;
+      if (volt > maxVoltage_ || volt < minVoltage_)
+         return ERR_POS_OUT_OF_RANGE;
+
+      closedVoltage_ = volt;
+
+   }
+   return DEVICE_OK;
+}
+
+int DAMonochromator::OnMinWavelength(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(minWavelength_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double val;
+      pProp->Get(val);
+      minWavelength_ = val;
+   }
+   return DEVICE_OK;
+}
+int DAMonochromator::OnMaxWavelength(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(maxWavelength_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double val;
+      pProp->Get(val);
+      maxWavelength_ = val;
+   }
+   return DEVICE_OK;
+}
+int DAMonochromator::OnMinVoltage(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(minVoltage_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double val;
+      pProp->Get(val);
+      minVoltage_ = val;
+   }
+   return DEVICE_OK;
+}
+int DAMonochromator::OnMaxVoltage(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(maxVoltage_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double val;
+      pProp->Get(val);
+      maxVoltage_ = val;
+   }
+   return DEVICE_OK;
+}
+
 
 /**********************************************************************
  * DAShutter implementation
@@ -1366,6 +1711,8 @@ int DAZStage::OnStageMaxPos(MM::PropertyBase* pProp, MM::ActionType eAct)
  */
 
 DAXYStage::DAXYStage() :
+   stepSizeXUm_(1),
+   stepSizeYUm_(1),
    DADeviceNameX_ (""),
    DADeviceNameY_ (""),
    initialized_ (false),
@@ -1384,9 +1731,7 @@ DAXYStage::DAXYStage() :
    posX_ (0.0),
    posY_ (0.0),
    originPosX_ (0.0),
-   originPosY_ (0.0),
-   stepSizeXUm_(1),
-   stepSizeYUm_(1)
+   originPosY_ (0.0)
 {
    InitializeDefaultErrorMessages();
 
@@ -1400,7 +1745,7 @@ DAXYStage::DAXYStage() :
    CreateProperty(MM::g_Keyword_Name, g_DeviceNameDAZStage, MM::String, true); 
                                                                              
    // Description                                                            
-   CreateProperty(MM::g_Keyword_Description, "XYStage controlled with voltage provided by a Digital to Analog output", MM::String, true);
+   CreateProperty(MM::g_Keyword_Description, "XYStage controlled with voltage provided by two Digital to Analog outputs", MM::String, true);
 
    // min volts
    CPropertyAction* pAct = new CPropertyAction (this, &DAXYStage::OnStageMinVoltX);      
@@ -1414,20 +1759,20 @@ DAXYStage::DAXYStage() :
 
    pAct = new CPropertyAction (this, &DAXYStage::OnStageMaxVoltY);      
    CreateProperty("Stage Y High Voltage", "5", MM::Float, false, pAct, true);   
+
    // min pos
-   /*
-   pAct = new CPropertyAction (this, &DAXYStage::OnStageMinPosX); 
-   CreateProperty(g_PropertyMinUm, "0", MM::Float, false, pAct, true); 
-   
-   pAct = new CPropertyAction (this, &DAXYStage::OnStageMinPosX); 
-   CreateProperty(g_PropertyMinUm, "0", MM::Float, false, pAct, true); 
+   pAct = new CPropertyAction (this, &DAXYStage::OnStageMinPosX);
+   CreateProperty("Stage X Minimum Position","0", MM::Float, false, pAct, true);
+
+   pAct = new CPropertyAction (this, &DAXYStage::OnStageMinPosY);
+   CreateProperty("Stage Y Minimum Position", "0", MM::Float, false, pAct, true);
+
    //max pos
-   pAct = new CPropertyAction (this, &DAXYStage::OnStageMaxPosX);      
-   CreateProperty(g_PropertyMaxUm, "200", MM::Float, false, pAct, true);
-   
-   pAct = new CPropertyAction (this, &DAXYStage::OnStageMaxPosX);      
-   CreateProperty(g_PropertyMaxUm, "200", MM::Float, false, pAct, true);  
-   */
+   pAct = new CPropertyAction (this, &DAXYStage::OnStageMaxPosX);
+   CreateProperty("Stage X Maximum Position", "200", MM::Float, false, pAct, true);
+
+   pAct = new CPropertyAction (this, &DAXYStage::OnStageMaxPosY);
+   CreateProperty("Stage Y Maximum Position", "200", MM::Float, false, pAct, true);
 }  
  
 DAXYStage::~DAXYStage()
@@ -1899,24 +2244,79 @@ int DAXYStage::OnStageMaxVoltY(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+int DAXYStage::OnStageMinPosX(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(minStagePosX_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double minStagePos;
+      pProp->Get(minStagePos);
+      minStagePosX_ = minStagePos;
+   }
+   return DEVICE_OK;
+}
 
+int DAXYStage::OnStageMinPosY(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(minStagePosY_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double minStagePos;
+      pProp->Get(minStagePos);
+      minStagePosY_ = minStagePos;
+   }
+   return DEVICE_OK;
+}
+
+int DAXYStage::OnStageMaxPosX(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(maxStagePosX_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double maxStagePos;
+      pProp->Get(maxStagePos);
+      maxStagePosX_ = maxStagePos;
+   }
+   return DEVICE_OK;
+}
+
+int DAXYStage::OnStageMaxPosY(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(maxStagePosY_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      double maxStagePos;
+      pProp->Get(maxStagePos);
+      maxStagePosY_ = maxStagePos;
+   }
+   return DEVICE_OK;
+}
 
 /**************************
  * AutoFocusStage implementation
  */
 
 AutoFocusStage::AutoFocusStage() :
-   AutoFocusDeviceName_ (""),
-   initialized_ (false),
-   pos_ (0.0),
-   originPos_ (0.0)
+   AutoFocusDeviceName_(""),
+   initialized_(false)
 {
    InitializeDefaultErrorMessages();
 
    SetErrorText(ERR_INVALID_DEVICE_NAME, "Please select a valid AutoFocus device");
    SetErrorText(ERR_NO_AUTOFOCUS_DEVICE, "No AutoFocus Device selected");
    SetErrorText(ERR_NO_AUTOFOCUS_DEVICE_FOUND, "No AutoFocus Device loaded");
-   SetErrorText(ERR_DEFINITE_FOCUS_TIMEOUT, "Definite Focus timed out.  Increase the value of Core-Timeout if the definite focus is still searching");
 
    // Name                                                                   
    CreateProperty(MM::g_Keyword_Name, g_DeviceNameAutoFocusStage, MM::String, true); 
@@ -2092,7 +2492,8 @@ int AutoFocusStage::OnAutoFocusDevice(MM::PropertyBase* pProp, MM::ActionType eA
 StateDeviceShutter::StateDeviceShutter() :
    stateDeviceName_ (""),
    stateDevice_ (0),
-   initialized_ (false)
+   initialized_ (false),
+   lastMoveStartTime_(0, 0)
 {
    InitializeDefaultErrorMessages();
 
@@ -2107,6 +2508,7 @@ StateDeviceShutter::StateDeviceShutter() :
    // Description                                                            
    CreateProperty(MM::g_Keyword_Description, "State device that is used as a shutter", MM::String, true);
 
+   EnableDelay(true);
 }  
  
 StateDeviceShutter::~StateDeviceShutter()
@@ -2161,10 +2563,13 @@ int StateDeviceShutter::Initialize()
 
 bool StateDeviceShutter::Busy()
 {
-   if (stateDevice_ != 0)
-      return stateDevice_->Busy();
+   if (stateDevice_ != 0 && stateDevice_->Busy())
+      return true;
 
-   // If we are here, there is a problem.  No way to report it.
+   MM::MMTime delay(GetDelayMs() * 1000.0);
+   if (GetCoreCallback()->GetCurrentMMTime() < lastMoveStartTime_ + delay)
+      return true;
+
    return false;
 }
 
@@ -2180,6 +2585,7 @@ int StateDeviceShutter::SetOpen(bool open)
    if (ret != DEVICE_OK)
       return ret;
 
+   lastMoveStartTime_ = GetCoreCallback()->GetCurrentMMTime();
    return stateDevice_->SetGateOpen(open);
 }
 

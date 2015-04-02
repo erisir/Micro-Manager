@@ -37,17 +37,12 @@
 #include <sstream>
 #include <iostream>
 
-#ifdef WIN32
-   #include <windows.h>
-   #define usleep(us) Sleep(us/1000) 
-#endif
+#include "../../MMDevice/DeviceUtils.h"
 
 using namespace std;
 
 CSUW1Hub::CSUW1Hub ()
 {
-   expireTimeUs_ = 5000000; // each command will finish within 5sec
-
    ClearRcvBuf();
 }
 
@@ -80,7 +75,7 @@ int CSUW1Hub::SetFilterWheelPosition(MM::Device& device, MM::Core& core, long wh
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(50000);
+         CDeviceUtils::SleepMs(50);
          counter++;
       } else
          succeeded = true;
@@ -168,7 +163,7 @@ int CSUW1Hub::SetDichroicPosition(MM::Device& device, MM::Core& core, long dichr
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(200000);
+         CDeviceUtils::SleepMs(200);
          counter++;
       } else
          succeeded = true;
@@ -254,7 +249,7 @@ int CSUW1Hub::SetDriveSpeed(MM::Device& device, MM::Core& core, int pos)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(1000000);
+         CDeviceUtils::SleepMs(1000);
          counter++;
       } else
          succeeded = true;
@@ -341,7 +336,7 @@ int CSUW1Hub::RunDisk(MM::Device& device, MM::Core& core, bool run)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(1000000);
+         CDeviceUtils::SleepMs(1000);
          counter++;
       } else
          succeeded = true;
@@ -377,7 +372,7 @@ int CSUW1Hub::SetBrightFieldPosition(MM::Device& device, MM::Core& core, int pos
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(100000);
+         CDeviceUtils::SleepMs(100);
          counter++;
       } else
          succeeded = true;
@@ -423,7 +418,7 @@ core.LogMessage(&device, os.str().c_str(), false);
 int CSUW1Hub::SetDiskPosition(MM::Device& device, MM::Core& core, int pos)
 {
    ostringstream os;
-   os << "DC_SLCT, " <<pos;
+   os << "DC_SLCT, " << (pos + 1);
 
    bool succeeded = false;
    int counter = 0;
@@ -436,7 +431,7 @@ int CSUW1Hub::SetDiskPosition(MM::Device& device, MM::Core& core, int pos)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(1000000);
+         CDeviceUtils::SleepMs(1000);
          counter++;
       } else
          succeeded = true;
@@ -471,7 +466,7 @@ core.LogMessage(&device, os.str().c_str(), false);
    if (strstr(rcvBuf_, "-1") != 0)
       pos = -1; // Bright Field
    else if (strstr(rcvBuf_, "1") != 0)
-	  pos = 0;  // Disk 1
+	   pos = 0;  // Disk 1
    else 
       pos = 1;  // Disk 2
    return DEVICE_OK;
@@ -499,7 +494,7 @@ int CSUW1Hub::SetPortPosition(MM::Device& device, MM::Core& core, int pos)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(500000);
+         CDeviceUtils::SleepMs(500);
          counter++;
       } else
          succeeded = true;
@@ -558,7 +553,7 @@ int CSUW1Hub::SetAperturePosition(MM::Device& device, MM::Core& core, int pos)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(100000);
+         CDeviceUtils::SleepMs(100);
          counter++;
       } else
          succeeded = true;
@@ -617,7 +612,7 @@ int CSUW1Hub::SetFrapPosition(MM::Device& device, MM::Core& core, int pos)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(500000);
+         CDeviceUtils::SleepMs(500);
          counter++;
       } else
          succeeded = true;
@@ -674,7 +669,7 @@ int CSUW1Hub::SetMagnifierPosition(MM::Device& device, MM::Core& core, int nr, i
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(500000);
+         CDeviceUtils::SleepMs(500);
          counter++;
       } else
          succeeded = true;

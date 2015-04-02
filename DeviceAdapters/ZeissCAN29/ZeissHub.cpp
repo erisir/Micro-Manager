@@ -46,11 +46,12 @@
 //
 
 // Define static members of class ZeissHub
+// TODO: change these arrays into dynamically allocated structures
 std::string ZeissHub::reflectorList_[10];
 std::string ZeissHub::objectiveList_[7];
 std::string ZeissHub::tubeLensList_[5];
 std::string ZeissHub::sidePortList_[3];
-std::string ZeissHub::condenserList_[7];
+std::string ZeissHub::condenserList_[8];
 
 ZeissDeviceInfo ZeissHub::deviceInfo_[MAXNUMBERDEVICES];
 DefiniteFocusModel ZeissHub::definiteFocusModel_;
@@ -59,8 +60,8 @@ ZeissUByte ZeissHub::commandGroup_[MAXNUMBERDEVICES];
 
 
 ZeissHub::ZeissHub() :
-   targetDevice_ (AXIOOBSERVER),
    portInitialized_ (false),
+   targetDevice_ (AXIOOBSERVER),
    monitoringThread_(0),
    timeOutTime_(250000),
    scopeInitialized_ (false)
@@ -90,15 +91,12 @@ ZeissHub::ZeissHub() :
    commandGroup_[0x25]=0xA3; 
    commandGroup_[0x26]=0xA3; 
    commandGroup_[0x27]=0xA3;
-
-   MM_THREAD_INITIALIZE_GUARD(&mutex);
 }
 
 ZeissHub::~ZeissHub()
 {
    if (monitoringThread_ != 0)
       delete(monitoringThread_);
-   MM_THREAD_DELETE_GUARD(&mutex);
 }
 
 /**
@@ -157,11 +155,16 @@ int ZeissHub::Initialize(MM::Device& device, MM::Core& core)
    // Get the status for all devices found in this scope
    for (ZeissUByte i=0; i < availableDevices_.size(); i++) {
       ZeissUByte devId = availableDevices_[i];
-      ZeissLong position, maxPosition;
+      ZeissLong position = 0;
+      ZeissLong maxPosition = 0;
       GetPosition(device, core, commandGroup_[devId], (ZeissUByte)devId, position);
       deviceInfo_[devId].currentPos = position;
       GetMaxPosition(device, core, commandGroup_[devId], devId, maxPosition);
       deviceInfo_[devId].maxPos = maxPosition;
+      // hack to work around issue with Condensor Contrast
+      // investigate when a microscope is available
+      // if ( (devId == 0x22) && (deviceInfo_[devId].maxPos == 8) )
+      //   deviceInfo_[devId].maxPos = 7;
       if ((commandGroup_[devId] == (ZeissUByte) 0xA2) || (commandGroup_[devId] == (ZeissUByte) 0xA3)) { // only Axis and Servos have scaling information
          GetDeviceScalings(device, core, commandGroup_[devId], devId, deviceInfo_[devId]);
          for (unsigned int j=0; j<deviceInfo_[devId].deviceScalings.size(); j++) {
@@ -170,11 +173,15 @@ int ZeissHub::Initialize(MM::Device& device, MM::Core& core)
             }
          }
          if (commandGroup_[devId] == 0xA3)
+         {
             GetMeasuringOrigin(device, core, commandGroup_[devId], devId, deviceInfo_[devId]);
+            GetTrajectoryVelocity(device, core, commandGroup_[devId], devId, deviceInfo_[devId]);
+            GetTrajectoryAcceleration(device, core, commandGroup_[devId], devId, deviceInfo_[devId]);
+         }
       }
       deviceInfo_[devId].busy = false;
-      deviceInfo_[devId].lastRequestTime == core.GetCurrentMMTime();
-      deviceInfo_[devId].lastUpdateTime == core.GetCurrentMMTime();
+      deviceInfo_[devId].lastRequestTime = core.GetCurrentMMTime();
+      deviceInfo_[devId].lastUpdateTime = core.GetCurrentMMTime();
 
       os << "Device " << std::hex << (unsigned int) devId << " has ";
       os << std::dec << maxPosition << " positions and is now at position "<< position;
@@ -248,14 +255,16 @@ int ZeissHub::Initialize(MM::Device& device, MM::Core& core)
       os << "\n" << sidePortList_[i].c_str();
    }
    core.LogMessage(&device, os.str().c_str(), false);
-
+   
    GetCondenserLabels(device, core);
    os.str("");
    os <<"Condenser: ";
-   for (int i=0; i< deviceInfo_[0x22].maxPos && i < 8;i++) {
+   for (int i=0; (i<= deviceInfo_[0x22].maxPos) && (i < 8); i++) {
       os << "\n" << condenserList_[i].c_str();
    }
    core.LogMessage(&device, os.str().c_str(), false);
+
+
 
    monitoringThread_ = new ZeissMonitoringThread(device, core, *this, &deviceInfo_[0], debug_);
    monitoringThread_->Start();
@@ -822,6 +831,91 @@ int ZeissHub::GetMeasuringOrigin(MM::Device& device, MM::Core& core, ZeissUByte 
    return DEVICE_OK;
 }
 
+/*
+ * Queries the microscope directly for the trajectory velocity of the given axis
+ * Should only be called from the Initialize function
+ * Only to be called from ZeissHub::Initialize
+ */
+int ZeissHub::GetTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte commandGroup, ZeissUByte devId, ZeissDeviceInfo& deviceInfo)
+{
+   int ret;
+   unsigned char command[8];
+   // Size of data block
+   command[0] = 0x03;
+   // Read command, immediate answer
+   command[1] = 0x18;
+   command[2] = commandGroup;
+   // ProcessID
+   command[3] = 0x11;
+   // SubID
+   command[4] = 0x2B;
+   // Device ID
+   command[5] = (ZeissUByte) devId;
+
+   ret = ExecuteCommand(device, core, command, 6);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   long unsigned int responseLength = RCV_BUF_LENGTH;
+   unsigned char response[RCV_BUF_LENGTH];
+   unsigned long signatureLength = 5;
+   unsigned char signature[] = { 0x08, commandGroup, command[3], command[4], devId };
+   ret = GetAnswer(device, core, response, responseLength, signature, 1, signatureLength);
+   if (ret != DEVICE_OK) // if the device does not support this command, this is likely where we will go
+      return ret;
+
+   ZeissLong tmp = 0;
+   memcpy (&tmp, response + 6, ZeissLongSize);
+   tmp = (long) ntohl(tmp);
+   deviceInfo.trajectoryVelocity = tmp;
+   deviceInfo.hasTrajectoryInfo = true;
+
+   return DEVICE_OK;
+}
+
+/*
+ * Queries the microscope directly for the trajectory acceleration of the given axis
+ * Should only be called from the Initialize function
+ * Only to be called from ZeissHub::Initialize
+ */
+int ZeissHub::GetTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte commandGroup, ZeissUByte devId, ZeissDeviceInfo& deviceInfo)
+{
+   int ret;
+   unsigned char command[8];
+   // Size of data block
+   command[0] = 0x03;
+   // Read command, immediate answer
+   command[1] = 0x18;
+   command[2] = commandGroup;
+   // ProcessID
+   command[3] = 0x11;
+   // SubID
+   command[4] = 0x2C;
+   // Device ID
+   command[5] = (ZeissUByte) devId;
+
+   ret = ExecuteCommand(device, core, command, 6);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   long unsigned int responseLength = RCV_BUF_LENGTH;
+   unsigned char response[RCV_BUF_LENGTH];
+   unsigned long signatureLength = 5;
+   unsigned char signature[] = { 0x08, commandGroup, command[3], command[4], devId };
+   ret = GetAnswer(device, core, response, responseLength, signature, 1, signatureLength);
+   if (ret != DEVICE_OK) // if the device does not support this command, this is likely where we will go
+      return ret;
+
+   ZeissLong tmp = 0;
+   memcpy (&tmp, response + 6, ZeissLongSize);
+   tmp = (long) ntohl(tmp);
+   deviceInfo.trajectoryAcceleration = tmp;
+   deviceInfo.hasTrajectoryInfo = true;
+
+   return DEVICE_OK;
+}
+
+
 /**
  * Queries the microscope for available motorized devices
  * Stores devices IDs in vector availableDevice_
@@ -986,11 +1080,13 @@ int ZeissHub::GetCondenserLabels(MM::Device& device, MM::Core& core)
    unsigned char  dataLength;
    ZeissUByte dataType;
    std::string label;
-   if (!deviceInfo_[0x22].present)
+   if (!deviceInfo_[0x22].present) 
+   {
       return DEVICE_OK; // no Condenser, lets not make a fuss
-   for (ZeissLong i=0; (i<= deviceInfo_[0x22].maxPos) && (i < 7); i++) {
+   }
+   for (ZeissLong i=0; (i<= deviceInfo_[0x22].maxPos) && (i < 8); i++) {
       memset(data, 0, RCV_BUF_LENGTH);
-      dataLength =0;
+      dataLength = 0;
       GetPermanentParameter(device, core, (ZeissUShort) 0x1470, (ZeissByte) (0x15 + ((i)*8)), dataType, data, dataLength);
       std::ostringstream os;
       os << (i+1) << "-";
@@ -1574,7 +1670,7 @@ int ZeissHub::ExecuteCommand(MM::Device& device, MM::Core& core, const unsigned 
 int ZeissHub::GetAnswer(MM::Device& device, MM::Core& core, unsigned char* answer, unsigned long &answerLength) 
 {     
    int ret(DEVICE_OK);
-   long unsigned int dataLength = 1;
+   const unsigned long dataLength = 1;
    bool terminatorFound = false;
    bool timeOut = false;
    MM::MMTime startTime = core.GetCurrentMMTime();
@@ -1602,7 +1698,7 @@ int ZeissHub::GetAnswer(MM::Device& device, MM::Core& core, unsigned char* answe
               // make current position of 0x0D available
               dataReadLength -= 1;
               // overwrite the 0x10 preceeding the original 0x0D with 0X0D
-              dataRead[dataReadLength - 1] = 0x0D;
+              dataRead[dataReadLength] = 0x0D;
            }
            else {
               tenFound = false;
@@ -1610,7 +1706,7 @@ int ZeissHub::GetAnswer(MM::Device& device, MM::Core& core, unsigned char* answe
          }
          else if (rcvBuf_[0] == 0x10)
             tenFound = true;
-         dataReadLength += 1;
+         dataReadLength += dataLength;
       }
       if ((core.GetCurrentMMTime() - startTime) > timeOutTime_)
          timeOut = true;
@@ -1698,9 +1794,8 @@ bool ZeissHub::signatureFound(unsigned char* answer, unsigned char* signature, u
  * Sets position in scope model.  
  */
 int ZeissHub::SetModelPosition(ZeissUByte devId, ZeissLong position) {
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    deviceInfo_[devId].currentPos = position;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1708,9 +1803,8 @@ int ZeissHub::SetModelPosition(ZeissUByte devId, ZeissLong position) {
  * Sets Upper Hardware Stop in scope model 
  */
 int ZeissHub::SetUpperHardwareStop(ZeissUByte devId, ZeissLong position) {
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    deviceInfo_[devId].upperHardwareStop = position;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1718,9 +1812,8 @@ int ZeissHub::SetUpperHardwareStop(ZeissUByte devId, ZeissLong position) {
  * Sets Lower Hardware Stop in scope model 
  */
 int ZeissHub::SetLowerHardwareStop(ZeissUByte devId, ZeissLong position) {
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    deviceInfo_[devId].lowerHardwareStop = position;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1728,9 +1821,8 @@ int ZeissHub::SetLowerHardwareStop(ZeissUByte devId, ZeissLong position) {
  * Gets Upper Hardware Stop in scope model 
  */
 int ZeissHub::GetUpperHardwareStop(ZeissUByte devId, ZeissLong& position) {
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    position = deviceInfo_[devId].upperHardwareStop;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1738,9 +1830,8 @@ int ZeissHub::GetUpperHardwareStop(ZeissUByte devId, ZeissLong& position) {
  * Gets Lower Hardware Stop in scope model 
  */
 int ZeissHub::GetLowerHardwareStop(ZeissUByte devId, ZeissLong& position) {
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    position = deviceInfo_[devId].lowerHardwareStop;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1748,9 +1839,26 @@ int ZeissHub::GetLowerHardwareStop(ZeissUByte devId, ZeissLong& position) {
  * Sets status in scope model.  
  */
 int ZeissHub::SetModelStatus(ZeissUByte devId, ZeissULong status) {
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    deviceInfo_[devId].status = status;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
+   return DEVICE_OK;
+}
+
+/*
+ * Sets Trajectory Velocity in the scope model
+ */
+int ZeissHub::SetTrajectoryVelocity(ZeissUByte devId, ZeissLong velocity) {
+   MMThreadGuard guard(mutex_);
+   deviceInfo_[devId].trajectoryVelocity = velocity;
+   return DEVICE_OK;
+}
+
+/*
+ * Sets Trajectory Velocity in the scope model
+ */
+int ZeissHub::SetTrajectoryAcceleration(ZeissUByte devId, ZeissLong accel) {
+   MMThreadGuard guard(mutex_);
+   deviceInfo_[devId].trajectoryAcceleration = accel;
    return DEVICE_OK;
 }
 
@@ -1759,9 +1867,8 @@ int ZeissHub::SetModelStatus(ZeissUByte devId, ZeissULong status) {
  * Sets busy flag in scope model.  
  */
 int ZeissHub::SetModelBusy(ZeissUByte devId, bool busy) {
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    deviceInfo_[devId].busy = busy;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1774,9 +1881,10 @@ int ZeissHub::GetModelPosition(MM::Device& device, MM::Core& core, ZeissUByte de
       if (ret != DEVICE_OK)
          return ret;
    }
-   MM_THREAD_GUARD_LOCK(&mutex);
-   position = deviceInfo_[devId].currentPos;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
+   {
+      MMThreadGuard guard(mutex_);
+      position = deviceInfo_[devId].currentPos;
+   }
    // TODO: Remove after debugging!!!
    std::ostringstream os;
    os << "GetModel Position is reporting position " << position << " for device with ID: " << std::hex << (unsigned int) devId;
@@ -1794,9 +1902,8 @@ int ZeissHub::GetModelMaxPosition(MM::Device& device, MM::Core& core, ZeissUByte
       if (ret != DEVICE_OK)
          return ret;
    }
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    maxPosition = deviceInfo_[devId].maxPos;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 
 }
@@ -1810,9 +1917,8 @@ int ZeissHub::GetModelStatus(MM::Device& device, MM::Core& core, ZeissUByte devI
       if (ret != DEVICE_OK)
          return ret;
    }
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    status = deviceInfo_[devId].status;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1825,9 +1931,8 @@ int ZeissHub::GetModelPresent(MM::Device& device, MM::Core& core, ZeissUByte dev
       if (ret != DEVICE_OK)
          return ret;
    }
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    present = deviceInfo_[devId].present;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
 
@@ -1840,8 +1945,56 @@ int ZeissHub::GetModelBusy(MM::Device& device, MM::Core& core, ZeissUByte devId,
       if (ret != DEVICE_OK)
          return ret;
    }
-   MM_THREAD_GUARD_LOCK(&mutex);
+   MMThreadGuard guard(mutex_);
    busy = deviceInfo_[devId].busy;
-   MM_THREAD_GUARD_UNLOCK(&mutex);
    return DEVICE_OK;
 }
+
+/*
+ * Starts initialize or returns cached position
+ */
+int ZeissHub::GetModelTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& velocity) 
+{
+   if (! scopeInitialized_) {
+      int ret = Initialize(device, core);
+      if (ret != DEVICE_OK)
+         return ret;
+   }
+   {
+      MMThreadGuard guard(mutex_);
+      velocity = deviceInfo_[devId].trajectoryVelocity;
+   }
+   // TODO: Remove after debugging!!!
+   std::ostringstream os;
+   os << "GetModel TV is reporting TV " << velocity << " for device with ID: " << std::hex << (unsigned int) devId;
+   core.LogMessage (&device, os.str().c_str(), false);
+   return DEVICE_OK;
+}
+
+int ZeissHub::HasModelTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, bool& hasTV) 
+{
+   hasTV = deviceInfo_[devId].hasTrajectoryInfo;
+   return DEVICE_OK;
+}
+
+/*
+ * Starts initialize or returns cached position
+ */
+int ZeissHub::GetModelTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& acceleration) 
+{
+   if (! scopeInitialized_) {
+      int ret = Initialize(device, core);
+      if (ret != DEVICE_OK)
+         return ret;
+   }
+   {
+      MMThreadGuard guard(mutex_);
+      acceleration = deviceInfo_[devId].trajectoryAcceleration;
+   }
+   // TODO: Remove after debugging!!!
+   std::ostringstream os;
+   os << "GetModel TA is reporting TA " << acceleration << " for device with ID: " << std::hex << (unsigned int) devId;
+   core.LogMessage (&device, os.str().c_str(), false);
+   return DEVICE_OK;
+}
+

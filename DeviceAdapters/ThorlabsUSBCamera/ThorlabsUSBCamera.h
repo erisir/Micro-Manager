@@ -4,13 +4,12 @@
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   Device adapter for Thorlabs USB cameras DCU223M, DCU223C, 
-//				  DCU224M, DCU224C, DCC1545M, DCC1645C, DCC1240M, DCC1240C.
-//				  Has been developped and tested with the DCC1545M, based on the 
-//				  source code of the DemoCamera device adapter
+//				      DCU224M, DCU224C, DCC1545M, DCC1645C, DCC1240M, DCC1240C.
+//				      Has been developed and tested with the DCC1545M, based on the 
+//				      source code of the DemoCamera device adapter
 //                
 // AUTHOR:        Christophe Dupre, christophe.dupre@gmail.com, 09/25/2012
-//				  DemoCamera Source code originally developped by 
-//				  Nenad Amodaj, Karl Hoover, Arthur Edelstein
+//				      Updated to support DC3240C features, Nenad Amodaj, 09/2013
 //
 // COPYRIGHT:     University of California, San Francisco, 2006
 // LICENSE:       This file is distributed under the BSD license.
@@ -38,16 +37,10 @@
 //////////////////////////////////////////////////////////////////////////////
 // Error codes
 //
-#define ERR_UNKNOWN_MODE         102
-#define ERR_UNKNOWN_POSITION     103
-#define ERR_IN_SEQUENCE          104
-#define ERR_SEQUENCE_INACTIVE    105
-#define ERR_STAGE_MOVING         106
-#define SIMULATED_ERROR          200
-#define HUB_NOT_AVAILABLE        107
-
-const char* NoHubError = "Parent Hub not defined.";
-
+#define ERR_THORCAM_LIVE_TIMEOUT 11001
+#define ERR_THORCAM_LIVE_UNKNOWN_EVENT 11002
+#define ERR_THORCAM_UNKNOWN_PIXEL_TYPE 11003
+#define ERR_THORCAM_UNKNOWN_BIN_SIZE 11004
 
 //////////////////////////////////////////////////////////////////////////////
 // ThorlabsUSBCam class
@@ -94,8 +87,6 @@ public:
    int ThreadRun();
    bool IsCapturing();
    void OnThreadExiting() throw(); 
-   double GetNominalPixelSizeUm() const {return nominalPixelSizeUm_;}
-   double GetPixelSizeUm() const {return nominalPixelSizeUm_ * GetBinning();}
    int GetBinning() const;
    int SetBinning(int bS);
    int IsExposureSequenceable(bool& isSequenceable) const {isSequenceable = false; return DEVICE_OK;}
@@ -104,62 +95,43 @@ public:
 
    // action interface
    // ----------------
-	// floating point read-only properties for testing
    int OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct);
-
-   //New properties
-   int OnErrorSimulation(MM::PropertyBase* , MM::ActionType );
-   int OnCameraCCDXSize(MM::PropertyBase* , MM::ActionType );
    int OnExposure(MM::PropertyBase* , MM::ActionType );
    int OnHardwareGain(MM::PropertyBase* , MM::ActionType );
    int OnPixelClock(MM::PropertyBase* , MM::ActionType );
-   int OnCameraCCDYSize(MM::PropertyBase* , MM::ActionType );
+   int OnFPS(MM::PropertyBase* , MM::ActionType );
 
 private:
-   int SetAllowedBinning();
-   void TestResourceLocking(const bool);
-   void GenerateEmptyImage(ImgBuffer& img);
-   void GenerateSyntheticImage();
    int ResizeImageBuffer();
 
-   static const double nominalPixelSizeUm_;
-
-   double dPhase_;
    ImgBuffer img_;
    bool busy_;
    bool stopOnOverFlow_;
    bool initialized_;
-   double readoutUs_;
    MM::MMTime readoutStartTime_;
-   long scanMode_;
+   MM::MMTime sequenceStartTime_;
    int bitDepth_;
    unsigned roiX_;
    unsigned roiY_;
-   MM::MMTime sequenceStartTime_;
+   unsigned roiWidth_;
+   unsigned roiHeight_;
    long imageCounter_;
 	long binSize_;
-	long cameraCCDXSize_;
-	long cameraCCDYSize_;
-   double ccdT_;
-	std::string triggerDevice_;
+	SENSORINFO sensorInfo;
+   volatile double framesPerSecond;
 
-	bool dropPixels_;
-	bool saturatePixels_;
-	double fractionOfPixelsToDropOrSaturate_;
-
-   MMThreadLock* pDemoResourceLock_;
    MMThreadLock imgPixelsLock_;
    int nComponents_;
    friend class MySequenceThread;
    MySequenceThread * thd_;
 
-	HCAM	m_hG;			// handle to frame grabber
+	HCAM	camHandle_;			// handle to camera driver
+   char* cameraBuf;        // camera buffer for image transfer
+   HANDLE hEvent;          // event handle for camera notifications
+   int cameraBufId;        // buffer id, required by the SDK
    double Exposure_;
    double HardwareGain_;
-   double PixelClock_;
-
 };
 
 class MySequenceThread : public MMDeviceThreadBase

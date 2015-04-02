@@ -19,7 +19,7 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
 //                License text is included with the source distribution.
-// CVS:           $Id$
+// CVS:           $Id: Sensicam.h 7745 2011-09-16 00:08:33Z arthur $
 //
 #ifndef _SENSICAM_H_
 #define _SENSICAM_H_

@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: ScriptFileFilter.java 12224 2013-11-27 07:20:28Z nico $
 //
 package org.micromanager.utils;
 
@@ -40,6 +40,7 @@ public class ScriptFileFilter extends FileFilter {
       DESCRIPTION = new String("BeanShell files (*.bsh)");
    }
    
+   @Override
    public boolean accept(File f){
       if (f.isDirectory())
          return true;

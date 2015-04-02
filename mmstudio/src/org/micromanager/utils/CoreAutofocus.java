@@ -1,5 +1,6 @@
 package org.micromanager.utils;
 
+import ij.process.ImageProcessor;
 import java.util.Vector;
 
 import mmcorej.CMMCore;
@@ -22,12 +23,14 @@ public class CoreAutofocus implements Autofocus {
    public CoreAutofocus() {
    }
 
+   @Override
    public void focus(double coarseStep, int numCoarse, double fineStep,
          int numFine) throws MMException {
       throw new MMException(
             "Obsolete command. Use setProperty() to specify parameters.");
    }
 
+   @Override
    public double fullFocus() throws MMException {
       if (core_ == null)
          return 0.0;
@@ -47,10 +50,12 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public String getVerboseStatus() {
       return "No message at this time!";
    }
 
+   @Override
    public double incrementalFocus() throws MMException {
       if (core_ == null)
          return 0.0;
@@ -71,6 +76,7 @@ public class CoreAutofocus implements Autofocus {
 
    }
 
+   @Override
    public String[] getPropertyNames(){
       Vector<String> propNames = new Vector<String>();
       try {
@@ -84,9 +90,10 @@ public class CoreAutofocus implements Autofocus {
       } catch (Exception e) {
          ReportingUtils.logError(e);
       }
-      return (String[]) propNames.toArray();
+      return propNames.toArray(new String[propNames.size()]);
    }
 
+   @Override
    public PropertyItem[] getProperties() {
       StrVector propNamesVect;
       Vector<PropertyItem> props = new Vector<PropertyItem>();
@@ -118,6 +125,7 @@ public class CoreAutofocus implements Autofocus {
       return props.toArray(new PropertyItem[0]);
    }
 
+   @Override
    public String getPropertyValue(String name) throws MMException {
       try {
          return core_.getProperty(devName_, name);
@@ -126,6 +134,7 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public PropertyItem getProperty(String name) throws MMException {
       try {
          if (core_.hasProperty(devName_, name)) {
@@ -152,6 +161,7 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public void setPropertyValue(String name, String value) throws MMException {
       try {
          core_.setProperty(devName_, name, value);
@@ -160,6 +170,7 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public double getCurrentFocusScore() {
       try {
          core_.setAutoFocusDevice(devName_);
@@ -170,21 +181,26 @@ public class CoreAutofocus implements Autofocus {
       return core_.getCurrentFocusScore();
    }
 
+   @Override
    public void applySettings() {
    }
 
+   @Override
    public void saveSettings() {
       // we could save current property settings in prefs.  Not sure if that is a good idea
    }
 
+   @Override
    public int getNumberOfImages() {
       return core_.getRemainingImageCount();
    }
 
+   @Override
    public String getDeviceName() {
       return devName_;
    }
 
+   @Override
    public void setProperty(PropertyItem p) throws MMException {
       try {
          core_.setProperty(devName_, p.name, p.value);
@@ -193,6 +209,7 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public void enableContinuousFocus(boolean enable) throws MMException {
       try {
          core_.setAutoFocusDevice(devName_);
@@ -202,6 +219,7 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public boolean isContinuousFocusEnabled() throws MMException {
       try {
          core_.setAutoFocusDevice(devName_);
@@ -211,6 +229,7 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public boolean isContinuousFocusLocked() throws MMException {
       try {
          core_.setAutoFocusDevice(devName_);
@@ -220,9 +239,15 @@ public class CoreAutofocus implements Autofocus {
       }
    }
 
+   @Override
    public void setApp(ScriptInterface app) {
       core_ = app.getMMCore();
       devName_ = core_.getAutoFocusDevice();      
+   }
+
+   @Override
+   public double computeScore(ImageProcessor impro) {
+      throw new UnsupportedOperationException("Not supported yet."); 
    }
 
 }

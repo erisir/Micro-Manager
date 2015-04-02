@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: GraphData.java 5280 2010-09-05 22:32:52Z nico $
 //
 package org.micromanager.graph;
 import java.awt.geom.Point2D;

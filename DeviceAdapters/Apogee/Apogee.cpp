@@ -50,34 +50,13 @@ const char* g_PixelType_8bit = "8bit";
 const char* g_PixelType_12bit = "12bit";
 const char* g_PixelType_16bit = "16bit";
 
-// TODO: linux entry code?
-
-// Windows DLL entry routine
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                      DWORD  ul_reason_for_call, 
-                      LPVOID /*lpReserved*/
-                      )
-{
-    switch(ul_reason_for_call)
-    {
-        case DLL_PROCESS_ATTACH:
-        case DLL_THREAD_ATTACH:
-        case DLL_THREAD_DETACH:
-        case DLL_PROCESS_DETACH:
-            break;
-    }
-    return TRUE;
-}
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-    AddAvailableDeviceName(g_CameraDeviceName,    "Apogee Alta camera adapter");
+    RegisterDevice(g_CameraDeviceName, MM::CameraDevice, "Apogee Alta camera adapter");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -1225,7 +1204,7 @@ int CApogeeCamera::GetAltaAdGain( long & gain )
     }
     else
     {
-        gain = ApgCam->GainSixteenBit;
+        gain = static_cast<long>(ApgCam->GainSixteenBit);
     }
 
      return DEVICE_OK;

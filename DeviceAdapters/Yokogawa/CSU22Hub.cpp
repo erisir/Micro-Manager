@@ -37,17 +37,12 @@
 #include <sstream>
 #include <iostream>
 
-#ifdef WIN32
-   #include <windows.h>
-   #define usleep(us) Sleep(us/1000) 
-#endif
+#include "../../MMDevice/DeviceUtils.h"
 
 using namespace std;
 
 CSU22Hub::CSU22Hub ()
 {
-   expireTimeUs_ = 5000000; // each command will finish within 5sec
-
    ClearRcvBuf();
 }
 
@@ -78,7 +73,7 @@ int CSU22Hub::SetNDFilterPosition(MM::Device& device, MM::Core& core, int pos)
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)
           return ret;
-      usleep(50000);
+      CDeviceUtils::SleepMs(50);
    }
 
    // Set ND filter
@@ -94,7 +89,7 @@ int CSU22Hub::SetNDFilterPosition(MM::Device& device, MM::Core& core, int pos)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(50000);
+         CDeviceUtils::SleepMs(50);
          counter++;
       } else
          succeeded = true;
@@ -115,7 +110,7 @@ int CSU22Hub::SetNDFilterPosition(MM::Device& device, MM::Core& core, int pos)
             return ret;
          ret = GetAcknowledgment(device,core);
          if (ret != DEVICE_OK) {
-            usleep(50000);
+            CDeviceUtils::SleepMs(50);
             counter++;
          } else
             succeeded = true;

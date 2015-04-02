@@ -1,3 +1,33 @@
+///////////////////////////////////////////////////////////////////////////////
+// FILE:          MoticMicroscope.cpp
+// PROJECT:       Micro-Manager
+// SUBSYSTEM:     DeviceAdapters
+//-----------------------------------------------------------------------------
+// DESCRIPTION:   Motic microscope device adapter
+// COPYRIGHT:     2012 Motic China Group Co., Ltd.
+//                All rights reserved.
+//
+//                This library is free software; you can redistribute it and/or
+//                modify it under the terms of the GNU Lesser General Public
+//                License as published by the Free Software Foundation.
+//
+//                This library is distributed in the hope that it will be
+//                useful, but WITHOUT ANY WARRANTY; without even the implied
+//                warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+//                PURPOSE. See the GNU Lesser General Public License for more
+//                details.
+//
+//                IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+//                LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+//                EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
+//
+//                You should have received a copy of the GNU Lesser General
+//                Public License along with this library; if not, write to the
+//                Free Software Foundation, Inc., 51 Franklin Street, Fifth
+//                Floor, Boston, MA 02110-1301 USA.
+//
+// AUTHOR:        Motic
+
 #include "MoticMicroscopeSDK.h"
 #include "MoticMicroscope.h"
 
@@ -28,30 +58,15 @@ const char* PROP_XYSPEED = "XYSpeed(um/s)";
 const char* PROP_ZSPEED = "ZSpeed(um/s)";
 const char* PROP_ILLUMINATION_INTENSITY = "Intensity";
 
-#ifdef WIN32
-
-BOOL APIENTRY DllMain(HANDLE, DWORD ul_reason_for_call, LPVOID)
-{
-	switch(ul_reason_for_call)
-	{
-   case DLL_PROCESS_ATTACH:
-   case DLL_THREAD_ATTACH:
-   case DLL_THREAD_DETACH:
-   case DLL_PROCESS_DETACH:
-      break;
-	}
-	return TRUE;
-}
-
-#endif
 
 // Module export
 MODULE_API void InitializeModuleData()
 {
-	for(int i = 0; i < MoticDevCount; i++)
-	{
-		AddAvailableDeviceName(g_devlist[i][0], g_devlist[i][1]);
-	}
+	RegisterDevice(g_devlist[MoticHub][0], MM::HubDevice, g_devlist[MoticHub][1]);
+	RegisterDevice(g_devlist[MoticXYStage][0], MM::XYStageDevice, g_devlist[MoticXYStage][1]);
+	RegisterDevice(g_devlist[MoticZ][0], MM::StageDevice, g_devlist[MoticZ][1]);
+	RegisterDevice(g_devlist[MoticObjectives][0], MM::StateDevice, g_devlist[MoticObjectives][1]);
+	RegisterDevice(g_devlist[MoticIllumination][0], MM::GenericDevice, g_devlist[MoticIllumination][1]);
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -189,19 +204,6 @@ int Hub::DetectInstalledDevices()
 	}
 
 	return DEVICE_OK;
-}
-
-MM::Device* Hub::CreatePeripheralDevice(const char* adapterName)
-{
-	for(unsigned i = 0; i < GetNumberOfInstalledDevices(); i++)
-	{
-		MM::Device* d = GetInstalledDevice(i);
-		char name[MM::MaxStrLength];
-		d->GetName(name);
-		if(strcmp(adapterName, name) == 0)
-			return CreateDevice(adapterName);
-	}
-	return 0;
 }
 
 void Hub::MicroscopeEventHandler(int eventId, int data)

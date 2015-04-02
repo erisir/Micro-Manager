@@ -14,16 +14,17 @@
 ;               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 
 (ns org.micromanager.mm
-  (:import [org.micromanager.navigation MultiStagePosition]
-           [mmcorej Configuration DoubleVector Metadata StrVector]
+  (:import [org.micromanager.api MultiStagePosition]
+           [mmcorej Configuration DoubleVector Metadata StrVector] ;; load mmcorej.DeviceType at runtime only
            [org.json JSONArray JSONObject]
            [java.text SimpleDateFormat]
-           [org.micromanager.navigation MultiStagePosition StagePosition]
+           [org.micromanager.api MultiStagePosition StagePosition]
            [org.micromanager.utils ChannelSpec]
            [java.util Date]
            [ij IJ]
            [javax.swing SwingUtilities])
-  (:require [clojure.pprint]))
+  (:require [clojure.pprint]
+            [clojure.string]))
 
 (declare gui)
 (declare mmc)
@@ -33,13 +34,21 @@
   [& body]
   `(SwingUtilities/invokeLater (fn [] ~@body)))
 
+(defn store-mmcore
+  [mmc]
+    (def gui nil)
+    (def mmc mmc))
+
+(defn join-string [sep coll]
+  (apply str (interpose sep coll)))
+
 (defn load-mm
   "Load Micro-Manager gui and mmc objects."
   ([gui]
     (def gui gui)
     (def mmc (.getMMCore gui)))
   ([]
-    (org.micromanager.MMStudioMainFrame/getInstance)))
+    (org.micromanager.MMStudio/getInstance)))
 
 (defn rekey
   "Change the name of key kold to knew."
@@ -73,49 +82,60 @@
   "Standard pretty print, unless we have a string, in which case
    omit the quotation marks."
   [x]
-  (binding [*print-length* 20]
+  ; 30 items is arbitrary but usually enough to show all settings
+  ; Use wide lines to avoid excessive line breaks
+  (binding [*print-length* 30 clojure.pprint/*print-right-margin* 136]
     (if (.contains (str (type x)) "class [")
       (print x)
       (clojure.pprint/pprint x))))
 
-(defn send-to-log [s]
-    (.logMessage mmc s true))
+(defn send-to-debug-log [s]
+    (.logMessage mmc (str "[AE] " s) true))
 
-(defn handle-multiline [x]
-  (let [x-trimmed (.trim x)]
-    (if (< 1 (count (.split x-trimmed "\n")))
-      (str "\n" x-trimmed)
-      x-trimmed)))
+(defn cleanup-multiline
+  "Take a string, remove empty lines and redundant newline-like characters, and
+  re-assemble into a multiline string. Optionally prepend a newline if the
+  result is more than one line."
+  ([x] (cleanup-multiline x false))
+  ([x add-newline]
+   (let [lines (clojure.string/split-lines x)
+         trimmed-lines (remove empty? (map clojure.string/trimr lines))
+         reassembled (join-string "\n" trimmed-lines)]
+     (if (and
+           add-newline
+           (< 1 (count trimmed-lines)))
+       (str "\n" reassembled)
+       reassembled))))
 
-(defn form-to-log-string [x]
-  (handle-multiline
-    (with-out-str
-      (very-pretty-print x))))
+(defn form-to-log-string
+  "Format a form for logging. Prepend a newline if the result is more than one
+  line."
+  [x]
+  (let [formatted (cleanup-multiline
+                    (with-out-str (very-pretty-print x))
+                    true)]
+    formatted))
 
 (defn log
-  "Log form x to the Micro-Manager log output (debug only)."
+  "Log string or form x to the Core log output (debug only)."
   [& x]
   (let [converted (for [item x]
                     (if (string? item)
                       item
                       (form-to-log-string item)))]
     (->> converted
-         (interpose " ")
-         (apply str)
-         handle-multiline
-         send-to-log)))
+         (join-string " ")
+         cleanup-multiline
+         send-to-debug-log)))
 
 (defmacro log-cmd
-  "Log the enclosed expr to the Micro-Manager log output (debug only)."
+  "Log the enclosed expr to the Core log output (debug only)."
   ([cmd-count expr]
     (let [[cmd# args#] (split-at cmd-count expr)]
       `(let [expr# (concat '~cmd# (list ~@args#))]
-         (log expr#)
+         (log "<--" expr#)
          (let [result# ~expr]
-           (send-to-log
-             (str "--> "
-                  (form-to-log-string
-                    result#)))
+           (log "-->" result#)
            result#))))
    ([expr] `(log-cmd 1 ~expr)))
 
@@ -196,7 +216,8 @@
    :focus           (core getFocusDevice)
    :xy-stage        (core getXYStageDevice)
    :autofocus       (core getAutoFocusDevice)
-   :image-processor (core getImageProcessorDevice)})
+   :image-processor (core getImageProcessorDevice)
+   :galvo           (core getGalvoDevice)})
    
 (defn config-struct
   "Creates a map of properties from a given Micro-Manager Configuration
@@ -237,11 +258,13 @@
    property are grouped together in a vector: [[dev prop] value]."
   [dev prop]
   [[dev prop] (get-property-value dev prop)])
-       
+
 (defn get-positions
   "Get the position list as a vector of MultiStagePositions."
-  []
-  (vec (.. gui getPositionList getPositions)))
+  ([position-list]
+    (vec (.getPositions (or position-list (.getPositionList gui)))))
+  ([]
+    (get-positions nil)))
 
 (defn get-allowed-property-values
   "Returns a sequence of the allowed property values
@@ -276,32 +299,6 @@
     (for [k (.GetKeys m)]
       [k (.. m (GetSingleTag k) GetValue)])))
 
-(defn reload-device
-  "Unload a device, and reload it, preserving its property settings."
-  [dev]
-  (when (. gui getAutoreloadOption)
-    (log "Attempting to reload " dev "...")
-    (let [props (filter #(= (first %) dev)
-                        (get-system-config-cached))
-          prop-map (into {} (map #(-> % next vec) props))
-          library (core getDeviceLibrary dev)
-          name-in-library (core getDeviceName dev)
-          state-device (eval 'mmcorej.DeviceType/StateDevice) ; load at runtime
-          state-labels (when (= state-device (core getDeviceType dev))
-                         (vec (core getStateLabels dev)))]
-      (core unloadDevice dev)
-      (core loadDevice dev library name-in-library)
-      (let [init-props (select-keys prop-map
-                                    (filter #(core isPropertyPreInit dev %)
-                                            (core getDevicePropertyNames dev)))]
-        (doseq [[prop val] init-props]
-          (core setProperty dev prop val)))
-      (core initializeDevice dev)
-      (when state-labels
-        (dotimes [i (count state-labels)]
-          (core defineStateLabel dev i (get state-labels i)))))
-    (log "...reloading of " dev " has apparently succeeded.")))
-
 (defn json-to-data
   "Take a JSON object and convert it to a clojure data object."
   [json]
@@ -327,37 +324,38 @@
     (keyword? x) (name x)
     :else x))
 
-(def ^{:doc "the ISO8601 data standard format modified to make it
+(def ^{:doc "the ISO8601 standard date format modified to make it
              slightly more human-readable."}
-       iso8601modified (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss Z"))
+       imageDateFormat (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss Z"))
 
 (defn get-current-time-str 
-  "Get the current time and date in modified ISO8601 format."
+  "Get the current time and date in the format for image metadata."
   []
-  (. iso8601modified format (Date.)))
+  (. imageDateFormat format (Date.)))
 
 (defn get-pixel-type
   "Get the current pixel type."
   []
-  (str ({1 "GRAY", 4 "RGB"} (int (core getNumberOfComponents))) (* 8 (core getBytesPerPixel))))
+  (str ({1 "GRAY", 4 "RGB"} (int (core getNumberOfComponents)))
+       (* 8 (core getBytesPerPixel))))
 
 (defn ChannelSpec-to-map
   "Convert a Micro-Manager ChannelSpec object to a clojure data map
    with friendly keys."
-  [^ChannelSpec chan]
+  [channel-group ^ChannelSpec chan]
   (into (sorted-map)
         (-> chan
             (data-object-to-map)
             (select-and-rekey
-              :config_                 :name
-              :exposure_               :exposure
-              :zOffset_                :z-offset
-              :doZStack_               :use-z-stack
-              :skipFactorFrame_        :skip-frames
-              :useChannel_             :use-channel
-              :color_                  :color
+              :config                 :name
+              :exposure               :exposure
+              :zOffset                :z-offset
+              :doZStack               :use-z-stack
+              :skipFactorFrame        :skip-frames
+              :useChannel             :use-channel
+              :color                  :color
               )
-            (assoc :properties (get-config (core getChannelGroup) (.config_ chan))))))
+            (assoc :properties (get-config channel-group (.config chan))))))
 
 (defn MultiStagePosition-to-map
   "Convert a Micro-Manager MultiStagePosition object to a clojure data map."
@@ -377,54 +375,122 @@
 (defn get-msp
   "Get a MultiStagePosition object from the Position List with the specified
    index number."
-  [idx]
-  (when idx
-    (let [p-list (. gui getPositionList)]
-      (when (pos? (. p-list getNumberOfPositions))
-        (.getPosition p-list idx)))))
+  ([position-list idx]
+    (when idx
+      (when position-list
+        (when (pos? (.getNumberOfPositions position-list))
+          (.getPosition position-list idx)))))
+  ([idx]
+    (get-msp nil idx)))
+
 
 (defn add-msp
-  [label x y z]
-  (let [p-list (.getPositionList gui)]
-    (.addPosition p-list
+  "Add a MultiStagePosition object to the position list."
+  ([position-list label x y z]
+    (.addPosition position-list
                   (doto
                     (MultiStagePosition.
                       (core getXYStageDevice) x y
                       (core getFocusDevice) z)
-                    (.setLabel label)))))
+                    (.setLabel label))))
+  ([label x y z]
+    (add-msp (.getPositionList gui) label x y z)))
 
 (defn remove-msp
-  [idx]
-  (let [p-list (.getPositionList gui)]
-    (.removePosition p-list idx)))
+  ([position-list idx]
+    (.removePosition position-list idx))
+  ([idx]
+    (remove-msp (.getPositionList gui) idx)))
 
 (defn get-msp-z-position
   "Get the z position for a given z-stage from the MultiStagePosition
    with the given index in the Position List."
-  [idx z-stage]
-  (if-let [msp (get-msp idx)]
-    (if-let [stage-pos (. msp get z-stage)]
-      (. stage-pos x))))
+  ([position-list idx z-stage]
+    (if-let [msp (get-msp position-list idx)]
+      (if-let [stage-pos (. msp get z-stage)]
+        (. stage-pos x))))
+  ([idx z-stage]
+    (get-msp-z-position nil idx z-stage)))
 
 (defn set-msp-z-position
   "Set the z position for a given z-stage from the MultiStagePosition
    with the given index in the Position List."
-  [idx z-stage z]
-  (when-let [msp (get-msp idx)]
+  ([position-list idx z-stage z]
+  (when-let [msp (get-msp position-list idx)]
     (when-let [stage-pos (. msp (get z-stage))]
-      (set! (. stage-pos x) z))))  
+      (set! (. stage-pos x) z))))
+  ([idx z-stage z]
+    (set-msp-z-position nil idx z-stage z)))  
+
+(defn positions-map [position-list]
+  (let [position (map MultiStagePosition-to-map (get-positions))]
+    (zipmap
+      (map :label position)
+      (map :axes position))))
+
+(defn swig-vector-contents
+  "Returns a string containing all values in a swig vector
+   with spaces in between."
+  [v]
+  (->> (range (.size v))
+       (map #(.get v %))
+       (join-string " ")))
 
 (defn str-vector
   "Convert a sequence of strings into a Micro-Manager StrVector."
   [str-seq]
-  (let [v (StrVector.)]
+  (let [v (proxy [StrVector] []
+            (toString [] (swig-vector-contents this)))]
     (doseq [item str-seq]
       (.add v item))
     v))
 
 (defn double-vector [doubles]
   "Convert a sequence of numbers to a Micro-Manager DoubleVector."
-  (let [v (DoubleVector.)]
+  (let [v (proxy [DoubleVector] []
+            (toString [] (swig-vector-contents this)))]
     (doseq [item doubles]
       (.add v item))
     v))
+
+(defn all-properties []
+  (for [dev (.getLoadedDevices mmc) prop (.getDevicePropertyNames mmc dev)]
+    [dev prop]))
+
+(defn property-sequence-max-lengths []
+  (into {}
+        (for [[dev prop :as property] (all-properties)]
+          [property
+           (if (.isPropertySequenceable mmc dev prop)
+             (.getPropertySequenceMaxLength mmc dev prop)
+             0)])))
+
+(defn all-cameras []
+  (seq (.getLoadedDevicesOfType mmc (eval 'mmcorej.DeviceType/CameraDevice))))
+
+(defn exposure-sequence-max-lengths []
+  (into {}
+        (for [camera (all-cameras)]
+          [camera
+           (if (.isExposureSequenceable mmc camera)
+             (.getExposureSequenceMaxLength mmc camera)
+             0)])))
+
+(defn all-z-stages []
+  (seq (.getLoadedDevicesOfType mmc (eval 'mmcorej.DeviceType/StageDevice))))
+
+(defn stage-sequence-max-lengths []
+  (into {}
+        (for [stage (all-z-stages)]
+          [stage
+           (if (.isStageSequenceable mmc stage)
+             (.getStageSequenceMaxLength mmc stage)
+             0)])))
+
+(defn sequence-max-lengths []
+  {:camera-exposures (exposure-sequence-max-lengths)
+   :stages (stage-sequence-max-lengths)
+   :properties (property-sequence-max-lengths)})
+
+
+  

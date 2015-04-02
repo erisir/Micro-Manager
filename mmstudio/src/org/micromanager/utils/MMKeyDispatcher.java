@@ -21,7 +21,6 @@ package org.micromanager.utils;
 
 import java.awt.KeyEventDispatcher;
 import java.awt.event.KeyEvent;
-import org.micromanager.MMStudioMainFrame;
 
 /**
  * Application-wide key dispatcher
@@ -31,12 +30,10 @@ import org.micromanager.MMStudioMainFrame;
  * @author nico
  */
 public class MMKeyDispatcher implements KeyEventDispatcher{
-   private MMStudioMainFrame gui_;
-      Class textCanvasClass = null;
-      final Class [] forbiddenClasses_;
+   Class textCanvasClass = null;
+   final Class [] forbiddenClasses_;
 
-   public MMKeyDispatcher(MMStudioMainFrame gui) {
-      gui_ = gui;
+   public MMKeyDispatcher() {
       try {
          textCanvasClass = ClassLoader.getSystemClassLoader().loadClass("ij.text.TextCanvas");
       } catch (ClassNotFoundException ex) {
@@ -45,13 +42,13 @@ public class MMKeyDispatcher implements KeyEventDispatcher{
       }
 
       /*
-       * If there are other areas in the application in which keyevents should not
-       * be processed, add those here
+       * If there are other areas in the application in which keyevents should
+       * not be processed, add those here
        */
       Class [] forbiddenClasses = {
          java.awt.TextComponent.class,
          javax.swing.text.JTextComponent.class,
-         org.jeditsyntax.JEditTextArea.class,
+         org.fife.ui.rsyntaxtextarea.RSyntaxTextArea.class,
          textCanvasClass
       };
       forbiddenClasses_ = forbiddenClasses;
@@ -73,6 +70,7 @@ public class MMKeyDispatcher implements KeyEventDispatcher{
    /*
     * 
     */
+   @Override
    public boolean dispatchKeyEvent(KeyEvent ke) {
       if (!HotKeys.active_)
          return false;

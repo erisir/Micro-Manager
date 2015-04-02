@@ -26,7 +26,6 @@
 #include "ImgBuffer.h"
 
 #include "xiApi.h"
-#include "xiExt.h"
 #include "m3Api.h"
 #include "m3Ext.h"
 
@@ -37,7 +36,7 @@ class MySequenceThread;
 class XIMEACamera : public CCameraBase<XIMEACamera>  
 {
 public:
-   XIMEACamera();
+   XIMEACamera(const char* name);
    ~XIMEACamera();
   
    //////////////////////////////////////////////////////////////
@@ -82,6 +81,7 @@ public:
    // action interface
    int OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnDataFormat(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnSensorTaps(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnGain(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnAcqTout(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnTrigger(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -119,9 +119,11 @@ public:
    int OnHousTemp(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
+	const std::string name_;
 	void* handle;
 	XI_IMG image;
 	int binning_;
+	int tapcnt_;
 	double acqTout_;
 	int bytesPerPixel_;
 	double gain_;
@@ -139,6 +141,8 @@ private:
 	int ResizeImageBuffer();
 	friend class MySequenceThread;
 	MySequenceThread * thd_;
+	bool stopOnOverflow_;
+	bool isAcqRunning;
 };
 
 //////////////////////////////////////////////////////////////////////////////

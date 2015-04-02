@@ -53,8 +53,13 @@ static MMThreadLock imageReadyFlagLock_s;
 
 
 // construct the device  - this just loads the dll and maps the API functions 
-SpotDevice::SpotDevice(SpotCamera* pCamera): pMMCamera_(pCamera), pbuf_(NULL), sizeofbuf_(0),selectedCameraIndexRequested_(-1), voidStarBuffer_(NULL),
-nBufSize_(0)
+SpotDevice::SpotDevice(SpotCamera* pCamera): 
+   pMMCamera_(pCamera), 
+   voidStarBuffer_(NULL),
+   pbuf_(NULL), 
+   sizeofbuf_(0),
+   selectedCameraIndexRequested_(-1), 
+   nBufSize_(0)
 {
 	//MMThreadGuard libGuard(libraryLock_s);
 
@@ -217,7 +222,9 @@ void SpotDevice::InitializeCamera()
    stCameraInfo_.bIs1394FireWireCamera = (long) (dwAttributes & SPOT_ATTR_1394) != 0 ? true : false;
    stCameraInfo_.bCanDoLiveImageScaling = (long) (dwAttributes & SPOT_ATTR_LIVEHISTOGRAM) != 0 ? true : false;
    SpotAPI(SpotGetVersionInfo2)(&stVerInfo);
+#ifdef WIN32
 #pragma warning(disable:4996)
+#endif
    strcpy(stCameraInfo_.szModelNumber, stVerInfo.szCameraModelNum);
    strcpy(stCameraInfo_.szSerialNumber, stVerInfo.szCameraSerialNum);
    strcpy(stCameraInfo_.szRevisionNumber, stVerInfo.szCameraRevNum);
@@ -302,7 +309,9 @@ void SpotDevice::InitializeCamera()
 	g_Camera = pMMCamera_;
 	g_Device = this;
 
-#pragma warning(default:4996)
+#ifdef WIN32
+#pragma warning(disable:4996)
+#endif
 }
 
 
@@ -409,8 +418,6 @@ Specifies the number of image data buffers bytes per image row.  (MacOS only)
 
 void SpotDevice::SetupImageSequence( const int nimages , const int interval )
 {
-	//MMThreadGuard libGuard(libraryLock_s);
-	BOOL bDoAutoExposure = AutoExposure();
 	std::string message;
 	std::ostringstream timingInfo;
 
@@ -511,14 +518,11 @@ void SpotDevice::SetupImageSequence( const int nimages , const int interval )
 		nImageBitDepth_ = 48;
 		break;
 	default:
-		do
 		{
 			std::ostringstream messs;
 			messs << "unsupported ADC bit depth: " << bitDepthOfADC_;		
 			throw SpotBad(messs.str());
-		
-		}while(false);
-	
+		}
 	}
 
 #ifdef __APPLE__
@@ -1015,7 +1019,6 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 	const short color_NOCHANGE [] = {-1}; // Default for bit-depths other than 24bit
 	const short *colorOrder = color_NOCHANGE; // default to NOCHANGE, colorOrder will be one of the above
 
-	int nloops;
 	int bytesToTransfer = sizeofbuf_;
 	if( bytesToTransfer < 1)
 		bytesToTransfer = 17000000;
@@ -1026,7 +1029,7 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 
 
 #ifdef USE_SPOTWAITFORSTATUSCHANGE
-		nloops = 0;
+   int nloops = 0;
 
 	while( !WaitForStatusChanged(SPOT_STATUSSEQIMAGEREADY ))
 	{
@@ -1039,25 +1042,22 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 	}
 #else
 
-	do{ // just a scope to delete this lock
+	{
 		MMThreadGuard guard(imageReadyFlagLock_s);
-		nloops = 0;
-      // rough estimate of milliseconds to wait for the image
-		int maxdelayloop = (int)(.5+ExposureTime()) + approxTransferTime + 200;
-		maxdelayloop /= 8;
-		if( maxdelayloop < 1) maxdelayloop = 1;
 
-		while(!imageReady_s)
-		{
-			if ( maxdelayloop < nloops++)
-			{
-            std::ostringstream stringStreamMessage;
-      		double elapsed = pMMCamera_->GetCurrentMMTime().getMsec() - time0;
-            stringStreamMessage << " invalid acquistion sequence - waited " << (float)elapsed << " ms for image ready";
-            throw SpotBad(stringStreamMessage.str().c_str());
-			}
+      // rough estimate of milliseconds to wait for the image (extra 10 s)
+      double maxWait = ExposureTime() + approxTransferTime + 10000.0;
+      while (pMMCamera_->GetCurrentMMTime().getMsec() < time0 + maxWait && !imageReady_s)
+      {
 			CDeviceUtils::SleepMs(10);
 		}
+      if (!imageReady_s)
+      {
+         std::ostringstream stringStreamMessage;
+         double elapsed = pMMCamera_->GetCurrentMMTime().getMsec() - time0;
+         stringStreamMessage << " invalid acquistion sequence - waited " << (float)elapsed << " ms for image ready";
+         throw SpotBad(stringStreamMessage.str().c_str());
+      }
 
 		double elapsed = pMMCamera_->GetCurrentMMTime().getMsec() - time0;
 		std::ostringstream  mezzz;
@@ -1097,14 +1097,11 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 		nImageBitDepth_ = 48;
 		break;
 	default:
-		do
 		{
 			std::ostringstream messs;
 			messs << "unsupported ADC bit depth: " << bitDepthOfADC_;		
 			throw SpotBad(messs.str());
-		
-		}while(false);
-	
+		}
 	}
 		
 		
@@ -1172,7 +1169,7 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 	imageReady_s = false;
 
 
-	}while(false);
+	} // guard(imageReadyFlagLock_s)
 #endif
 
 	suc = ProcessSpotCode(spotcode, message);
@@ -1320,9 +1317,9 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 			
 		if ( colorOrder[0] >= 0 ) 
 		{
-			for(int yoff = 0; yoff < imheight; ++yoff)
+			for(unsigned int yoff = 0; yoff < imheight; ++yoff)
 			{
-				for (int xoff = 0; xoff < imwidth*bytesppixel; xoff += bytesppixel) {
+				for (unsigned int xoff = 0; xoff < imwidth*bytesppixel; xoff += bytesppixel) {
 					// poutput[xoff] = 255-praster[xoff+colorOrder[0]]; // for Spot Idea USB camera???
 					poutput[xoff] = praster[xoff+colorOrder[0]];
 					poutput[xoff+1] = praster[xoff+colorOrder[1]];
@@ -1333,7 +1330,7 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 				praster += bytes;
 			}
 		} else {
-			for(int yoff = 0; yoff < imheight; ++yoff)
+			for(unsigned int yoff = 0; yoff < imheight; ++yoff)
 			{
 				// no rearrangement of color bytes or monochrome
 				memcpy(poutput, praster, imwidth*bytesppixel);
@@ -1386,7 +1383,7 @@ void WINAPI  SpotDevice::CalledBackfromDriver(int iStatus, long lInfo, DWORD/* d
 	bool waitForSPOT_STATUSIMAGEREADRED = (g_Device->DoesMultiShotColor() && (g_Device->BitDepth()<17));
 	bool waitForSPOT_STATUSIMAGEREADBLUE = (g_Device->DoesMultiShotColor() && (16<g_Device->BitDepth()));
 
-	char *pszStatusMsg=NULL;
+	const char *pszStatusMsg=NULL;
 	double eventTime = 0.;
 	if(g_Camera && ( 0.< g_Camera->SnapImageStartTime()) ) 
 		eventTime = g_Camera->GetCurrentMMTime().getMsec() - g_Camera->SnapImageStartTime();
@@ -1876,8 +1873,8 @@ double SpotDevice::ActualGain(void)
 {
 	//MMThreadGuard libGuard(libraryLock_s);
 	float ag = 0.;
-	short gain = Gain();
 #ifdef _WINDOWS
+	short gain = Gain();
 	SpotAPI(SpotGetActualGain)(0, gain, &ag);
 #endif // weird - looks like this call not defined on Unix
 	return ag;

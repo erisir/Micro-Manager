@@ -25,7 +25,7 @@ const char* g_DeviceOmicronName = "Omicron";
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceOmicronName, "Omicron Laser Controller");
+   RegisterDevice(g_DeviceOmicronName, MM::GenericDevice, "Omicron Laser Controller");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -54,7 +54,6 @@ Omicron::Omicron() :
    port_("Undefined"),
    initialized_(false),
    busy_(false),
-   answerTimeoutMs_(2500),
    power1_(0.00),
    power2_(0.00),
    laserOn_("On"),
@@ -985,7 +984,7 @@ int Omicron::OnReset(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 bool Omicron::PharseAnswerString(std::string &InputBuffer, const std::string &Kommando, std::vector<std::string> &ParameterVec)
 {
-    std::string Seperator = "§";
+    std::string Seperator = "\xA7";
 
     size_t StrIndex = InputBuffer.find(Kommando);
     if( StrIndex != std::string::npos )

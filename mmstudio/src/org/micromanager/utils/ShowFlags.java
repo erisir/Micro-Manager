@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: ShowFlags.java 2 2007-02-27 23:33:17Z nenad $
 //
 package org.micromanager.utils;
 

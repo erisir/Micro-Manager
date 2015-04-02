@@ -25,13 +25,14 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Hashtable;
+import java.util.HashMap;
 
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.micromanager.navigation.MultiStagePosition;
-import org.micromanager.navigation.PositionList;
-import org.micromanager.navigation.StagePosition;
+import org.micromanager.api.MultiStagePosition;
+import org.micromanager.api.PositionList;
+import org.micromanager.api.StagePosition;
+import org.micromanager.utils.ReportingUtils;
 
 public class SBSPlate {
 
@@ -49,19 +50,21 @@ public class SBSPlate {
 
    private String id_;
    private String description_;
-   private Hashtable<String, Well> wellMap_;
+   private HashMap<String, Well> wellMap_;
 
-   private static String ROWS = "rows";
-   private static String COLS = "cols";
-   private static String WELL_SPACING_X = "well_spacing_X";
-   private static String WELL_SPACING_Y = "well_spacing_Y";
-   private static String PLATE_SIZE_X = "plate_size_X";
-   private static String PLATE_SIZE_Y = "plate_size_Y";
-   private static String ID = "id";
-   private static String DESCRIPTION = "description";
-   private static String FIRST_WELL_X = "first_well_x";
-   private static String FIRST_WELL_Y = "first_well_y";
+   private static final String ROWS = "rows";
+   private static final String COLS = "cols";
+   private static final String WELL_SPACING_X = "well_spacing_X";
+   private static final String WELL_SPACING_Y = "well_spacing_Y";
+   private static final String PLATE_SIZE_X = "plate_size_X";
+   private static final String PLATE_SIZE_Y = "plate_size_Y";
+   private static final String ID = "id";
+   private static final String DESCRIPTION = "description";
+   private static final String FIRST_WELL_X = "first_well_x";
+   private static final String FIRST_WELL_Y = "first_well_y";
 
+   public static final String SBS_24_WELL= "24WELL";
+   public static final String SBS_48_WELL= "48WELL";
    public static final String SBS_96_WELL= "96WELL";
    public static final String SBS_384_WELL= "384WELL";
    public static final String SLIDE_HOLDER ="SLIDES";
@@ -70,7 +73,7 @@ public class SBSPlate {
    private static final String METADATA_SITE_PREFIX = "Site";
 
 
-   private static char rowAlphabet[] = { 'A','B','C','D','E',
+   private static final char rowAlphabet[] = { 'A','B','C','D','E',
       'F','G','H','I','J',
       'K','L','M','N','O',
       'P','Q','R','S','T',
@@ -78,16 +81,59 @@ public class SBSPlate {
 
    public SBSPlate() {
       // initialize as 96-well plate
-      wellMap_ = new Hashtable<String, Well>();
+      wellMap_ = new HashMap<String, Well>();
       initialize(SBS_96_WELL);
    }
    
+   @Override
    public String toString() {
       return id_;
    }
 
-   public boolean initialize(String id) {
-      if (id.equals(SBS_96_WELL)){
+   public final void initialize(String id) {
+      /* // SDS definition, does not seem to be adhered to
+         // replaced with definition below
+        if (id.equals(SBS_24_WELL)){
+         id_ = SBS_24_WELL;
+         numColumns_ = 6;
+         numRows_ = 4;
+         sizeXUm_ = 127760.0;
+         sizeYUm_ = 85480.0;
+         wellSpacingX_ = 18000.0;
+         wellSpacingY_ = 18000.0;
+         firstWellX_ = 18880.0;
+         firstWellY_ = 15734.5;
+         wellSizeX_ = 14000.0;
+         wellSizeY_ = 14000.0;
+         circular_ = true;
+*/
+      if (id.equals(SBS_24_WELL)){
+         id_ = SBS_24_WELL;
+         numColumns_ = 6;
+         numRows_ = 4;
+         sizeXUm_ = 127500.0;
+         sizeYUm_ = 85250.0;
+         wellSpacingX_ = 19300.0;
+         wellSpacingY_ = 19300.0;
+         firstWellX_ = 17050.0;
+         firstWellY_ = 13670.0;        
+         wellSizeX_ = 15540.0;
+         wellSizeY_ = 15540.0;
+         circular_ = true;
+      } else if (id.equals(SBS_48_WELL)){
+         id_ = SBS_48_WELL;
+         numColumns_ = 8;
+         numRows_ = 6;
+         sizeXUm_ = 127760.0;
+         sizeYUm_ = 85480.0;
+         wellSpacingX_ = 13000.0;
+         wellSpacingY_ = 13000.0;
+         firstWellX_ = 18380.0;
+         firstWellY_ = 10240.0;        
+         wellSizeX_ = 11370.0;
+         wellSizeY_ = 11370.0;
+         circular_ = true;
+      } else if (id.equals(SBS_96_WELL)){
          id_ = SBS_96_WELL;
          numColumns_ = 12;
          numRows_ = 8;
@@ -131,19 +177,17 @@ public class SBSPlate {
       try {
          generateWells();
       } catch (HCSException e) {
-         e.printStackTrace();
-         return false;
+         ReportingUtils.logError(e);
       }
 
-      return true;
    }
 
    public void load(String path) throws HCSException {
-      StringBuffer contents = new StringBuffer();
+      StringBuilder contents = new StringBuilder();
       try {
          // read metadata from file            
          BufferedReader input = new BufferedReader(new FileReader(path));
-         String line = null;
+         String line;
          while (( line = input.readLine()) != null){
             contents.append(line);
             contents.append(System.getProperty("line.separator"));
@@ -252,7 +296,7 @@ public class SBSPlate {
                posListArray[wellCount++] = wpl;
             } catch (HCSException e) {
                // TODO Auto-generated catch block
-               e.printStackTrace();
+               ReportingUtils.logError(e);
             }
          }
          direction = !direction; // reverse direction
@@ -276,11 +320,11 @@ public class SBSPlate {
    }
    
    public String getID() {
-      return new String(id_);
+      return id_;
    }
 
    public String getDescription() {
-      return new String(description_);
+      return description_;
    }
 
    public double getWellXUm(String wellLabel) throws HCSException {
@@ -354,7 +398,7 @@ public class SBSPlate {
          col = 0;
          x = 0.0;
          y = 0.0;
-         label = new String("Undefined");
+         label = "Undefined";
       }
    }
 

@@ -26,44 +26,17 @@
 #include <string>
 #include <math.h>
 #include "../../MMDevice/ModuleInterface.h"
-#include "../../MMCore/Error.h"
 #include <sstream>
 #include <algorithm>
 
-
-
-
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                      DWORD  ul_reason_for_call, 
-                      LPVOID /*lpReserved*/
-                      )
-{
-   switch (ul_reason_for_call)
-   {
-   case DLL_PROCESS_ATTACH:
-   case DLL_THREAD_ATTACH:
-   case DLL_THREAD_DETACH:
-   case DLL_PROCESS_DETACH:
-      break;
-   }
-   return TRUE;
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 
-/**
- * List all suppoerted hardware devices here
- * Do not discover devices at runtime.  To avoid warnings about missing DLLs, Micro-Manager
- * maintains a list of supported device (MMDeviceList.txt).  This list is generated using 
- * information supplied by this function, so runtime discovery will create problems.
- */
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName("ImageProcessorChain", "ImageProcessorChain");
+   RegisterDevice("ImageProcessorChain", MM::ImageProcessorDevice, "ImageProcessorChain");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)

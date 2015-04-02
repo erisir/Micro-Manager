@@ -32,41 +32,33 @@
 
 #include <usb.h>
 
-// Note that this only works with gcc (which we should be testing for)
+
 #ifdef __GNUC__
-void __attribute__ ((constructor)) my_init(void)
+void __attribute__((constructor)) my_init(void)
 {
    usb_init();
 }
-void __attribute__ ((destructor)) my_fini(void)
+#elif defined(WIN32)
+BOOL APIENTRY DllMain(HANDLE /*hModule*/,
+                      DWORD  ul_reason_for_call,
+                      LPVOID /*lpReserved*/)
 {
-   // presumably not needed to shut down the usb library?
+   switch (ul_reason_for_call)
+   {
+      case DLL_PROCESS_ATTACH:
+         usb_init();
+         break;
+   }
+   return TRUE;
 }
+#else
+#error A call to usb_init() must be implemented.
 #endif
 
-// windows dll entry code                                                    
+
 #ifdef WIN32    
 #include <time.h>
 #pragma warning(disable : 4290)
-BOOL APIENTRY DllMain( HANDLE /*hModule*/,                                
-                      DWORD  ul_reason_for_call,                         
-                      LPVOID /*lpReserved*/                              
-                      )                                                         
-{                                                                         
-   switch (ul_reason_for_call)                                            
-   {                                                                      
-   case DLL_PROCESS_ATTACH:                                               
-      usb_init();
-      break;                                                                 
-   case DLL_THREAD_ATTACH:                                                
-      break;                                                                 
-   case DLL_THREAD_DETACH:                                                
-      break;                                                                 
-   case DLL_PROCESS_DETACH:                                               
-      break;                                                                 
-   }                                                                      
-   return TRUE;                                                          
-}
 #else
 #include <sys/time.h>
 #endif
@@ -104,9 +96,10 @@ USBDeviceInfo g_knownDevices[] = {
    {"ASI MS-2000", 0x0b54, 0x2000, 0x02, 0x82, 64, false},
    {"Spectral LMM5", 0x1bdb, 0x0300, 0x02, 0x81, 64, false},
    {"Nikon AZ100m", 0x04b0, 0x7804, 0x05, 0x84, 64, false},
+   {"Nikon ECLIPSE 90i", 0x04b0, 0x7301, 0x01, 0x81, 64, false},
    {"Zeiss AxioObserver Z1", 0x0758, 0x1004, 0x02, 0x81, 64, true}
 };
-int g_numberKnownDevices = 11;
+int g_numberKnownDevices = 12;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
@@ -123,7 +116,7 @@ MODULE_API void InitializeModuleData()
    vector<string>::iterator iter = availableDevices.begin();                  
    while (iter != availableDevices.end()) {                                   
       deviceName = *iter;
-      AddAvailableDeviceName(deviceName.c_str(),"USB device");
+      RegisterDevice(deviceName.c_str(), MM::SerialDevice, "USB device");
       ++iter;                                                                
    }
 }
@@ -203,8 +196,7 @@ refCount_(0),
 busy_(false),
 open_(false),
 initialized_(false),
-portTimeoutMs_(2000.0),
-deviceHandle_('\0'),
+deviceHandle_(0),
 answerTimeoutMs_(20),
 overflowBufferOffset_(0),
 overflowBufferLength_(0)
@@ -548,7 +540,7 @@ int MDUSBDevice::Read(unsigned char* buf, unsigned long bufLen, unsigned long& c
          statusContinue = false;
       else if (charsReceived > 0)
       {
-         if (charsReceived > bufLen - charsRead) {
+         if (charsReceived > (int)(bufLen - charsRead)) {
             memcpy((unsigned char*) buf + charsRead, internalBuf, bufLen - charsRead);
             overflowBufferLength_ = charsReceived - bufLen + charsRead;
             // we have extra chars, save in persistent buffer

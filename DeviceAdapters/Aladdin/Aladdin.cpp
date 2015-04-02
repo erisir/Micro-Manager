@@ -52,8 +52,7 @@ const char * line_feed = "\n";
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ControllerName, "Aladdin Syringe Pump");
-   
+   RegisterDevice(g_ControllerName, MM::GenericDevice, "Aladdin Syringe Pump");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -82,9 +81,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 
 AladdinController::AladdinController(const char* name) :
    initialized_(false), 
-   volume_(0),
    name_(name), 
-   busy_(false),
    error_(0),
    changedTime_(0.0)
 {

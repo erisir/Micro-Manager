@@ -57,7 +57,8 @@ import org.micromanager.utils.ReportingUtils;
       private String childDevices_[];
       private boolean initialized_;
 
-   public Device(String name, String lib, String adapterName, String descr, boolean discoverable, String master,Vector<String> slaves ) {
+   public Device(String name, String lib, String adapterName, String descr, 
+           boolean discoverable, String master,Vector<String> slaves ) {
       name_ = name;
       library_ = lib;
       adapterName_ = adapterName;
@@ -113,8 +114,6 @@ import org.micromanager.utils.ReportingUtils;
          devType = "Micro-manager Core";
       } else if (type_ == DeviceType.AutoFocusDevice) {
          devType = "Autofocus";
-      } else if (type_ == DeviceType.CommandDispatchDevice ) {
-         devType = "Command Dispatcher";
       } else if (type_ == DeviceType.HubDevice) {
          devType = "Motorized scope or Hub";
       } else if (type_ == DeviceType.GenericDevice) {
@@ -123,10 +122,6 @@ import org.micromanager.utils.ReportingUtils;
          devType = "Misc.";    
       } else if (type_ == DeviceType.ImageProcessorDevice) {
          devType = "Image Processor";    
-      } else if (type_ == DeviceType.ImageStreamerDevice) {
-         devType = "Image Streamer";    
-      } else if (type_ == DeviceType.ProgrammableIODevice) {
-         devType = "Programmable I/O Device";    
       } else if (type_ == DeviceType.SignalIODevice) {
          devType = "Signal I/O Device";    
       } else if (type_ == DeviceType.SLMDevice) {
@@ -139,6 +134,8 @@ import org.micromanager.utils.ReportingUtils;
           devType = "Discrete State Device";    
       } else if (type_ == DeviceType.MagnifierDevice) {
           devType = "Magnifier";    
+      } else if (type_ == DeviceType.GalvoDevice) {
+         devType = "Galvo";
       } else {
          ReportingUtils.logError("Unercongized device type: " + this.adapterName_);
       }
@@ -198,7 +195,7 @@ import org.micromanager.utils.ReportingUtils;
       return devList;
    }
    
-   public void discoverPeripherals(CMMCore core) {
+   public void discoverPeripherals(CMMCore core) throws Exception {
       // check if there are any child devices installed
       if (isHub() && !getName().equals("Core") && childDevices_.length == 0) {
          
@@ -333,7 +330,7 @@ import org.micromanager.utils.ReportingUtils;
    }
    
    public Label getSetupLabelByState(int j) {
-      return (Label) setupLabels_.get(new Integer(j));
+      return setupLabels_.get(new Integer(j));
    }
    
    public void setSetupLabel(int pos, String label) {
@@ -415,7 +412,7 @@ import org.micromanager.utils.ReportingUtils;
             return p.value;
          }
       }
-      return new String("");
+      return "";
    }
 
    public Label[] getAllSetupLabels() {

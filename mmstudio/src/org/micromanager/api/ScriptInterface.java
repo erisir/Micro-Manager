@@ -29,36 +29,46 @@ import java.awt.Component;
 import java.awt.Rectangle;
 import java.awt.geom.Point2D;
 
+import java.util.List;
+
 import mmcorej.CMMCore;
 import mmcorej.TaggedImage;
 
+// These ought not be part of the public API and methods that refer to them are
+// deprecated.
 import org.json.JSONObject;
-import org.micromanager.AcqControlDlg;
-import org.micromanager.PositionListDlg;
+import org.micromanager.dialogs.AcqControlDlg;
+import org.micromanager.positionlist.PositionListDlg;
 import org.micromanager.acquisition.MMAcquisition;
-import org.micromanager.navigation.PositionList;
 import org.micromanager.utils.AutofocusManager;
-import org.micromanager.utils.ContrastSettings;
+
+// For historical reasons, this exception class is not in the
+// org.micromanager.api package even though it is part of the public API.
 import org.micromanager.utils.MMScriptException;
+
 
 /**
  * Interface to execute commands in the main panel. Implemented by
- * MMStudioMainFrame and available as the gui object in the Beanshell
+ * MMStudio and available as the gui object in the Beanshell
  * scripting panel.
  * 
  * Most functions throw MMScriptException
  */
 public interface ScriptInterface {
-      
+	
    /**
-    * Blocks the script execution for the specified number of milliseconds.
-    * Script can be aborted during sleep.
-    * @throws MMScriptException 
+    * Request a pause in script execution for the specified number of 
+    * milliseconds.  Most systems will guarantee a pause of at least 
+    * the desired duration, but may wait longer than requested before 
+    * continuing execution.
+    * @param ms Time in millisecond that the script should pause
+    * @throws org.micromanager.utils.MMScriptException
     */
    public void sleep(long ms) throws MMScriptException;
-   
+         
    /**
     * Displays text in the scripting console output window.
+    * @param text 
     * @throws MMScriptException 
     */
    public void message(String text) throws MMScriptException;
@@ -87,201 +97,75 @@ public interface ScriptInterface {
     * Micro-manager GUI
     */
    public void snapSingleImage();
-
+   
    /**
-    * Opens a new acquisition context with explicit image physical parameters.
-    * This command will determine the recorded date and time of the acquisition.
-    * All relative (elapsed) time stamps will be determined with respect to this time.
-    * @param name Name of the new acquisition context.
-    * @param rootDir Place in the file system where data may be stored.
-    * @param nrFrames Nunmber of Frames (time points) in this acquisition.  This number can grow dynamically.
-    * @param nrChannels Number of Channels in this acquisition.  This number is fixed.
-    * @param nrSlices Number of Slices (Z-positions) in this acquisition.
-    * @throws MMScriptException 
-    */
-   public void openAcquisition(String name, String rootDir, int nrFrames, int nrChannels, int nrSlices) throws MMScriptException;
-
-   /**
-    * Opens a new acquisition context with explicit image physical parameters.
-    * This command will determine the recorded date and time of the acquisition.
-    * All relative (elapsed) time stamps will be determined with respect to this time.
-    * @param name Name of the new acquisition context.
-    * @param rootDir Place in the file system where data may be stored.
-    * @param nrFrames Nunmber of Frames (time points) in this acquisition.  This number can grow dynamically.
-    * @param nrChannels Number of Channels in this acquisition.  This number is fixed.
-    * @param nrSlices Number of Slices (Z-positions) in this acquisition.
-    * @param nrPositions Number of (XY) Positions in this acquisition.
-    * @throws MMScriptException
-    */
-   public void openAcquisition(String name, String rootDir, int nrFrames, int nrChannels, int nrSlices, int nrPositions) throws MMScriptException;
-
-
-   /**
-    * Opens a new acquisition context with explicit image physical parameters.
-    * Makes it possible to run acquisition without displaying a window
-    * @param name Name of the new acquisition context.
-    * @param rootDir Place in the file system where data may be stored.
-    * @param nrFrames Nunmber of Frames (time points) in this acquisition.  This number can grow dynamically.
-    * @param nrChannels Number of Channels in this acquisition.  This number is fixed.
-    * @param nrSlices Number of Slices (Z-positions) in this acquisition.
-    * @param nrPositions Number of (XY) Positions in this acquisition.
-    * @param show Whether or not to show this acquisition.
-    * @throws MMScriptException 
-    */
-
-   public void openAcquisition(String name, String rootDir, int nrFrames, int nrChannels, int nrSlices, int nrPositions, boolean show) throws MMScriptException;
-
-   /**
-    * Variant of openAcquisition that allows specifying whether or not the data should be saved during acquisition.
-    * @param name Name of the new acquisition context.
-    * @param rootDir Place in the file system where data may be stored.
-    * @param nrFrames Nunmber of Frames (time points) in this acquisition.  This number can grow dynamically.
-    * @param nrChannels Number of Channels in this acquisition.  This number is fixed.
-    * @param nrSlices Number of Slices (Z-positions) in this acquisition.
+    * Opens a new acquisition data set
+    * 
+    * @param name - Name of the data set
+    * @param rootDir - Directory where the new data set is going to be created 
+    * @param nrFrames - Number of Frames (time points) in this acquisition
+    * @param nrChannels - Number of Channels in this acquisition
+    * @param nrSlices - Number of Slices (Z-positions) in this acquisition
     * @param nrPositions Number of (XY) Positions in this acquisition.
     * @param show Whether or not to show this acquisition.
     * @param save Whether or not save data during acquisition.
     * @throws MMScriptException
     */
    public void openAcquisition(String name, String rootDir, int nrFrames, int nrChannels, int nrSlices, int nrPositions, boolean show, boolean save) throws MMScriptException;
-
-
-   /**
-    * Single position variant of openAcquisition that allows specifying whether or not to show data during acquisition.  
-    * @param name Name of the new acquisition context.
-    * @param rootDir Place in the file system where data may be stored.
-    * @param nrFrames Nunmber of Frames (time points) in this acquisition.  This number can grow dynamically.
-    * @param nrChannels Number of Channels in this acquisition.  This number is fixed.
-    * @param nrSlices Number of Slices (Z-positions) in this acquisition.
-    * @param show Whether or not to show this acquisition.
-    * @throws MMScriptException
-    */
-   public void openAcquisition(String name, String rootDir, int nrFrames, int nrChannels, int nrSlices, boolean show) throws MMScriptException;
-
-
-   /**
-    * Single position variant of openAcquisition that allows specifying whether or not to show and save data during acquisition.  
-    * @param name Name of the new acquisition context.
-    * @param rootDir Place in the file system where data may be stored.
-    * @param nrFrames Nunmber of Frames (time points) in this acquisition.  This number can grow dynamically.
-    * @param nrChannels Number of Channels in this acquisition.  This number is fixed.
-    * @param nrSlices Number of Slices (Z-positions) in this acquisition.
-    * @param show Whether or not to show this acquisition.
-    * @throws MMScriptException
-    */
-   public void openAcquisition(String name, String rootDir, int nrFrames, int nrChannels, int nrSlices, boolean show, boolean save) throws MMScriptException;
-
-
-   /*
-    * Opens and initializes an acquisition according to summaryMetadata
-    * (as typically generated by acquisition dialog).
-    * @param summaryMetadata The metadata describing the acquisition parameters
-    * @param diskCached True if images are cached on disk; false if they are kept in RAM only.
-    * @throws MMScriptException
-    */
-   public String createAcquisition(JSONObject summaryMetadata, boolean diskCached);
    
-   /*
-    * Opens and initializes an acquisition according to summaryMetadata
-    * (as typically generated by acquisition dialog).
+   /**
+    * Another way to create data set, an alternative to the 
+    *  openAcquisition(String name, String rootDir, int nrFrames, int nrChannels, int nrSlices, int nrPositions, boolean show, boolean save)
+    * 
+    * The caller is responsible for providing all required metadata within the summaryMetadata argument
     * @param summaryMetadata The metadata describing the acquisition parameters
     * @param diskCached True if images are cached on disk; false if they are kept in RAM only.
     * @param displayOff True if no display is to be created or shown.
+    * @return 
+    *
+    * @deprecated Use openAcquisition() instead.
+    */
+   @Deprecated
+   public String createAcquisition(JSONObject summaryMetadata, boolean diskCached, 
+           boolean displayOff);
+
+   /**
+    * Set up image physical dimensions for the data set that has already been opened.
+    * Once dimensions of the image has been set, they can't be changed, i.e. subsequent calls to this method will generate an error.
+    * Typically there is no need to call this method, except when display options have to be set before the first image is inserted.
+    * If this method is not explicitly called after openAcquisition(), the image dimensions will be automatically initialized based
+    * on the first image inserted in the data set.
+    * 
+    * @param name - Name of the data set
+    * @param width - Image width in pixels 
+    * @param height - Image height in pixels
+    * @param bytesPerPixel - Number of bytes per pixel
+    * @param bitDepth - Dynamic range in bits per pixel
     * @throws MMScriptException
     */
-   public String createAcquisition(JSONObject summaryMetadata, boolean diskCached, boolean displayOff);
-   
+   public void initializeAcquisition(String name, int width, int height, int bytesPerPixel, int bitDepth) throws MMScriptException;
+        
    /**
-    * Returns a name beginning with stem that is not yet used.
-    * @param stem Base name from which a unique name will be constructed
+    * Inserts image into the data set.
+    * @param name - data set name
+    * @param frame - 0 based frame number
+    * @param channel - 0 based channel number
+    * @param slice - 0 based (z) slice number
+    * @param position - 0 based position number
+    * @param taggedImg Tagged Image (image with associated metadata) 
+    * @throws MMScriptException
     */
-   public String getUniqueAcquisitionName(String stem);
-   
-   /**
-    * Returns the name of the current album (i.e. the most recently created one)
-    * In addition to their use through the scripting interface, Albums are used
-    * by the "Camera --> Album" button in the main window of Micro-Manager and 
-    * the "--> Album" button on the snap/live window
-    * @return Name of the current Album.
-    */
-   public String getCurrentAlbum();
+   public void addImageToAcquisition(String name, int frame, int channel, int slice, 
+           int position, TaggedImage taggedImg) throws MMScriptException;   
 
    /**
-    * Add a TaggedImage to an album; creates a new album if the image and current album
-    * do not match in image dimensions, bits per pixel, bytes per pixel, or number of channels.
-    * The current album is the most recently created one
-    * Albums are also used by the "Camera --> Album" button in the main window of Micro-Manager and 
-    * the "--> Album" button on the snap/live window
+    * Change an acquisition so that adding images to it is done asynchronously.
+    * All calls to e.g. addImageToAcquisition() and other similar functions
+    * will return nearly-instantly.
+    * @param name of acquisition
+    * @throws MMScriptException if the specified acquisition does not exist.
     */
-   public void addToAlbum(TaggedImage image) throws MMScriptException;
-
-   /**
-    * Set up a Simple Acquisition that has already been opened
-    * Simple Acquisitions are used in Live and Snap modes.  They
-    * only store a single image at a time, and automatically store
-    * this image in RAM, regardless of whether the conserve RAM
-    * option in tools-options is checked
-    */
-   public void initializeSimpleAcquisition(String name, int width, int height, 
-           int byteDepth, int bitDepth, int multiCamNumCh) throws MMScriptException;
-   
-   /**
-    * Set up an acquisition that has already been opened.
-    */
-   public void initializeAcquisition(String name, int width, int height, int byteDepth) throws MMScriptException;
-   
-   /**
-    * Set up an acquisition that has already been opened.
-    */
-   public void initializeAcquisition(String name, int width, int height, int byteDepth, int bitDepth) throws MMScriptException;
-   
-   
-   /**
-    * Checks whether an acquisition with the given name already exists.
-    */
-   public Boolean acquisitionExists(String name);
-
-   /**
-    * Closes the acquisition.
-    * After this command metadata is complete, all the references to this data set are cleaned-up,
-    * and no additional images can be added to the acquisition
-    * @throws MMScriptException 
-    */
-   public void closeAcquisition(String name) throws MMScriptException;
-   
-   /**
-    * Closes all currently open acquisitions.
-    */
-   public void closeAllAcquisitions();
-   
-   /**
-    * Returns the acquisition currently in progress.
-    * @deprecated getAcquisition(String name) should be used instead of this function
-    */
-   public MMAcquisition getCurrentAcquisition();
-   
-   /**
-    * Gets an Array with names of all open acquisitions
-    * @return Arrays with names of all acquisitions that are currently open
-    */
-   public String[] getAcquisitionNames();
-   
-   /**
-    * Gets a reference to the MMAcquisition object associated with the specified acquisition name.
-    * @param name name of the requested acquisition
-    * @return MMAcquisition object
-    */
-   public MMAcquisition getAcquisition(String name) throws MMScriptException;
-   
-   /**
-    * Snaps an image with current settings and moves pixels into the specified layer of the MDA viewer.
-    * @param name Name of the acquisition.
-    * @param frame Frame number (time point, 0-based) in which this image should be inserted.
-    * @param channel Channel number (0-based) in which this image should be inserted.
-    * @param z Slice number (0-based) in which this image should be inserted.
-    * @throws MMScriptException 
-    */
-   public void snapAndAddImage(String name, int frame, int channel, int z) throws MMScriptException;
+   public void setAcquisitionAddImageAsynchronous(String name) throws MMScriptException;
 
    /**
     * Snaps an image with the current settings and places pixels in the specified position
@@ -296,97 +180,73 @@ public interface ScriptInterface {
    public void snapAndAddImage(String name, int frame, int channel, int z, int position) throws MMScriptException;
 
    /**
-    * Inserts image into the acquisition handle. 
-    * @param name Name of the acquisition.
-    * @param img Pixel data that will be inserted.  Pixel data should match the image dimensions used in this acquisition.
-    * @param frame Frame number (time point, 0-based) in which this image should be inserted.
-    * @param channel Channel number (0-based) in which this image should be inserted.
-    * @param z Slice number (0-based) in which this image should be inserted.
+    * Provides access to the data set through the MMAcquisition interface.
+    * Typically there is no need to use this low-level method and interfere with the default acquisition execution.
+    * Intended use is within advanced plugins.
+    * @param name - data set name
+    * @return MMAcqusition object
     * @throws MMScriptException
-    * @deprecated
+    *
+    * @deprecated Because it returns an internal object that is subject to change.
     */
-   public void addImage(String name, Object img, int frame, int channel, int z) throws MMScriptException;
-
-   /**
-    * Inserts image into the acquisition handle.
-    * @param name Name of the acquisition.
-    * @param taggedImg Tagged Image (image with associated metadata).  The metadata determines where
-    * in the acquisition this image will be inserted (i.e. frame, channel, slice, and position indecies)    
-    * @throws MMScriptException
-    */
-   public void addImage(String name, TaggedImage taggedImg) throws MMScriptException;
-
-
-   /**
-    * Inserts image into the acquisition handle and gives option whether or not to update the display.
-    * This version will wait for the display to finish drawing the image before the function returns
-    * @param name Name of the acquisition.
-    * @param taggedImg Tagged Image (image with associated metadata).  The metadata determines where
-    * in the acquisition this image will be inserted (i.e. frame, channel, slice, and position indecies)    * @param updateDisplay Flag used to indicate whether or not to update the display.
-    * @throws MMScriptException
-    */
-   public void addImage(String name, TaggedImage taggedImg, boolean updateDisplay) throws MMScriptException;
-
-   /**
-    * Inserts image into the acquisition handle and gives option whether or not to update the display.
-    * Also optionally waits for the display to finish drawing the image before the function returns
-    * @param name Name of the acquisition.
-    * @param taggedImg Tagged Image (image with associated metadata).  The metadata determines where
-    * in the acquisition this image will be inserted (i.e. frame, channel, slice, and position indecies)
-    * @param updateDisplay Flag used to indicate whether or not to update the display.
-    * @param waitForDisplay flag that determines if the function should wait for the display to finish
-    * drawing the image before returning
-    * @throws MMScriptException
-    */
-   public void addImage(String name, TaggedImage taggedImg, 
-           boolean updateDisplay, boolean waitForDisplay) throws MMScriptException;
-
-  /**
-    * Inserts image into the acquisition handle.
-    * @param name Name of the acquisition.
-    * @param taggedImg Tagged Image (image with associated metadata)
-    * @param frame index of the frame where image should be inserted
-    * @param channel index of the channel where image should be inserted
-    * @param slice index of the slice where image should be inserted
-    * @param position index of the position where image should be inserted
-    * @throws MMScriptException
-    */
-   public void addImage(String name, TaggedImage taggedImg, int frame, int channel, 
-           int slice, int position) throws MMScriptException;
-
-
-   /**
-    * Inserts image into the acquisition handle and gives option whether or not to update the display.
-    * This version will wait for the display to finish drawing the image before the function returns
-    * @param name Name of the acquisition.
-    * @param taggedImg Tagged Image (image with associated metadata)  
-    * @param frame index of the frame where image should be inserted
-    * @param channel index of the channel where image should be inserted
-    * @param slice index of the slice where image should be inserted
-    * @param position index of the position where image should be inserted  
-    * @param updateDisplay Flag used to indicate whether or not to update the display.
-    * @throws MMScriptException
-    */
-   public void addImage(String name, TaggedImage taggedImg, int frame, int channel, 
-           int slice, int position, boolean updateDisplay) throws MMScriptException;
-
-   /**
-    * Inserts image into the acquisition handle and gives option whether or not to update the display.
-    * Also optionally waits for the display to finish drawing the image before the function returns
-    * @param name Name of the acquisition.
-    * @param taggedImg Tagged Image (image with associated metadata) 
-    * @param frame index of the frame where image should be inserted
-    * @param channel index of the channel where image should be inserted
-    * @param slice index of the slice where image should be inserted
-    * @param position index of the position where image should be inserted
-    * @param updateDisplay Flag used to indicate whether or not to update the display.
-    * @param waitForDisplay flag that determines if the function should wait for the display to finish
-    * drawing the image before returning
-    * @throws MMScriptException
-    */
-   public void addImage(String name, TaggedImage taggedImg, int frame, int channel, 
-           int slice, int position, boolean updateDisplay, boolean waitForDisplay) throws MMScriptException;
+   @Deprecated
+   public MMAcquisition getAcquisition(String name) throws MMScriptException;
    
+   /**
+    * Returns a name beginning with stem that is not yet used.
+    * @param stem Base name from which a unique name will be constructed
+    * @return a name beginning with stem that is not yet used
+    */
+   public String getUniqueAcquisitionName(String stem);
+   
+   /**
+    * Returns the name of the current album (i.e. the most recently created one)
+    * In addition to their use through the scripting interface, Albums are used
+    * by the "Camera --&gt; Album" button in the main window of Micro-Manager and 
+    * the "--&gt; Album" button on the snap/live window
+    * @return Name of the current Album.
+    */
+   public String getCurrentAlbum();
+
+   /**
+    * Add a TaggedImage to an album; creates a new album if the image and current album
+    * do not match in image dimensions, bits per pixel, bytes per pixel, or number of channels.
+    * The current album is the most recently created one
+    * Albums are also used by the "Camera --&gt; Album" button in the main window of Micro-Manager and 
+    * the "--&gt; Album" button on the snap/live window
+    * @param image - TaggedImage to be added to album
+    * @throws org.micromanager.utils.MMScriptException
+    */
+   public void addToAlbum(TaggedImage image) throws MMScriptException;
+   
+   /**
+    * Checks whether an acquisition with the given name already exists.
+    * @param name name to be tested for existence
+    * @return true when name already exists
+    */
+   public Boolean acquisitionExists(String name);
+
+   /**
+    * Closes the acquisition.
+    * After this command metadata is complete, all the references to this data set are cleaned-up,
+    * and no additional images can be added to the acquisition
+    * Does not close the window in which the acquisition data is displayed
+    * @param name name of acquisition to be closed
+    * @throws MMScriptException 
+    */
+   public void closeAcquisition(String name) throws MMScriptException;
+   
+   /**
+    * Closes all currently open acquisitions.
+    */
+   public void closeAllAcquisitions();
+      
+   /**
+    * Gets an Array with names of all open acquisitions
+    * @return Arrays with names of all acquisitions that are currently open
+    */
+   public String[] getAcquisitionNames();
+
    
    /**
     * Returns the width (in pixels) of images in this acquisition
@@ -417,93 +277,29 @@ public interface ScriptInterface {
     * Sets custom property attached to the acquisition summary
     */
    public void setAcquisitionProperty(String acqName, String propertyName, String value) throws MMScriptException;
-
-   /**
-    * Same as setAcquisitionSummary
-    * @deprecated use setAcquisitionSummary instead
-    */
-   public void setAcquisitionSystemState(String acqName, JSONObject md) throws MMScriptException;
-
-   /**
-    * Sets the summary metadata for an acquisition (as opposed to metadata for individual planes).
-    */
-   public void setAcquisitionSummary(String acqName, JSONObject md) throws MMScriptException;
    
    /**
     * Sets property attached to an individual image.
     */
    public void setImageProperty(String acqName, int frame, int channel, int slice, String propName, String value) throws MMScriptException;
-
-   /**
-    * Blocks the script until the system is ready to start acquiring
-    */
-   //public void waitForSystem();
    
-   /**
-    * Execute burst acquisition with settings from Burst Acquisition Dialog
-    * Will open the Dialog when it is not open yet
-    * Returns after Burst Acquisition finishes
-    *
-    * @deprecated Burst acquisitions will now be carried out by a normal Acquisition (when so configured)
-    */
-   public void runBurstAcquisition() throws MMScriptException;
-   
-   /**
-    * Execute burst acquisition with settings from Burst Acquisition Dialog
-    * changed using the provided parameters
-    * Will open the Dialog when it is not open yet
-    * Returns after Burst Acquisition finishes
-    * @param name - imagename to save the data to
-    * @param root - root directory for image data
-    * @param nr - nr of frames
-    * @throws MMScriptExcpetion 
-    * @deprecated Burst acquisitions will now be carried out by a normal Acquisition (when so configured)
-    *
-    */
-   public void runBurstAcquisition(int nr, String name, String root) throws MMScriptException;
-   
-   /**
-    * Execute burst acquisition with settings from Burst Acquisition Dialog
-    * changed using the provided parameters
-    * Will open the Dialog when it is not open yet
-    * Returns after Burst Acquisition finishes
-    * @param nr - nr of frames
-    * @throws MMScriptExcpetion 
-    * @deprecated Burst acquisitions will now be carried out by a normal Acquisition (when so configured)
-    *
-    */
-   public void runBurstAcquisition(int nr) throws MMScriptException;
-   
-   /**
-    * Load setting for Burst Acquisition from file
-    * Will open Burst Acquisition Dialog when it is not yet open
-    * Not Implemented!
-    * @deprecated
-    */
-   public void loadBurstAcquisition(String path) throws MMScriptException;
-
    /**
     * Executes Acquisition with current settings
     * Will open the Acquisition Dialog when it is not open yet
     * Returns after Acquisition finishes
+    * Note that this function should not be executed on the EDT (which is the
+    * thread running the UI).  
     * @return The name of the acquisition created.
     * @throws MMScriptException
     */
    public String runAcquisition() throws MMScriptException;
    
    /**
-    * Executes Acquisition with current settings but allows for changing the data path
-    * Will open the Acquisition Dialog when it is not open yet.
-    * Returns after Acquisition finishes
-    * @return The name of the acquisition created
-    * @deprecated - typo
-    */
-   public String runAcqusition(String name, String root) throws MMScriptException;
-
-   /**
     * Executes Acquisition with current settings but allows for changing the data path.
     * Will open the Acquisition Dialog when it is not open yet.
     * Returns after Acquisition finishes.
+    * Note that this function should not be executed on the EDT (which is the
+    * thread running the UI).
     * @param name Name of this acquisition.
     * @param root Place in the file system where data can be stored.
     * @return The name of the acquisition created
@@ -596,23 +392,12 @@ public interface ScriptInterface {
    
    
    /**
-    * Closes Image5D window.
-    * @param acquisitionName - Name of the acquisition
-    * @deprecated Use closeAcquisitionWindow instead.
-    * @throws MMScriptException
-    */
-   public void closeAcquisitionImage5D(String acquisitionName) throws MMScriptException;
-
-   /**
     * Closes the image window corresponding to the acquisition.  If being used along with
     * closeAcquisitiion, this method should be called first
     * @param acquisitionName - Name of the acquisition
     * @throws MMScriptException
     */
    public void closeAcquisitionWindow(String acquisitionName) throws MMScriptException;
-
-   
-   
 
    /**
     * Obtain the current XY stage position.
@@ -666,7 +451,6 @@ public interface ScriptInterface {
     */
    public void setXYOrigin(double x, double y) throws MMScriptException;
    
-   
    /**
     * Save current configuration
     */
@@ -674,25 +458,13 @@ public interface ScriptInterface {
 
    /**
     * Returns the ImageJ ImageWindow instance that is used for Snap and Live display.
-    * @deprecated use getSnapLiveWin() instead
-    */
-   public ImageWindow getImageWin();
-
-   /**
-    * Returns the ImageJ ImageWindow instance that is used for Snap and Live display.
     */
    public ImageWindow getSnapLiveWin();
    
    /**
-   * Installs a plugin class from the class path.
-   */
-   public String installPlugin(String className);
-   
-   /**
-    * Deprecated. Use installPlugin(String className) instead.
-    * @deprecated
+    * Given an ImageWindow, return the ImageCache associated with it.
     */
-   public String installPlugin(String className, String menuName); 
+   public ImageCache getCacheForWindow(ImageWindow window) throws IllegalArgumentException;
 
    /**
    * Installs an autofocus plugin class from the class path.
@@ -717,14 +489,6 @@ public interface ScriptInterface {
    public void showAutofocusDialog();
 
    /**
-    * Return the acquisition engine that carries out the MDA acquistion.
-    * You can get access to its functionality through this function.
-    * @return acquisition engine
-    */
-   public AcquisitionEngine getAcquisitionEngine();
-
-
-   /**
     * Adds a message to the Micro-Manager log (found in Corelogtxt).
     * @param msg - message to be added to the log
     */
@@ -735,6 +499,13 @@ public interface ScriptInterface {
     * @param msg - message to be shown
     */
    public void showMessage(String msg);
+   
+   /**
+    * Shows a message in the UI.
+    * @param msg - message to be shown
+    * @param parent - parent component over which this message should be centered
+    */
+   public void showMessage(String msg, Component parent);
 
    /**
     * Writes the stacktrace and a message to the Micro-Manager log (Corelog.txt).
@@ -756,33 +527,56 @@ public interface ScriptInterface {
    public void logError(String msg);
 
    /**
-    * Shows an error including stacktrace in the UI and logs to the Micro-
-    * Manager log
+    * Shows an error in the UI and logs stacktrace to the Micro-Manager log.
     * @param e - Java exception to be shown and logged
     * @param msg - Error message to be shown and logged
     */
    public void showError(Exception e, String msg);
 
    /**
-    * Shows and logs a Java exception
+    * Shows and logs a Java exception.
     * @param e - Java excpetion to be shown and logged
     */
    public void showError(Exception e);
 
    /**
-    * Shows an error message in the UI and logs to the Micro-Manager log
+    * Shows an error message in the UI and logs to the Micro-Manager log.
     * @param msg - error message to be shown and logged
     */
    public void showError(String msg);
 
    /**
+    * Shows an error in the UI and logs stacktrace to the Micro-Manager log.
+    * @param e - Java exception to be shown and logged
+    * @param msg - Error message to be shown and logged
+    * @param parent - frame in which to show dialog, or null for caller
+    */
+   public void showError(Exception e, String msg, Component parent);
+
+   /**
+    * Shows and logs a Java exception.
+    * @param e - Java exception to be shown and logged
+    * @param parent - frame in which to show dialog, or null for caller
+    */
+   public void showError(Exception e, Component parent);
+
+   /**
+    * Shows an error message in the UI and logs to the Micro-Manager log.
+    * @param msg - error message to be shown and logged
+    * @param parent - frame in which to show dialog, or null for caller
+    */
+   public void showError(String msg, Component parent);
+
+   /**
     * Allows MMListeners to register themselves so that they will receive
     * alerts as defined in the MMListenerInterface
+    * @param newL
     */
    public void addMMListener(MMListenerInterface newL);
 
    /**
     * Allows MMListeners to remove themselves
+    * @param oldL
     */
    public void removeMMListener(MMListenerInterface oldL);
 
@@ -796,7 +590,7 @@ public interface ScriptInterface {
    /**
     * Lets Components remove themselves from the list whose background gets
     * changed by the Micro-Manager UI.
-    * $param frame Component from which the listener should be removed.
+    * @param frame Component from which the listener should be removed.
     */
    public void removeMMBackgroundListener(Component frame);
 
@@ -806,14 +600,6 @@ public interface ScriptInterface {
     * @return Current backgroundColor
     */
    public Color getBackgroundColor();
-
-   /**
-    * Show an image with the pixel array pix in the snap/live window (uses 
-    * current camera settings to figure out the shape of the image)
-    * @param pix Array with pixel data.  pixeldata should match current camera settings.
-    * @deprecated use displayImage(TaggedImage img) instead
-    */
-   public boolean displayImage(Object pix);
 
      /**
     * Show a TaggedImage in the snap/live window (uses current camera settings
@@ -836,12 +622,14 @@ public interface ScriptInterface {
 
    /**
     * Get the default camera's ROI -- a convenience function.
+    * @return default camera's ROI
     * @throws MMScriptException
     */
    public Rectangle getROI() throws MMScriptException;
 
    /**
     * Set the default camera's ROI -- a convenience function.
+    * @param r
     * @throws MMScriptException
     */
    public void setROI(Rectangle r) throws MMScriptException;
@@ -849,6 +637,8 @@ public interface ScriptInterface {
    /**
     * Get a reference to the ImageCache object associated with the acquisition.
     * @param acquisitionName Name of the acquisition
+    * @return ImageCache object associated with the acquisition
+    * @throws org.micromanager.utils.MMScriptException
     */
    public ImageCache getAcquisitionImageCache(String acquisitionName) throws MMScriptException;
 
@@ -865,7 +655,10 @@ public interface ScriptInterface {
     * AcqControlDlg dlg = gui.getAcqDlg();
     * dlg.setVisible(true);
     * @return Handle to the MDA acquisition dialog
+    *
+    * @deprecated Use the get/setAcquisitionSettings() interface instead.
     */
+   @Deprecated
    public AcqControlDlg getAcqDlg();
 
    /**
@@ -873,12 +666,15 @@ public interface ScriptInterface {
     * If the Dialog did not yet exist, it will be created.
     * The Dialog will not necessarily be shown, call the setVisibile method of the dialog to do so
     * @return Handle to the positionList Dialog
+    *
+    * @deprecated Use the get/setPositionList() interface instead.
     */
+   @Deprecated
    public PositionListDlg getXYPosListDlg();
 
    /**
     * Returns true when an acquisition is currently running (note: this function will
-    * not return true if live mode, snap, or "Camera --> Album" is currently running
+    * not return true if live mode, snap, or "Camera --&gt; Album" is currently running
     */
    public boolean isAcquisitionRunning();
 
@@ -908,58 +704,6 @@ public interface ScriptInterface {
     */
    public void makeActive();
 
-  /**
-    * Use isLiveModeOn() instead of this function
-    * @deprecated
-    */
-   public boolean getLiveMode();
-   
-   /**
-    * Use setChannelContrast instead of this function
-    * @deprecated
-    */
-   public void applyContrastSettings(ContrastSettings contrast8_, ContrastSettings contrast16_);
-   
-   /**
-    * Returns the contrast settings of the active window associated with the contrast 
-    * panel or null if no window is associated with the contrast panel.  If the active
-    * window has multiple channels, the settings associated with channel 0 are returned
-    * @return ContrastSettings object of current windows settings
-    * @deprecated 
-    */
-   public ContrastSettings getContrastSettings();
-   
-   /**
-    * Checks if the image in the active window is 16 bits per pixel
-    * @return true if the image in the active window is 16 bits
-    * @deprecated
-    */
-   public boolean is16bit();
-   
-   /**
-    * Refreshes GUI components.  refreshGUI() should be used instead of this function
-    * @param updateConfigPadStructure 
-    * @deprecated
-    */
-   public void updateGUI(boolean updateConfigPadStructure);
-
-   /**
-    * Show an image with the pixel array pix (uses current camera settings
-    * to figure out the shape of the image.  Also displays line of text on
-    * image window
-    * @param pix Array with pixel data.  pixeldata should match current camera settings.
-    * @param statusLine line of text to display on window
-    * @deprecated use addImage instead
-    */
-   public boolean displayImageWithStatusLine(Object pix, String statusLine);   
-   
-   /**
-    * Line of text in the current Image Window
-    * @param statusLine 
-    * @deprecated 
-    */
-   public void displayStatusLine(String statusLine);
-
    /**
     * @return the currently selected AutoFocusManger object
     */
@@ -974,26 +718,6 @@ public interface ScriptInterface {
     * @return the currently running Micro-Manager version
     */
    public String getVersion();
-
-   /**
-    * Initializes main GUI components.  Shouldn't need to be explicitly called
-    * @deprecated
-    */
-   public void initializeGUI();
-
-   /**
-    * Returns true when any acquisition is currently running.
-    * isAcquisitionRunning() should be used instead of this function
-    * @deprecated 
-    */
-   public boolean isBurstAcquisitionRunning() throws MMScriptException;
-
-   /**
-    * isLiveModeOn() should be called instead of this
-    * @return true if live mode is not running, false otherwise
-    * @deprecated
-    */
-   public boolean okToAcquire();
 
    /**
     * Sets the background color of the GUI and all its registered components to 
@@ -1013,35 +737,6 @@ public interface ScriptInterface {
     * shows the position list dialog
     */
    public void showXYPositionList();
-
-   /**
-    * runAcquisition() should be used instead of this function
-    * Executes Acquisition with current settings
-    * Will open the Acquisition Dialog when it is not open yet
-    * @throws MMScriptException 
-    * @deprecated
-    */
-   public void startAcquisition() throws MMScriptException;
-
-   /**
-    * runAcquisition() should be used instead of this function
-    * @throws MMScriptException 
-    * @deprecated
-    */
-   public void startBurstAcquisition() throws MMScriptException;
-
-   /**
-    * Calls enableLiveMode(false).  enableLiveMode should instead be called directly
-    * @deprecated
-    */
-   public void stopAllActivity();
-
-   /**
-    * Sets the pixels of the current window to a newly snapped image
-    * @deprecated
-    */
-   public boolean updateImage();
-
 
    /**
     * Open an existing data set. Shows the acquisition in a window.
@@ -1071,12 +766,6 @@ public interface ScriptInterface {
    public void setImageSavingFormat(Class imageSavingClass) throws MMScriptException;
 
    /*
-    * Returns true if the user has chosen to allow MM to autoreload devices
-    * that throw an error.
-    */
-   public boolean getAutoreloadOption();
-
-   /*
     * Returns the pipeline
     */
    public IAcquisitionEngine2010 getAcquisitionEngine2010();
@@ -1085,4 +774,88 @@ public interface ScriptInterface {
     * Returns true if user has chosen to hide MDA window when it runs.
     */
    public boolean getHideMDADisplayOption();
+   
+   /**
+    * Adds an image processor to the DataProcessor pipeline.
+    */
+   public void addImageProcessor(DataProcessor<TaggedImage> processor);
+
+   /**
+    * Removes an image processor from the DataProcessor pipeline.
+    */
+   public void removeImageProcessor(DataProcessor<TaggedImage> taggedImageProcessor);
+
+   /**
+    * Retrieve a copy of the current DataProcessor pipeline.
+    */
+   public List<DataProcessor<TaggedImage>> getImageProcessorPipeline();
+
+   /**
+    * Replace the current DataProcessor pipeline with the provided one.
+    */
+   public void setImageProcessorPipeline(List<DataProcessor<TaggedImage>> pipeline);
+
+   /**
+    * Register a new DataProcessor class with the Acquisition Engine. For
+    * example, if your processor class is named MyProcessor, then you would
+    * call this function as:
+    * gui.registerProcessorClass(MyProcessor.class, "My Processor");
+    */
+   public void registerProcessorClass(Class<? extends DataProcessor<TaggedImage>> processorClass, String name);
+   
+   /**
+    * Pause/Unpause a running acquistion
+    */
+   public void setPause(boolean state);
+   
+   /**
+    * Returns true if the acquisition is currently paused.
+    */
+   public boolean isPaused();
+
+   /**
+    * Attach a runnable to the acquisition engine. Each index (f, p, c, s) can
+    * be specified. Passing a value of -1 should result in the runnable being attached
+    * at all values of that index. For example, if the first argument is -1,
+    * then the runnable should execute at every frame.
+    */
+   public void attachRunnable(int frame, int position, int channel, int slice, Runnable runnable);
+
+   /**
+    * Remove runnables from the acquisition engine
+    */
+   public void clearRunnables();
+   
+   /**
+    * Return current acquisition settings
+    */ 
+    SequenceSettings getAcquisitionSettings();
+    
+    /**
+     * Apply new acquisition settings
+     */ 
+    public void setAcquisitionSettings(SequenceSettings settings);
+ 
+    /**
+     * Return the current acquisition path, or null if not applicable
+     */
+    public String getAcquisitionPath();
+
+    /**
+     * Display dialog to save data for one of the currently open acquisitions
+     */
+    public void promptToSaveAcquisition(String name, boolean prompt) throws MMScriptException;
+
+   /**
+    * Request that the given object be added to our EventBus for notification
+    * of events occurring. The available event types that subscribers can
+    * listen for is in the org.micromanager.api.events package.
+    */
+    public void registerForEvents(Object obj);
+
+   /**
+    * Autostretch each histogram for the currently-active window, as if the
+    * "Auto" button had been clicked for each one.
+    */
+    public void autostretchCurrentWindow();
 }

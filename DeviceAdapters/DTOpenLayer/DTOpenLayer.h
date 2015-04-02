@@ -17,7 +17,7 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 03/15/2006
 //
-// CVS:           $Id$
+// CVS:           $Id: DTOpenLayer.h 7743 2011-09-15 22:59:17Z arthur $
 //
 
 #ifndef _DTOPENLAYER_H_

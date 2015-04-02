@@ -35,26 +35,23 @@
 // #define SpotAPI(X) (std::cerr << __LINE__ << ": Calling Spot API: " #X << std::endl, X)
 #define SpotAPI(X) (X)
 #ifdef __APPLE__
-//EF for Spot header V5.0
-//typedef struct
-//{
-//   int left, top;
-//   int right, bottom;
-//} SPOT_RECT;
-//
-//typedef SPOT_RECT Rect;
 typedef struct
 {
-	short left, top;
-	short right, bottom;
+   short left, top;
+   short right, bottom;
 } RECT;
+
+// Compatibility with SpotCam.framework 4.7.x
+// (Could also include MacTypes.h to get Rect)
+typedef RECT Rect;
+
 #define FALSE 0
 #define TRUE 1
 
 #define TARGET_OS_MAC 1
 #include <SpotCam/SpotCam.h>
-#endif
-#endif
+#endif // __APPLE__
+#endif // !defined(_WINDOWS)
 
 #include "CodeUtility.h"
 namespace ExposureComputationImageTypeNS
@@ -176,7 +173,7 @@ public:
 	short Gain(void);
 	void Gain(const short value__);
 	double ActualGain(void);
-	std::vector<short> SpotDevice::BinSizes();
+	std::vector<short> BinSizes();
 	std::vector<short> PossibleIntegerGains( const short bitdepth__);
 	std::string PixelSize(void);
 	std::vector<short> PossibleBitDepths(void);

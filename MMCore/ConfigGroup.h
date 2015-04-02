@@ -20,7 +20,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: ConfigGroup.h 8994 2012-03-08 23:17:08Z arthur $
 //
 #ifndef _CONFIG_GROUP_H_
 #define _CONFIG_GROUP_H_

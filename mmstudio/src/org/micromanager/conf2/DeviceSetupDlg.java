@@ -48,7 +48,7 @@ public class DeviceSetupDlg extends MMDialog {
    private DetectorJDialog progressDialog;
    private DetectionTask dt;
    private final String DETECT_PORTS = "Scan";
-   private JTable comTable;
+   private final JTable comTable;
    private JTextField devLabel;
 
    /**
@@ -85,6 +85,7 @@ public class DeviceSetupDlg extends MMDialog {
          {
             JButton okButton = new JButton("OK");
             okButton.addActionListener(new ActionListener() {
+               @Override
                public void actionPerformed(ActionEvent e) {
                   onOK();
                }
@@ -96,6 +97,7 @@ public class DeviceSetupDlg extends MMDialog {
          {
             JButton cancelButton = new JButton("Cancel");
             cancelButton.addActionListener(new ActionListener() {
+               @Override
                public void actionPerformed(ActionEvent e) {
                   onCancel();
                }
@@ -127,6 +129,7 @@ public class DeviceSetupDlg extends MMDialog {
       detectButton.setEnabled(false);
       detectButton.addActionListener(new ActionListener() {
 
+         @Override
          public void actionPerformed(ActionEvent e) {
             if (dt != null && dt.isAlive())
                return;
@@ -357,7 +360,7 @@ public class DeviceSetupDlg extends MMDialog {
       try {
          System.out.println("rebuild " + portDev.getPropertyValue("BaudRate"));
       } catch (MMConfigFileException e1) {
-         ReportingUtils.logError(e1);
+         ReportingUtils.logMessage("Property BaudRate is not defined");
       }
       
       ComPropTableModel tm = new ComPropTableModel(model, portDev);
@@ -504,7 +507,7 @@ public class DeviceSetupDlg extends MMDialog {
             String looking = "";
 
             // during detection we'll generate lots of spurious error messages.
-            core.enableDebugLog(false);
+            ReportingUtils.logMessage("Starting port scanning; expect lots of spurious error messages");
             for (int i = 0; i < ports.size(); i++) {
                looking = "";
                try {
@@ -582,7 +585,7 @@ public class DeviceSetupDlg extends MMDialog {
             }
          } finally { // matches try at entry
             progressDialog.setVisible(false);
-            core.enableDebugLog(currentDebugLogSetting);
+            ReportingUtils.logMessage("Finished port scanning; spurious error messages no longer expected");
             rebuildPropTable();
             if (! (selectedPort.length() == 0)) {
                Device pd = model.findSerialPort(selectedPort);

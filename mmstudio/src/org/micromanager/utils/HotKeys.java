@@ -9,12 +9,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.prefs.Preferences;
 
 /**
@@ -50,9 +47,9 @@ public class HotKeys {
          return;
 
       int j = 0;
-      int key = STOP;
-      int type = HotKeyAction.GUICOMMAND;
-      int guiCommand = HotKeyAction.SNAP;
+      int key;
+      int type;
+      int guiCommand;
       File file;
       do {
          key = prefs_.getInt(KEY + j, STOP);
@@ -107,10 +104,9 @@ public class HotKeys {
          while (in.available() > 0) {
             int key = in.readInt();
             int type = in.readInt();
-            int guiCommand = 0;
             String filePath = "";
             if (type == HotKeyAction.GUICOMMAND) {
-               guiCommand = in.readInt();
+               int guiCommand = in.readInt();
                HotKeyAction action = new HotKeyAction(guiCommand);
                keys_.put(key, action);
             }

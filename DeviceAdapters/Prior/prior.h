@@ -18,7 +18,7 @@
 //
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 06/01/2006
 //
-// CVS:           $Id$
+// CVS:           $Id: prior.h 13358 2014-05-09 02:48:15Z mark $
 //
 
 #ifndef _PRIOR_H_
@@ -166,11 +166,6 @@ private:
    std::string port_;
    double stepSizeXUm_;
    double stepSizeYUm_;
-   double answerTimeoutMs_;
-   double originX_;
-   double originY_;
-   bool mirrorX_;
-   bool mirrorY_;
    MM::MMTime changedTime_;
 };
 
@@ -203,6 +198,9 @@ public:
    // action interface
    // ----------------
    int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMaxSpeed(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnSCurve(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 
 private:
@@ -215,6 +213,7 @@ private:
    double stepSizeUm_;
    long curSteps_;
    double answerTimeoutMs_;
+   bool HasCommand(std::string command);
 };
 
 class NanoZStage : public CStageBase<NanoZStage>

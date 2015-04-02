@@ -6,7 +6,7 @@
 //
 // AUTHOR:       Nenad Amodaj, nenad@amodaj.com, March 20, 2006
 //
-// COPYRIGHT:    University of California, San Francisco, 2006
+// COPYRIGHT:    University of California, San Francisco, 2006, 2014
 //
 // LICENSE:      This file is distributed under the BSD license.
 //               License text is included with the source distribution.
@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: PropertyEditor.java 14898 2015-01-08 18:52:48Z cweisiger $
 //
 
 package org.micromanager;
@@ -70,8 +70,8 @@ import org.micromanager.utils.ReportingUtils;
  *
  * aka the "Device/Property Browser"
  */
-public class PropertyEditor extends MMFrame{
-   private SpringLayout springLayout;
+public class PropertyEditor extends MMFrame {
+   private final SpringLayout springLayout;
    private static final long serialVersionUID = 1507097881635431043L;
    
    private JTable table_;
@@ -85,7 +85,7 @@ public class PropertyEditor extends MMFrame{
    private JCheckBox showStateDevicesCheckBox_;
    private JCheckBox showOtherCheckBox_;
    private JCheckBox showReadonlyCheckBox_;
-   private JScrollPane scrollPane_;
+   private final JScrollPane scrollPane_;
    private ScriptInterface gui_;
    
    public class myMMListener extends MMListenerAdapter {
@@ -104,7 +104,7 @@ public class PropertyEditor extends MMFrame{
       }
    }
 
-   private myMMListener myMMListener_ = new myMMListener();
+   private final myMMListener myMMListener_ = new myMMListener();
 
    public void setGui(ScriptInterface gui) {
       gui_ = gui;
@@ -115,8 +115,6 @@ public class PropertyEditor extends MMFrame{
 
    public PropertyEditor() {
       super();
-      Preferences root = Preferences.userNodeForPackage(this.getClass());
-      setPrefsNode(root.node(root.absolutePath() + "/PropertyEditor"));
       
       flags_ = new ShowFlags();
       flags_.load(getPrefsNode());
@@ -128,7 +126,6 @@ public class PropertyEditor extends MMFrame{
       addWindowListener(new WindowAdapter() {
          @Override
          public void windowClosing(WindowEvent e) {
-            savePosition();
             Preferences prefs = getPrefsNode();
             prefs.putBoolean(PREF_SHOW_READONLY, showReadonlyCheckBox_.isSelected());
             flags_.save(getPrefsNode());
@@ -142,9 +139,9 @@ public class PropertyEditor extends MMFrame{
             data_.fireTableStructureChanged();
         }
       });
-      setTitle("Property Browser");
+      setTitle("Device Property Browser");
 
-      loadPosition(100, 100, 400, 300);
+      loadAndRestorePosition(100, 100, 400, 300);
       setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
       scrollPane_ = new JScrollPane();
@@ -166,6 +163,7 @@ public class PropertyEditor extends MMFrame{
       springLayout.putConstraint(SpringLayout.SOUTH, refreshButton, 32, SpringLayout.NORTH, getContentPane());
       springLayout.putConstraint(SpringLayout.NORTH, refreshButton, 9, SpringLayout.NORTH, getContentPane());
       refreshButton.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent e) {
             refresh();
          }
@@ -175,6 +173,7 @@ public class PropertyEditor extends MMFrame{
       showReadonlyCheckBox_ = new JCheckBox();
       showReadonlyCheckBox_.setFont(new Font("Arial", Font.PLAIN, 10));
       showReadonlyCheckBox_.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent e) {
             // show/hide read-only properties
             data_.setShowReadOnly(showReadonlyCheckBox_.isSelected());
@@ -196,6 +195,7 @@ public class PropertyEditor extends MMFrame{
       showCamerasCheckBox_ = new JCheckBox();
       showCamerasCheckBox_.setFont(new Font("", Font.PLAIN, 10));
       showCamerasCheckBox_.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent arg0) {
             flags_.cameras_ = showCamerasCheckBox_.isSelected();
             data_.update(false);
@@ -210,6 +210,7 @@ public class PropertyEditor extends MMFrame{
       showShuttersCheckBox_ = new JCheckBox();
       showShuttersCheckBox_.setFont(new Font("", Font.PLAIN, 10));
       showShuttersCheckBox_.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent arg0) {
             flags_.shutters_ = showShuttersCheckBox_.isSelected();
             data_.update(false);
@@ -224,6 +225,7 @@ public class PropertyEditor extends MMFrame{
       showStagesCheckBox_ = new JCheckBox();
       showStagesCheckBox_.setFont(new Font("", Font.PLAIN, 10));
       showStagesCheckBox_.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent arg0) {
             flags_.stages_ = showStagesCheckBox_.isSelected();
             data_.update(false);
@@ -239,6 +241,7 @@ public class PropertyEditor extends MMFrame{
       showStateDevicesCheckBox_ = new JCheckBox();
       showStateDevicesCheckBox_.setFont(new Font("", Font.PLAIN, 10));
       showStateDevicesCheckBox_.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent arg0) {
             flags_.state_ = showStateDevicesCheckBox_.isSelected();
             data_.update(false);
@@ -254,6 +257,7 @@ public class PropertyEditor extends MMFrame{
       showOtherCheckBox_ = new JCheckBox();
       showOtherCheckBox_.setFont(new Font("", Font.PLAIN, 10));
       showOtherCheckBox_.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent arg0) {
             flags_.other_ = showOtherCheckBox_.isSelected();
             data_.update(false);
@@ -318,7 +322,7 @@ public class PropertyEditor extends MMFrame{
       @Override
       public void setValueAt(Object value, int row, int col) {
          PropertyItem item = propListVisible_.get(row);
-         ReportingUtils.logMessage("Setting value " + value + " at row " + row);
+         gui_.logMessage("Setting value " + value + " at row " + row);
          if (col == PropertyValueColumn_) {
             setValueInCore(item,value);
          }
@@ -373,7 +377,7 @@ public class PropertyEditor extends MMFrame{
 
  
    private void handleException (Exception e) {
-      ReportingUtils.showError(e);
+      ReportingUtils.showError(e, this);
    }
    
 }

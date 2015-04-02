@@ -162,9 +162,9 @@ MotorZStage::MotorZStage() :
    initialized_(false),
    answerTimeoutMs_(1000),
    moveTimeoutMs_(110000.0), // takes roughly 100 seconds to travel the whole range of ZST25
-   cmdThread_(0),
    zstage_(NULL),
-   home_(false)
+   home_(false),
+   cmdThread_(0)
 {
    InitializeDefaultErrorMessages();
 
@@ -226,6 +226,11 @@ bool MotorZStage::RecognizedDevice(char *model)
            stepSizeUm_ = stepSizeUmStepper;
       return true;
    }
+   if(strcmp(model, "TDC001") == 0)
+   {
+           stepSizeUm_ = stepSizeUmServo;
+      return true;
+   }
    if(strcmp(model, "ODC001") == 0)
    {
            stepSizeUm_ = stepSizeUmServo;
@@ -239,7 +244,7 @@ int MotorZStage::Initialize()
    int ret;
 
    // initialize stage device
-   zstage_ = new MotorStage(this, port_, 0, answerTimeoutMs_, moveTimeoutMs_);
+   zstage_ = new MotorStage(this, GetCoreCallback(), port_, 0, answerTimeoutMs_, moveTimeoutMs_);
 
    // for some strange reason the device requires the flow control to be toggled before first communications
    GetCoreCallback()->SetDeviceProperty(port_.c_str(), MM::g_Keyword_Handshaking, g_Handshaking_Hardware);

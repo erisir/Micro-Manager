@@ -34,7 +34,7 @@
 //
 // FUTURE DEVELOPMENT: From September 1 2007, the development of this adaptor is taken over by Andor Technology plc. Daigang Wen (d.wen@andor.com) is the main contact. Changes made by him will not be labeled.
 //
-// CVS:           $Id$
+// CVS:           $Id: Andor.h 14645 2014-11-19 17:52:56Z matthew $
 //
 #ifndef _ANDOR_H_
 #define _ANDOR_H_
@@ -67,7 +67,8 @@
 #define ERR_INVALID_SNAPIMAGEDELAY 116
 
 class AcqSequenceThread;
- 
+class SpuriousNoiseFilterControl;
+class ReadModeControl;
 //////////////////////////////////////////////////////////////////////////////
 // Implementation of the MMDevice and MMCamera interfaces
 //
@@ -75,6 +76,8 @@ class AndorCamera : public CCameraBase<AndorCamera>
 {
 public:
    friend class AcqSequenceThread;
+   friend class SpuriousNoiseFilterControl;
+   friend class ReadModeControl;
    static AndorCamera* GetInstance();
 
    ~AndorCamera();
@@ -121,6 +124,10 @@ public:
    int StopSequenceAcquisition(); // temporary=true 
    int StopSequenceAcquisition(bool temporary);
 
+   void PrepareToApplySetting();
+   void ResumeAfterApplySetting();
+
+
    bool IsCapturing(){return sequenceRunning_;};
 
    // action interface for the camera
@@ -131,6 +138,7 @@ public:
    int OnEMSwitch(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnReadoutMode(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnReadoutTime(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnKeepCleanTime(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnOffset(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnTemperature(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnDriverDir(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -158,18 +166,15 @@ public:
    int OnTemperatureRangeMax(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnVCVoltage(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnBaselineClamp(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnCropModeSwitch(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnCropModeWidth(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnCropModeHeight(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnCropModeSwitch(MM::PropertyBase* /*pProp*/, MM::ActionType eAct);
    int OnActualIntervalMS(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnSelectTrigger(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnTimeOut(MM::PropertyBase* pProp, MM::ActionType eAct);  // kdb July-30-2009
    int OnCountConvert(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnCountConvertWavelength(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnSpuriousNoiseFilter(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnSpuriousNoiseFilterThreshold(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnSpuriousNoiseFilterDescription(MM::PropertyBase* pProp, MM::ActionType eAct);
+
    int OnOptAcquireMode(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnROI(MM::PropertyBase* pProp, MM::ActionType eAct);
    void UpdateOAParams(const char*  OAModeName);
    int OnOADescription(MM::PropertyBase* pProp, MM::ActionType eAct);
 
@@ -178,6 +183,9 @@ public:
    int PushImage();
 
    //static void ReleaseInstance(AndorCamera * AndorCamera);
+
+    int AddProperty(const char* name, const char* value, MM::PropertyType eType, 
+                   bool readOnly, MM::ActionFunctor* pAct);
 
     int GetNumberOfWorkableCameras() const { return NumberOfWorkableCameras_; } 
     int GetMyCameraID() const { return myCameraID_; } 
@@ -193,11 +201,14 @@ private:
    bool IsAcquiring();
 
    void LogStatus();
-	int PrepareSnap();
-	unsigned int UpdateSnapTriggerMode();
+   int PrepareSnap();
+   unsigned int UpdateSnapTriggerMode();
    std::string GetTriggerModeString(int mode);
    unsigned int ApplyTriggerMode(int mode);
    int GetTriggerModeInt(std::string mode);
+
+   bool IsIxonUltra888();
+   bool IsIxonUltra();
 
    bool EMSwitch_;
 
@@ -217,9 +228,7 @@ private:
    double intervalMs_;
    std::string countConvertMode_;
    double countConvertWavelength_;
-   std::string spuriousNoiseFilter_;
-   double spuriousNoiseFilterThreshold_;
-   std::string spuriousNoiseFilterDescriptionStr_;
+
    std::string optAcquireModeStr_;
    std::string optAcquireDescriptionStr_;
 
@@ -227,7 +236,13 @@ private:
    std::vector<std::string> PreAmpGains_;
    long currentGain_;   
 
-   bool cropModeSwitch_;
+   enum CROPMODE {
+      OFF,
+      BOTTOM,
+      CENTRAL
+   };
+
+   CROPMODE cropModeSwitch_;
    long currentCropWidth_;
    long currentCropHeight_;
    std::vector<std::string> VSpeeds_;
@@ -235,37 +250,38 @@ private:
 
    double currentExpMS_;
 
-   long ReadoutTime_, KeepCleanTime_;
+   float ReadoutTime_, KeepCleanTime_;
 
    unsigned int UpdateTimings();
    unsigned int ApplyShutterSettings();
+
+   enum STATE { PREPAREDFORSINGLESNAP, SEQUENCEACQUISITION };
+   STATE stateBeforePause_;
+   int RestartSequenceAcquisition();
 
 #ifdef __linux__
    HDEVMODULE hAndorDll; 
 #endif
 
    bool busy_;
-
+public:
    struct ROI {
       int x;
       int y;
       int xSize;
       int ySize;
-
-      ROI() : x(0), y(0), xSize(0), ySize(0) {}
-      ~ROI() {}
-
-      bool isEmpty() {return x==0 && y==0 && xSize==0 && ySize == 0;}
    };
+private:
+   ROI roi_, customROI_;
+   std::vector<ROI> roiList;
 
-   ROI roi_;
+
+
    int binSize_;
    double expMs_; //value used by camera
    std::string driverDir_;
    int fullFrameX_;
    int fullFrameY_;
-   int tempFrameX_;
-   int tempFrameY_;
    short* fullFrameBuffer_;
    std::vector<std::string> readoutModes_;
 
@@ -281,13 +297,16 @@ private:
    void UpdateHSSpeeds();
    int UpdateExposureFromCamera();
    int UpdatePreampGains();
-   int GetPreAmpGainString(int PreAmpgainIdx, char * PreAmpGainString);
+   int GetPreAmpGainString(int PreAmpgainIdx, char * PreAmpGainString,int PreAmpGainStringLength );
+   void GetROIPropertyName(int position, int hSize, int vSize, char * buffer, int mode);
 
    int HSSpeedIdx_;
    int PreAmpGainIdx_;
 
-   bool bSoftwareTriggerSupported_;
+   bool biCamFeaturesSupported_;
    int  iCurrentTriggerMode_;
+   bool metaDataAvailable_;
+   void initialiseMetaData();
 
    enum {
       INTERNAL=0,
@@ -302,6 +321,11 @@ private:
       AUTO=0,
       OPEN=1,
       CLOSED=2
+   };
+
+   enum {
+	   FVB=0,
+	   IMAGE=4
    };
 
    int iInternalShutterMode_;
@@ -333,7 +357,8 @@ private:
    float ActualInterval_ms_;
    std::string ActualInterval_ms_str_;
    std::string strCurrentTriggerMode_;
-   std::vector<std::string> vTriggerModes;
+   std::vector<std::string> triggerModesIMAGE_;
+   std::vector<std::string> triggerModesFVB_;
 
     std::string strCurrentAmp;
    std::vector<std::string> vAvailAmps;
@@ -353,11 +378,17 @@ private:
    unsigned char* GetAcquiredImage();
    std::string getCameraType();
    unsigned int createGainProperty(AndorCapabilities * caps);
+   unsigned int createROIProperties(AndorCapabilities * caps);
+   unsigned int PopulateROIDropdown();
+   unsigned int PopulateROIDropdownFVB();
+   unsigned int PopulateBinningDropdown();
+   void PopulateTriggerDropdown();
+   unsigned int ApplyROI(bool forSingleSnap);
    unsigned int createTriggerProperty(AndorCapabilities * caps);
    unsigned int createSnapTriggerMode();
    unsigned int createShutterProperty(AndorCapabilities * caps);
    unsigned int AddTriggerProperty(int mode);
-   unsigned int createIsolatedCropModeProperty(AndorCapabilities * caps);
+
 
    bool mb_canUseFan;
    bool mb_canSetTemp;
@@ -365,6 +396,8 @@ private:
 
    bool sequencePaused_;
 
+   SpuriousNoiseFilterControl* spuriousNoiseFilterControl_;
+   ReadModeControl* readModeControl_;
 };
 
 

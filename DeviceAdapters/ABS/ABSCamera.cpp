@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
-#include "../../MMCore/Error.h"
 
 #include "shlwapi.h"
 #pragma comment( lib, "shlwapi.lib")
@@ -209,6 +208,13 @@ fractionOfPixelsToDropOrSaturate_(0.002)
 ,imageCounter_(0)
 ,framerate_(0.0)
 ,exposureLongTime_( g_Exposure_LongTime_Off )
+//,thread_(0)
+//,thd_(0)
+,abortGetImageFired_(false)
+,bFirstExposureLongTimeImage_(false)
+,stopOnOverflow_(false)
+,numImages_(LONG_MAX)
+,interval_ms_(0)
 {
   memset(testProperty_,0,sizeof(testProperty_));
 
@@ -217,8 +223,8 @@ fractionOfPixelsToDropOrSaturate_(0.002)
   readoutStartTime_ = GetCurrentMMTime();
 
   // release thread object of base class => to allocate my own one
-  SAFE_DELETE( thd_ );
-  thd_ = dynamic_cast<CCameraBase<CABSCamera>::BaseSequenceThread*>( new CABSCameraSequenceThread(this) );
+  //thread_ = new CABSCameraSequenceThread(this);
+//  thd_ = new CABSCameraSequenceThread(this);
 
   // clear camera device id string
   cameraDeviceID_.clear();
@@ -232,14 +238,11 @@ fractionOfPixelsToDropOrSaturate_(0.002)
 
 /**
 * CABSCamera destructor.
-* If this device used as intended within the Micro-Manager system,
-* Shutdown() will be always called before the destructor. But in any case
-* we need to make sure that all resources are properly released even if
-* Shutdown() was not called.
+* Calls Shutdown in case it wasn't explicity called already.
 */
 CABSCamera::~CABSCamera()
 {
-  StopSequenceAcquisition();
+   Shutdown();
 }
 
 //-----------------------------------------------------------------------------
@@ -307,7 +310,7 @@ int CABSCamera::Initialize()
     CCameraList::iterator iter = cCameraList.begin();
     while ( iter != cCameraList.end() )
     {
-      if ( cameraDeviceID() == buildCameraDeviceID( iter->sVersion.dwSerialNumber, (const char*) iter->sVersion.szDeviceName ).c_str() )
+      if ( cameraDeviceID() == buildCameraDeviceID( iter->sVersion.dwSerialNumber, getDeviceNameString( iter->sVersion ) ).c_str() )
       {
         serialNumber = iter->sVersion.dwSerialNumber;
         platformID = iter->sVersion.bPlatformID;
@@ -320,7 +323,7 @@ int CABSCamera::Initialize()
 
   // open camera device
   u32 dwRC;
-  int deviceNumber = accquireDeviceNumber();
+  u08 deviceNumber = accquireDeviceNumber();
   // open camera without reboot
   dwRC = GET_RC( CamUSB_InitCameraEx( deviceNumber, serialNumber, 0, 0, platformID ), deviceNumber );
 
@@ -401,7 +404,7 @@ int CABSCamera::Initialize()
   { goto Initialize_Done; }
 
   // CameraName
-  nRet = CreateProperty(MM::g_Keyword_CameraName, string( (const char*)cameraVersion_.szDeviceName ).c_str() , MM::String, true);
+  nRet = CreateProperty(MM::g_Keyword_CameraName, getDeviceNameString().c_str() , MM::String, true);
   assert(nRet == DEVICE_OK);
 
   // CameraID
@@ -734,10 +737,10 @@ int CABSCamera::Initialize()
 Initialize_Done:
   if (nRet != DEVICE_OK)
   {
-    int deviceNumber = deviceNo();
+    u08 deviceNumber = deviceNo();
     setDeviceNo( NO_CAMERA_DEVICE );
 
-    if ( NO_CAMERA_DEVICE != deviceNumber )
+    if ( static_cast<u08>(NO_CAMERA_DEVICE) != deviceNumber )
     {
       CamUSB_FreeCamera( deviceNumber );
       releaseDeviceNumber( deviceNumber );
@@ -1180,32 +1183,32 @@ int CABSCamera::setAllowedGain( const char* szKeyword_GainChannel )
 /**
 * Stop and wait for the Sequence thread finished
 */
+
 int CABSCamera::StopSequenceAcquisition()
 {
   TIMEDEBUG
 
-  if (!thd_->IsStopped())
+  if ( IsCapturing() )
   {
-    thd_->Stop();
-
     // abort current image transfer only for long exposure times
     if ( exposureLongTime_ == g_Exposure_LongTime_On )
     {
+      abortGetImageFired_ = true;
       u32 rc = 0;
       rc = GET_RC( CamUSB_AbortGetImage( deviceNo() ), deviceNo());
       assert(rc == retOK);
     }
+  }
 
-    thd_->wait();
+  int iResult = __super::StopSequenceAcquisition();
 
     // restore readout mode
     setLiveReadoutMode( false );
 
     // update image buffer type
     img_.setBufferType( CAbsImgBuffer::eInternBuffer );
-  }
 
-  return DEVICE_OK;
+  return iResult;
 }
 
 /**
@@ -1213,18 +1216,15 @@ int CABSCamera::StopSequenceAcquisition()
 * A sequence acquisition should run on its own thread and transport new images
 * coming of the camera into the MMCore circular buffer.
 */
+
 int CABSCamera::StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow)
 {
-  TIMEDEBUG
-
-  imageCounter_ = 0;
 
   if (IsCapturing())
-    return DEVICE_CAMERA_BUSY_ACQUIRING;
+    StopSequenceAcquisition();
 
-  int ret = GetCoreCallback()->PrepareForAcq(this);
-  if (ret != DEVICE_OK)
-    return ret;
+  TIMEDEBUG
+  imageCounter_ = 0;
 
   // at live mode should the readout mode continouse or HW-Triggered
   setLiveReadoutMode( ( LONG_MAX == numImages ) );
@@ -1232,13 +1232,15 @@ int CABSCamera::StartSequenceAcquisition(long numImages, double interval_ms, boo
   img_.setBufferType( CAbsImgBuffer::eExternBuffer );
 
   stopOnOverflow_ = stopOnOverflow;
+  numImages_      = numImages;
+  interval_ms_    = interval_ms;
 
-  dynamic_cast<CABSCameraSequenceThread *>(thd_)->Start( numImages, interval_ms );
+  if ( exposureLongTime_ == g_Exposure_LongTime_On )
+    bFirstExposureLongTimeImage_ = true;
 
-
-  return DEVICE_OK;
+  abortGetImageFired_ = false;
+  return __super::StartSequenceAcquisition(numImages, interval_ms, stopOnOverflow);
 }
-
 /*
 * Inserts Image and MetaData into MMCore circular Buffer
 */
@@ -1296,6 +1298,31 @@ int CABSCamera::ThreadRun (void)
 {
   int ret=DEVICE_ERR;
 
+  // only for live mode
+  if ( ( LONG_MAX == GetNumberOfImages() ) && ( false == stopOnOverflow_ ) )
+  {
+    // only if long time exposure is enabled
+    if ( exposureLongTime_ == g_Exposure_LongTime_On )
+    {
+      if ( bFirstExposureLongTimeImage_ )
+      {
+        bFirstExposureLongTimeImage_ = false;
+
+        LogMessage("SeqAcquisition Start => insert last valid or blank image (GUI blocking workaround)\n", true);
+        MMThreadGuard g( img_ ); // lock the image
+
+        CAbsImgBuffer::EBufferType eType = img_.bufferType();
+        if ( 0 == img_.GetPixels() )
+          img_.setBufferType( CAbsImgBuffer::eInternBuffer );
+
+        InsertImage();
+
+        // restore buffer mode
+        img_.setBufferType( eType );
+      }
+    }
+  }
+
   // Trigger
   if (triggerDevice_.length() > 0) {
     MM::Device* triggerDev = GetDevice(triggerDevice_.c_str());
@@ -1307,6 +1334,8 @@ int CABSCamera::ThreadRun (void)
     }
   }
 
+  if (abortGetImageFired_)
+    return ret;
 
   ret = SnapImage();
   if ( (ret != DEVICE_OK) && 
@@ -1322,6 +1351,7 @@ int CABSCamera::ThreadRun (void)
   return ret;
 };
 
+/*
 CABSCameraSequenceThread::CABSCameraSequenceThread( CCameraBase<CABSCamera> * pCam )
 : CCameraBase<CABSCamera>::BaseSequenceThread( pCam )
 {
@@ -1333,52 +1363,47 @@ CABSCameraSequenceThread::~CABSCameraSequenceThread(){};
 
 int CABSCameraSequenceThread::svc(void) throw()
 {
+  CABSCamera* absCam = dynamic_cast<CABSCamera*>(GetCamera());
   int ret=DEVICE_ERR;
   try
   {
-    CABSCamera* camera = dynamic_cast<CABSCamera*>(camera_);
 
     // only for live mode
-    if ( ( LONG_MAX == numImages_ ) && ( false == camera->stopOnOverflow_ ) )
+    if ( ( LONG_MAX == GetNumberOfImages() ) && ( false == absCam->stopOnOverflow_ ) )
     {
-      // only if long time expsoure is enabled
-      if ( camera->exposureLongTime_ == g_Exposure_LongTime_On )
+      // only if long time exposure is enabled
+      if ( absCam->exposureLongTime_ == g_Exposure_LongTime_On )
       {
-        camera->LogMessage("SeqAcquisition Start => insert last valid or blank image (GUI blocking workaround)\n", true);
-        MMThreadGuard g( camera->img_ ); // lock the image
+        absCam->LogMessage("SeqAcquisition Start => insert last valid or blank image (GUI blocking workaround)\n", true);
+        MMThreadGuard g( absCam->img_ ); // lock the image
 
-        CAbsImgBuffer::EBufferType eType = camera->img_.bufferType();
-        if ( 0 == camera->img_.GetPixels() )
-          camera->img_.setBufferType( CAbsImgBuffer::eInternBuffer );
+        CAbsImgBuffer::EBufferType eType = absCam->img_.bufferType();
+        if ( 0 == absCam->img_.GetPixels() )
+          absCam->img_.setBufferType( CAbsImgBuffer::eInternBuffer );
 
-        camera->InsertImage();
+        absCam->InsertImage();
 
         // restore buffer mode
-        camera->img_.setBufferType( eType );
+        absCam->img_.setBufferType( eType );
       }
     }
 
     do
     {
-      ret = camera->ThreadRun();
-
-    } while (DEVICE_OK == ret && !IsStopped() && imageCounter_++ < numImages_-1);
+      ret = absCam->ThreadRun();
+    } while (DEVICE_OK == ret && !IsStopped() && absCam->imageCounter_++ < GetNumberOfImages() - 1);
 
     if (IsStopped())
-      dynamic_cast<CABSCamera*>(camera_)->LogMessage("SeqAcquisition interrupted by the user\n");
-
-  }catch( CMMError& e){
-    dynamic_cast<CABSCamera*>(camera_)->LogMessage(e.getMsg(), false);
-    ret = e.getCode();
+      absCam->LogMessage("SeqAcquisition interrupted by the user\n");
   }catch(...){
-    dynamic_cast<CABSCamera*>(camera_)->LogMessage(g_Msg_EXCEPTION_IN_THREAD, false);
+    absCam->LogMessage(g_Msg_EXCEPTION_IN_THREAD, false);
   }
-  stop_=true;
-  actualDuration_ = dynamic_cast<CABSCamera*>(camera_)->GetCurrentMMTime() - startTime_;
-  dynamic_cast<CABSCamera*>(camera_)->OnThreadExiting();
+  Stop();
+  UpdateActualDuration();
+  absCam->OnThreadExiting();
   return ret;
 }
-
+*/
 
 ///////////////////////////////////////////////////////////////////////////////
 // CABSCamera Action handlers
@@ -1463,6 +1488,9 @@ int CABSCamera::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
   {
   case MM::AfterSet:
     {
+      if (IsCapturing())
+        return DEVICE_CAMERA_BUSY_ACQUIRING;
+
       u32 newPixelType = 0; // mono => defaul at error case
       string pixelType, bitDepth;
 
@@ -1565,6 +1593,9 @@ int CABSCamera::OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct)
   {
   case MM::AfterSet:
     {
+      if (IsCapturing())
+        return DEVICE_CAMERA_BUSY_ACQUIRING;
+
       long bitDepth;
       pProp->Get(bitDepth);
 
@@ -2356,7 +2387,7 @@ int CABSCamera::OnProfileLoad(MM::PropertyBase* pProp, MM::ActionType eAct)
 
     pProp->Get( strProfile_ );
 
-    if ( strProfile_.size() > 0 )
+    if (( strProfile_.size() > 0 ) && ( PROFILE_NONE != strProfile_ ) )
     {
       // restore profile
       rc = loadProfile( strProfile_.c_str(), PROFILE_SETTINGSNAME );
@@ -2392,7 +2423,7 @@ int CABSCamera::OnProfileSave(MM::PropertyBase* pProp, MM::ActionType eAct)
     string strProfile;
     pProp->Get( strProfile );
 
-    if ( strProfile.size() > 0 )
+    if (( strProfile_.size() > 0 ) && ( PROFILE_NONE != strProfile_ ) )
     {
       // restore profile
       rc = saveProfile( strProfile.c_str(), PROFILE_SETTINGSNAME );
@@ -2619,7 +2650,8 @@ int CABSCamera::OnGamma(MM::PropertyBase* pProp, MM::ActionType eAct )
 
 int CABSCamera::OnHueSaturationCommon(const char* propName, MM::PropertyBase* pProp, MM::ActionType eAct )
 {
-  u32 rc, size;
+  u32 rc = retOK;
+  u32 size;
   S_HUE_SATURATION_PARAMS sHueSatP = {0};
   size = sizeof(sHueSatP);
 
@@ -2709,7 +2741,6 @@ int CABSCamera::OnColorCorrection(MM::PropertyBase* pProp, MM::ActionType eAct )
   }
   else if (eAct == MM::AfterSet)
   {
-    S_CCM ccm = {0};
     std::string ccmFileName;
     pProp->Get( ccmFileName );
 
@@ -3043,7 +3074,9 @@ int CABSCamera::OnCameraSelection(MM::PropertyBase* pProp, MM::ActionType eAct)
         CCameraList::iterator iter = cCameraList.begin();
         while ( iter != cCameraList.end() )
         {
-          AddAllowedValue( "Camera", buildCameraDeviceID( iter->sVersion.dwSerialNumber, (const char*) iter->sVersion.szDeviceName ).c_str() ); // no camera yet
+          // attention: "iter->sVersion.szDeviceName" isn't a zero terminated string in any case
+          // so getDeviceNameString has to be used to work around this problem
+          AddAllowedValue( "Camera", buildCameraDeviceID( iter->sVersion.dwSerialNumber, getDeviceNameString( iter->sVersion ) ).c_str() ); // no camera yet
           iter++;
         }
       }
@@ -3086,11 +3119,11 @@ bool CABSCamera::isApiDllAvailable( void )
   return bAvailable;
 }
 
-string CABSCamera::buildCameraDeviceID( unsigned long serialNumber, const char* deviceName )
+string CABSCamera::buildCameraDeviceID( unsigned long serialNumber, const string & deviceName )
 {
   string cameraDeviceID;
   str::sprintf( cameraDeviceID, "#%05X", serialNumber );
-  return (string( deviceName ) + cameraDeviceID);
+  return (deviceName + cameraDeviceID);
 }
 
 bool CABSCamera::isInitialized( void ) const
@@ -3128,19 +3161,19 @@ void CABSCamera::setDeviceNo( int deviceNo )
   deviceNo_ = deviceNo;
 }
 
-int CABSCamera::deviceNo( void ) const
+u08 CABSCamera::deviceNo( void ) const
 {
-  return deviceNo_;
+  return (u08) deviceNo_;
 }
 
-int CABSCamera::accquireDeviceNumber( void )
+u08 CABSCamera::accquireDeviceNumber( void )
 {
-  return ++staticDeviceNo;
+  return static_cast<u08> (++staticDeviceNo);
 }
 
-void CABSCamera::releaseDeviceNumber( int deviceNo )
+void CABSCamera::releaseDeviceNumber( const u08 deviceNo )
 {
-  if (deviceNo != NO_CAMERA_DEVICE)
+  if (deviceNo != static_cast<u08> (NO_CAMERA_DEVICE) )
     if (staticDeviceNo != NO_CAMERA_DEVICE)
       --staticDeviceNo;
 }
@@ -3555,8 +3588,14 @@ int CABSCamera::checkForModifiedCameraParameter()
     goto checkForModifiedCameraParameter_Done;
   }
 
+  const bool bIsCapturing = IsCapturing();
   // calc internal mamebers and update them / resize image
   {
+    if ( bIsCapturing )
+    {
+      StopSequenceAcquisition();
+    }
+
     MMThreadGuard g( img_ );
 
     nComponents_ = nComponents;
@@ -3572,6 +3611,9 @@ int CABSCamera::checkForModifiedCameraParameter()
     else
       img_.Resize( sResInfo.wImgWidth, sResInfo.wImgHeight, spp, bitDepth_);
   }
+
+  if ( bIsCapturing )
+    StartSequenceAcquisition( numImages_, interval_ms_, stopOnOverflow_ );
 
 checkForModifiedCameraParameter_Done:
   return convertApiErrorCode( rc, __FUNCTION__ );
@@ -3786,7 +3828,6 @@ void CABSCamera::setAllowedFramerates( )
     if ((framerateCaps->sFramerateRange[0].dwMin != 0) &&
         (framerateCaps->sFramerateRange[framerateCaps->dwCountRanges-1].dwMax != 0) )
     {
-      u32 dwLastFps = -1;
       u32 dwFps;
       string temp;
       map<f32, u32>::iterator iter;
@@ -3861,6 +3902,14 @@ u32 CABSCamera::loadProfile( const char * szProfileName, const char * szSettings
   {
     // restore last use profile
     rc = GET_RC(CamUSB_LoadCameraSettingsFromFile( (char*)strProfilePath.c_str(), (char *) szSettingsName, deviceNo()), deviceNo());
+
+    // disable ColorRemapping
+    if ( IsNoError(rc) )
+    {
+      S_COLOR_MAPPING_PARAMS sCMP = {0};
+      sCMP.dwMode = COMA_STATE_DISABLED;
+      CamUSB_SetFunction( FUNC_COLOR_MAPPING, &sCMP, sizeof(sCMP), 0, 0, 0, 0, deviceNo());
+    }
   }
   return rc;
 };
@@ -3897,6 +3946,22 @@ string CABSCamera::getFramerateString( void ) const
   str::sprintf( framerate, "%1.1f", getFramerate() );
 
   return framerate;
+}
+
+// ----------------------------------------------------------------------------
+
+string CABSCamera::getDeviceNameString( void ) const
+{
+  return getDeviceNameString( cameraVersion_ );
+}
+
+// ----------------------------------------------------------------------------
+
+string CABSCamera::getDeviceNameString( const S_CAMERA_VERSION & sCamVer ) const
+{
+  string deviceName( (const char*)sCamVer.szDeviceName, CNT_ELEMENTS(sCamVer.szDeviceName) );
+  str::ResizeByZeroTermination( deviceName );
+  return deviceName;
 }
 
 // ----------------------------------------------------------------------------

@@ -55,7 +55,8 @@ const char* g_ON = "ON";
 const char* g_OFF = "OFF";
 
 FocusMonitor::FocusMonitor() : 
-   initialized_(false)
+   initialized_(false),
+   delayThd_(0)
 {
    // call the base class method to set-up default error codes/messages
    InitializeDefaultErrorMessages();
@@ -219,7 +220,9 @@ int FocusMonitor::AcqAfterFrame()
    // decide if we need to start af procedure
    double threshold(0.0);
    int ret = GetProperty(g_PropertyThreshold, threshold);
-   assert(ret == DEVICE_OK);
+   if (ret != DEVICE_OK) {
+      return ret;
+   }
 
    if (score < threshold)
    {

@@ -44,7 +44,7 @@
 #include <sstream>
 #include <map>
 
-#include "..\..\..\3rdparty\TheImagingSource\classlib\include\tisudshl.h"
+#include "tisudshl.h"
 #include <algorithm>
 #include "SimplePropertyAccess.h"
 
@@ -90,7 +90,6 @@ long     GetImageBufferSize() const;
 unsigned GetBitDepth() const;
 
     unsigned GetNumberOfComponents() const;
-	int GetComponentName(unsigned channel, char* name);
 	double GetPixelSizeUm() const {return 1.0 * GetBinning();};
 	int GetBinning() const;
 	int SetBinning(int binSize);
@@ -127,6 +126,9 @@ unsigned GetBitDepth() const;
 	int OnGain              (MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnGainAuto          (MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnWhiteBalance      (MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnWhiteBalanceRed   (MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnWhiteBalanceBlue  (MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnWhiteBalanceGreen (MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnWhiteBalanceAuto  (MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnAutoExposure      (MM::PropertyBase* pProp, MM::ActionType eAct);
 
@@ -134,11 +136,12 @@ unsigned GetBitDepth() const;
 	int OnShowPropertyDialog(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnFlipHorizontal    (MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnFlipVertical      (MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnRotate			(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnDeNoise           (MM::PropertyBase* pProp, MM::ActionType eAct);
 
-		/*
-		int OnCamera      (MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnCamera			(MM::PropertyBase* pProp, MM::ActionType eAct);
 
+		/*
 		int OnContrast    (MM::PropertyBase* pProp, MM::ActionType eAct);
 
 		int OnGammaMode   (MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -165,14 +168,15 @@ private:
 
     double currentExpMS_; // value used by camera
 
-	bool bColor_;
 	bool sequenceRunning_;
     bool sequencePaused_;
-	bool flipH_;
-	bool flipV_;
 	double FPS_;
 	long Brightness_;
+	long Rotation_;
 	long WhiteBalance_;
+	long WhiteBalanceRed_;
+	long WhiteBalanceBlue_;
+	long WhiteBalanceGreen_;
 	long Gain_;
 	long DeNoiseLevel_;
 
@@ -199,6 +203,7 @@ private:
 	long imageCounter_;
     MM::MMTime startTime_;
  	unsigned long sequenceLength_;
+   bool stopOnOverflow_;
 
 	int SetupProperties();
 	smart_com<DShowLib::IFrameFilter> pROIFilter;

@@ -8,7 +8,7 @@
 //						"Off". "Fire" does nothing at all. All other commands are
 //						realized as properties and differ from device to device.
 //						Supported devices are:
-//							+ DC2010 - universal LED driver	\
+//							+ DC2010 - universal LED driver	
 //							+ DC2100 - high power LED driver / both uses the DC2xxx class
 //							+ DC3100 - FLIM LED driver
 //							+ DC4100 - four channel LED driver
@@ -135,8 +135,6 @@ private:
 	long 				m_pwmFrequency;
 	long 				m_pwmDutyCycle;
 	long 				m_pwmCounts;
-	//long				m_displayBrightness;
-	bool 				m_busy;
 	bool 				m_initialized;
 
 
@@ -217,7 +215,6 @@ private:
 	long 				m_moduCurrent;
 	float 			m_moduFrequency;
 	long 				m_moduDepth;
-	bool 				m_busy;
 	bool 				m_initialized;
 
 	// dynamic error list
@@ -297,7 +294,6 @@ private:
 	long 				m_constCurrent[NUM_LEDS];
 	long 		      m_percBrightness[NUM_LEDS];
 	long				m_channelAvailable[NUM_LEDS];
-	bool 				m_busy;
 	bool 				m_initialized;
 
 

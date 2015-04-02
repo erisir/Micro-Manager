@@ -54,8 +54,7 @@ const char* g_Keyword_MonochromeColor = "MonochromeColor";
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_GenericSLMName, "Spatial Light Modulator controlled through computer graphics output");
-   
+   RegisterDevice(g_GenericSLMName, MM::SLMDevice, "Spatial Light Modulator controlled through computer graphics output");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -452,6 +451,17 @@ int GenericSLM::DisplayImage()
       SetErrorText(DEVICE_LOCALLY_DEFINED_ERROR, "SLM not active.");
       return DEVICE_LOCALLY_DEFINED_ERROR;
    }
+}
+
+int GenericSLM::SetExposure(double /*interval_ms*/)
+{
+   // ignore for now.
+   return DEVICE_OK;
+}
+
+double GenericSLM::GetExposure()
+{
+   return 0;
 }
 
 unsigned int GenericSLM::GetWidth()

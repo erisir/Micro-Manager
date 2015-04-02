@@ -13,18 +13,21 @@ public class HotKeyAction {
       public static final int TOGGLESHUTTER = 2;
       public static final int ADD_TO_ALBUM = 3;
       public static final int MARK = 4;
-      public static final String[] guiItems_ = {"Snap", "Toggle Live", "Toggle Shutter", "->Album", "Mark Position"};
+      public static final int AUTOSTRETCH = 5;
+      public static final String[] guiItems_ = {"Snap", "Toggle Live", "Toggle Shutter", "->Album", "Mark Position", "Autostretch histograms"};
       public static final int NRGUICOMMANDS = guiItems_.length;
 
       public int type_;  // either GUICOMMAND or BEANSHELLSCRIPT
       public int guiCommand_;
       public java.io.File beanShellScript_;
-      private org.micromanager.MMStudioMainFrame gui_ =
-              org.micromanager.MMStudioMainFrame.getInstance();
+      private org.micromanager.MMStudio studio_ =
+              org.micromanager.MMStudio.getInstance();
+      private org.micromanager.SnapLiveManager snapLiveManager_;
 
       public HotKeyAction(int guiCommand) {
          type_ = GUICOMMAND;
          guiCommand_ = guiCommand;
+         snapLiveManager_ = studio_.getSnapLiveManager();
       }
 
       public HotKeyAction(java.io.File beanshellScript) {
@@ -36,26 +39,25 @@ public class HotKeyAction {
          if (type_ == GUICOMMAND) {
             switch (guiCommand_) {
                case SNAP:
-                  gui_.snapSingleImage();
+                  studio_.snapSingleImage();
                   return true;
                case TOGGLELIVE:
-                  if (gui_.getLiveMode())
-                     gui_.enableLiveMode(false);
-                  else
-                     gui_.enableLiveMode(true);
+                  snapLiveManager_.setLiveMode(!snapLiveManager_.getIsLiveModeOn());
                   return true;
                case TOGGLESHUTTER:
-                  gui_.toggleShutter();
+                  studio_.toggleShutter();
                   return true;
                case ADD_TO_ALBUM:
-                  gui_.snapAndAddToImage5D();
+                  snapLiveManager_.snapAndAddToImage5D();
                   return true;
                case MARK:
-                  gui_.markCurrentPosition();
+                  studio_.markCurrentPosition();
                   return true;
+               case AUTOSTRETCH:
+                  studio_.autostretchCurrentWindow();
             }
          } else {
-            org.micromanager.ScriptPanel.runFile(beanShellScript_);
+            org.micromanager.script.ScriptPanel.runFile(beanShellScript_);
             return true;
          }
          return false;

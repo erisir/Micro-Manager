@@ -54,7 +54,7 @@ using namespace std;
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ThorlabsDCStageDeviceName, "Thorlabs DC Stage");
+   RegisterDevice(g_ThorlabsDCStageDeviceName, MM::StageDevice, "Thorlabs DC Stage");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -136,7 +136,6 @@ int ThorlabsDCStage::Initialize()
 {
    int ret(DEVICE_OK);
     register int i;
-	char iToChar[25];
 	hola_=APTInit();  //Initialize variuos data structures, initialise USB bus and other start funcions
 	printf("initialize: %i\n",hola_);
 	
@@ -155,8 +154,8 @@ int ThorlabsDCStage::Initialize()
 	CreateProperty(g_NumberUnitsProp,CDeviceUtils::ConvertToString(plNumUnits),MM::String,true);
 	//Serial Number
 	CreateProperty(g_SerialNumberProp,CDeviceUtils::ConvertToString(plSerialNum[i]),MM::String,true);
-	CreateProperty(g_MaxVelProp,CDeviceUtils::ConvertToString(pfMaxVel),MM::String,true);
-	CreateProperty(g_MaxAccnProp,CDeviceUtils::ConvertToString(pfMaxAccn),MM::String,true);
+	CreateProperty(g_MaxVelProp,CDeviceUtils::ConvertToString(pfMaxVel[i]),MM::String,true);
+	CreateProperty(g_MaxAccnProp,CDeviceUtils::ConvertToString(pfMaxAccn[i]),MM::String,true);
 
 
 	//Action Properties
@@ -168,7 +167,7 @@ int ThorlabsDCStage::Initialize()
    CreateProperty(g_Keyword_Position, "0.0", MM::Float, false, pAct);
    SetPropertyLimits(g_Keyword_Position, 0.0, maxTravelUm_);
 
-   CreateProperty(g_Keyword_Velocity, CDeviceUtils::ConvertToString(pfMaxVel), MM::Float, false, pAct2);
+   CreateProperty(g_Keyword_Velocity, CDeviceUtils::ConvertToString(pfMaxVel[i]), MM::Float, false, pAct2);
    CreateProperty(g_Keyword_Home, "0.0", MM::Float, false, pAct3);
     SetPropertyLimits(g_Keyword_Home, 0.0, 1.0);
 
@@ -315,7 +314,7 @@ int ThorlabsDCStage::SetVelParam(double vel)
 	i=0;
 
 	newVel[i]=(float)vel;
-	MOT_SetVelParams(plSerialNum[i], 0.0 , pfAccn[i], vel);
+	MOT_SetVelParams(plSerialNum[i], 0.0f, pfAccn[i], static_cast<float>(vel));
 
    return DEVICE_OK;
 }

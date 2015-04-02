@@ -38,9 +38,9 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
-import org.jdesktop.layout.GroupLayout;
-import org.jdesktop.layout.LayoutStyle;
-import org.micromanager.acquisition.VirtualAcquisitionDisplay;
+import javax.swing.GroupLayout;
+import javax.swing.LayoutStyle;
+import org.micromanager.imagedisplay.VirtualAcquisitionDisplay;
 import org.micromanager.internalinterfaces.Histograms;
 import org.micromanager.utils.MMScaleBar;
 
@@ -59,7 +59,6 @@ public class ContrastPanel extends JPanel {
    private static final String PREF_LOG_HIST = "log_hist";
    private static final String PREF_SYNC_CHANNELS = "sync_channels";
    private static final String PREF_SLOW_HIST = "slow_hist";
-   private static final String PREF_SLOW_DISP = "slow_disp";
    private JScrollPane histDisplayScrollPane_;
    private JComboBox displayModeCombo_;
    private JCheckBox autostretchCheckBox_;
@@ -71,7 +70,6 @@ public class ContrastPanel extends JPanel {
    private JComboBox sizeBarColorComboBox_;
    private JCheckBox syncChannelsCheckBox_;
    private JCheckBox slowHistCheckBox_;
-   private JCheckBox slowDispCheckBox_;
    private JLabel displayModeLabel_;
    private Preferences prefs_;
    private Color overlayColor_ = Color.white;
@@ -92,8 +90,9 @@ public class ContrastPanel extends JPanel {
    }
 
    private void showCurrentHistograms() {
-      histDisplayScrollPane_.setViewportView(currentHistograms_ != null ? (JPanel) currentHistograms_ : new JPanel());
-      if (currentDisplay_ != null && currentDisplay_.getImageCache().getNumChannels() > 1) {
+      histDisplayScrollPane_.setViewportView(
+              currentHistograms_ != null ? (JPanel) currentHistograms_ : new JPanel());
+      if (currentDisplay_ != null && currentDisplay_.getImageCache().getNumDisplayChannels() > 1) {
          histDisplayScrollPane_.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
       } else {
          histDisplayScrollPane_.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
@@ -109,7 +108,6 @@ public class ContrastPanel extends JPanel {
       state.ignoreOutliers = prefs_.getBoolean(PREF_REJECT_OUTLIERS, false);
       state.syncChannels = prefs_.getBoolean(PREF_SYNC_CHANNELS, false);
       state.slowHist = prefs_.getBoolean(PREF_SLOW_HIST, false);
-      state.slowDisplayUpdates = prefs_.getBoolean(PREF_SLOW_DISP, false);
       state.scaleBar = false;
       state.scaleBarColorIndex = 0;
       state.scaleBarLocationIndex = 0;
@@ -126,12 +124,11 @@ public class ContrastPanel extends JPanel {
          sizeBarColorComboBox_.setEnabled(false);
          autostretchCheckBox_.setEnabled(false);
          slowHistCheckBox_.setEnabled(false);
-         slowDispCheckBox_.setEnabled(false);
          logHistCheckBox_.setEnabled(false);
          rejectOutliersCheckBox_.setEnabled(false);
          rejectPercentSpinner_.setEnabled(false);
          syncChannelsCheckBox_.setEnabled(false);
-      } else if (currentDisplay_.getImageCache().getNumChannels() == 1) {
+      } else if (currentDisplay_.getImageCache().getNumDisplayChannels() == 1) {
          displayModeLabel_.setEnabled(false);
          displayModeCombo_.setEnabled(false);
          sizeBarCheckBox_.setEnabled(true);
@@ -140,7 +137,6 @@ public class ContrastPanel extends JPanel {
          syncChannelsCheckBox_.setEnabled(false);
          logHistCheckBox_.setEnabled(true);
          slowHistCheckBox_.setEnabled(true);
-         slowDispCheckBox_.setEnabled(!currentDisplay_.isSimpleDisplay());
          autostretchCheckBox_.setEnabled(true);
          if (autostretchCheckBox_.isSelected()) {
             rejectOutliersCheckBox_.setEnabled(true);
@@ -157,7 +153,6 @@ public class ContrastPanel extends JPanel {
          sizeBarColorComboBox_.setEnabled(sizeBarCheckBox_.isSelected());
          logHistCheckBox_.setEnabled(true);
          slowHistCheckBox_.setEnabled(true);
-         slowDispCheckBox_.setEnabled(!currentDisplay_.isSimpleDisplay());
          syncChannelsCheckBox_.setEnabled(true);
 
       }
@@ -178,7 +173,6 @@ public class ContrastPanel extends JPanel {
       rejectOutliersCheckBox_.setSelected(state.ignoreOutliers);
       syncChannelsCheckBox_.setSelected(state.syncChannels);
       slowHistCheckBox_.setSelected(state.slowHist);
-      slowDispCheckBox_.setSelected(state.slowDisplayUpdates);
 
       boolean bar = state.scaleBar;
       int color = state.scaleBarColorIndex;
@@ -200,11 +194,9 @@ public class ContrastPanel extends JPanel {
             index = 2;
          }
          displayModeCombo_.setSelectedIndex(index);
-         for (int i = 0; i < active.length; i++) {
-            ci.getActiveChannels()[i] = active[i];
-         }
+         System.arraycopy(active, 0, ci.getActiveChannels(), 0, active.length);
          ci.updateAndDraw();
-         currentDisplay_.updateAndDraw();
+         currentDisplay_.updateAndDraw(true);
       } else {
          displayModeCombo_.setSelectedIndex(1);
       }
@@ -218,7 +210,6 @@ public class ContrastPanel extends JPanel {
       prefs_.putBoolean(PREF_REJECT_OUTLIERS, rejectOutliersCheckBox_.isSelected());
       prefs_.putBoolean(PREF_SYNC_CHANNELS, syncChannelsCheckBox_.isSelected());
       prefs_.putBoolean(PREF_SLOW_HIST, slowHistCheckBox_.isSelected());
-      prefs_.putBoolean(PREF_SLOW_DISP, slowDispCheckBox_.isSelected());
 
       if (currentDisplay_ == null) {
          return;
@@ -229,7 +220,6 @@ public class ContrastPanel extends JPanel {
       s.logHist = logHistCheckBox_.isSelected();
       s.percentToIgnore = (Double) rejectPercentSpinner_.getValue();
       s.slowHist = slowHistCheckBox_.isSelected();
-      s.slowDisplayUpdates = slowDispCheckBox_.isSelected();
       s.syncChannels = syncChannelsCheckBox_.isSelected();
       s.scaleBar = sizeBarCheckBox_.isSelected();
       s.scaleBarColorIndex = sizeBarColorComboBox_.getSelectedIndex();
@@ -258,6 +248,7 @@ public class ContrastPanel extends JPanel {
       displayModeCombo_.setSelectedIndex(2);
       displayModeCombo_.addActionListener(new java.awt.event.ActionListener() {
 
+         @Override
          public void actionPerformed(java.awt.event.ActionEvent evt) {
             displayModeComboActionPerformed();
          }
@@ -267,6 +258,7 @@ public class ContrastPanel extends JPanel {
       autostretchCheckBox_.setText("Autostretch");
       autostretchCheckBox_.addChangeListener(new ChangeListener() {
 
+         @Override
          public void stateChanged(ChangeEvent evt) {
             autostretchCheckBoxStateChanged();
          }
@@ -274,6 +266,7 @@ public class ContrastPanel extends JPanel {
       rejectOutliersCheckBox_.setText("ignore %");
       rejectOutliersCheckBox_.addActionListener(new java.awt.event.ActionListener() {
 
+         @Override
          public void actionPerformed(java.awt.event.ActionEvent evt) {
             rejectOutliersCheckBoxAction();
          }
@@ -282,12 +275,14 @@ public class ContrastPanel extends JPanel {
       rejectPercentSpinner_.setFont(new java.awt.Font("Lucida Grande", 0, 10));
       rejectPercentSpinner_.addChangeListener(new ChangeListener() {
 
+         @Override
          public void stateChanged(ChangeEvent evt) {
             rejectPercentageChanged();
          }
       });
       rejectPercentSpinner_.addKeyListener(new java.awt.event.KeyAdapter() {
 
+         @Override
          public void keyPressed(java.awt.event.KeyEvent evt) {
             rejectPercentageChanged();
          }
@@ -298,21 +293,23 @@ public class ContrastPanel extends JPanel {
       logHistCheckBox_.setText("Log hist");
       logHistCheckBox_.addActionListener(new java.awt.event.ActionListener() {
 
+         @Override
          public void actionPerformed(java.awt.event.ActionEvent evt) {
             logScaleCheckBoxActionPerformed();
          }
       });
 
-      org.jdesktop.layout.GroupLayout jPanel1Layout = new org.jdesktop.layout.GroupLayout(jPanel1);
+      javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
       jPanel1.setLayout(jPanel1Layout);
       jPanel1Layout.setHorizontalGroup(
-              jPanel1Layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING).add(jPanel1Layout.createSequentialGroup().addContainerGap(24, Short.MAX_VALUE).add(displayModeLabel_).addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED).add(displayModeCombo_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 134, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE).addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED).add(autostretchCheckBox_).addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED).add(rejectOutliersCheckBox_).add(6, 6, 6).add(rejectPercentSpinner_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 63, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE).addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED).add(logHistCheckBox_)));
+              jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING).addGroup(jPanel1Layout.createSequentialGroup().addContainerGap(24, Short.MAX_VALUE).addComponent(displayModeLabel_).addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED).addComponent(displayModeCombo_, javax.swing.GroupLayout.PREFERRED_SIZE, 134, javax.swing.GroupLayout.PREFERRED_SIZE).addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED).addComponent(autostretchCheckBox_).addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED).addComponent(rejectOutliersCheckBox_).addGap(6, 6, 6).addComponent(rejectPercentSpinner_, javax.swing.GroupLayout.PREFERRED_SIZE, 63, javax.swing.GroupLayout.PREFERRED_SIZE).addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED).addComponent(logHistCheckBox_)));
       jPanel1Layout.setVerticalGroup(
-              jPanel1Layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING).add(jPanel1Layout.createParallelGroup(org.jdesktop.layout.GroupLayout.CENTER).add(autostretchCheckBox_).add(rejectOutliersCheckBox_).add(rejectPercentSpinner_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE).add(logHistCheckBox_)).add(jPanel1Layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE).add(displayModeCombo_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE).add(displayModeLabel_)));
+              jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING).addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.CENTER).addComponent(autostretchCheckBox_).addComponent(rejectOutliersCheckBox_).addComponent(rejectPercentSpinner_, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE).addComponent(logHistCheckBox_)).addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE).addComponent(displayModeCombo_, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE).addComponent(displayModeLabel_)));
 
       sizeBarCheckBox_.setText("Scale Bar");
       sizeBarCheckBox_.addActionListener(new java.awt.event.ActionListener() {
 
+         @Override
          public void actionPerformed(java.awt.event.ActionEvent evt) {
             sizeBarCheckBoxActionPerformed();
          }
@@ -321,6 +318,7 @@ public class ContrastPanel extends JPanel {
       sizeBarComboBox_.setModel(new DefaultComboBoxModel(new String[]{"Top-Left", "Top-Right", "Bottom-Left", "Bottom-Right"}));
       sizeBarComboBox_.addActionListener(new java.awt.event.ActionListener() {
 
+         @Override
          public void actionPerformed(java.awt.event.ActionEvent evt) {
             sizeBarComboBoxActionPerformed();
          }
@@ -329,6 +327,7 @@ public class ContrastPanel extends JPanel {
       sizeBarColorComboBox_.setModel(new DefaultComboBoxModel(new String[]{"White", "Black", "Yellow", "Gray"}));
       sizeBarColorComboBox_.addActionListener(new java.awt.event.ActionListener() {
 
+         @Override
          public void actionPerformed(java.awt.event.ActionEvent evt) {
             overlayColorComboBox_ActionPerformed();
          }
@@ -337,6 +336,7 @@ public class ContrastPanel extends JPanel {
       syncChannelsCheckBox_ = new JCheckBox("Sync channels");
       syncChannelsCheckBox_.addChangeListener(new ChangeListener() {
 
+         @Override
          public void stateChanged(ChangeEvent e) {
             syncChannelsCheckboxAction();
          }
@@ -345,49 +345,40 @@ public class ContrastPanel extends JPanel {
       slowHistCheckBox_ = new JCheckBox("Slow hist");
       slowHistCheckBox_.addChangeListener(new ChangeListener() {
 
+         @Override
          public void stateChanged(ChangeEvent e) {
             slowHistCheckboxAction();
          }
       });
       
-      slowDispCheckBox_ = new JCheckBox("Slow display");
-      slowDispCheckBox_.addChangeListener(new ChangeListener() {
-         public void stateChanged(ChangeEvent e) {
-            slowDispCheckBoxAction();
-         }
-      });
-
-
-
-      org.jdesktop.layout.GroupLayout channelsTablePanel_Layout = new org.jdesktop.layout.GroupLayout(this);
+     
+      javax.swing.GroupLayout channelsTablePanel_Layout = new javax.swing.GroupLayout(this);
       this.setLayout(channelsTablePanel_Layout);
       channelsTablePanel_Layout.setHorizontalGroup(
-              channelsTablePanel_Layout.createParallelGroup(GroupLayout.LEADING).add(channelsTablePanel_Layout.createSequentialGroup()
-              .add(sizeBarCheckBox_).addPreferredGap(LayoutStyle.UNRELATED)
-              .add(sizeBarComboBox_, GroupLayout.PREFERRED_SIZE, 100, GroupLayout.PREFERRED_SIZE).addPreferredGap(LayoutStyle.RELATED)
-              .add(sizeBarColorComboBox_, GroupLayout.PREFERRED_SIZE, 60, GroupLayout.PREFERRED_SIZE).addPreferredGap(LayoutStyle.UNRELATED)
-              .add(syncChannelsCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-              .add(slowHistCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-              .add(slowDispCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-              .add(jPanel1, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-              .add(channelsTablePanel_Layout.createParallelGroup(GroupLayout.LEADING)
-              .add(histDisplayScrollPane_, GroupLayout.DEFAULT_SIZE, 620, Short.MAX_VALUE)));
+              channelsTablePanel_Layout.createParallelGroup(GroupLayout.Alignment.LEADING).addGroup(channelsTablePanel_Layout.createSequentialGroup()
+              .addComponent(sizeBarCheckBox_).addPreferredGap(LayoutStyle.ComponentPlacement.UNRELATED)
+              .addComponent(sizeBarComboBox_, GroupLayout.PREFERRED_SIZE, 100, GroupLayout.PREFERRED_SIZE).addPreferredGap(LayoutStyle.ComponentPlacement.RELATED)
+              .addComponent(sizeBarColorComboBox_, GroupLayout.PREFERRED_SIZE, 60, GroupLayout.PREFERRED_SIZE).addPreferredGap(LayoutStyle.ComponentPlacement.UNRELATED)
+              .addComponent(syncChannelsCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+              .addComponent(slowHistCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+              .addComponent(jPanel1, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+              .addGroup(channelsTablePanel_Layout.createParallelGroup(GroupLayout.Alignment.LEADING)
+              .addComponent(histDisplayScrollPane_, GroupLayout.DEFAULT_SIZE, 620, Short.MAX_VALUE)));
 
       channelsTablePanel_Layout.setVerticalGroup(
-              channelsTablePanel_Layout.createParallelGroup(GroupLayout.LEADING).add(channelsTablePanel_Layout.createSequentialGroup()
-              .add(channelsTablePanel_Layout.createParallelGroup(GroupLayout.BASELINE)
-              .add(sizeBarCheckBox_)
-              .add(sizeBarComboBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-              .add(sizeBarColorComboBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-              .add(syncChannelsCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-              .add(slowHistCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
-              .add(slowDispCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
-              .addPreferredGap(LayoutStyle.UNRELATED)
-              .add(jPanel1, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+              channelsTablePanel_Layout.createParallelGroup(GroupLayout.Alignment.LEADING).addGroup(channelsTablePanel_Layout.createSequentialGroup()
+              .addGroup(channelsTablePanel_Layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
+              .addComponent(sizeBarCheckBox_)
+              .addComponent(sizeBarComboBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+              .addComponent(sizeBarColorComboBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+              .addComponent(syncChannelsCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+              .addComponent(slowHistCheckBox_, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+              .addPreferredGap(LayoutStyle.ComponentPlacement.UNRELATED)
+              .addComponent(jPanel1, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
               .addContainerGap(589, Short.MAX_VALUE))
-              .add(channelsTablePanel_Layout.createParallelGroup(GroupLayout.LEADING)
-              .add(channelsTablePanel_Layout.createSequentialGroup().add(79, 79, 79)
-              .add(histDisplayScrollPane_, GroupLayout.DEFAULT_SIZE, 571, Short.MAX_VALUE))));
+              .addGroup(channelsTablePanel_Layout.createParallelGroup(GroupLayout.Alignment.LEADING)
+              .addGroup(channelsTablePanel_Layout.createSequentialGroup().addGap(79, 79, 79)
+              .addComponent(histDisplayScrollPane_, GroupLayout.DEFAULT_SIZE, 571, Short.MAX_VALUE))));
    }
 
    public void setDisplayMode(int mode) {
@@ -410,33 +401,51 @@ public class ContrastPanel extends JPanel {
          return;
       }
       ImagePlus ip = currentDisplay_.getHyperImage();
+      if (ip == null) {
+         return;
+      }
       if (show) {
          MMScaleBar sizeBar = new MMScaleBar(ip);
-
-         if (sizeBar != null) {
-            Overlay ol = new Overlay();
-            //ol.setFillColor(Color.white); // this causes the text to get a white background!
-            ol.setStrokeColor(overlayColor_);
-            String selected = (String) sizeBarComboBox_.getSelectedItem();
-            if (selected.equals("Top-Right")) {
-               sizeBar.setPosition(MMScaleBar.Position.TOPRIGHT);
-            }
-            if (selected.equals("Top-Left")) {
-               sizeBar.setPosition(MMScaleBar.Position.TOPLEFT);
-            }
-            if (selected.equals("Bottom-Right")) {
-               sizeBar.setPosition(MMScaleBar.Position.BOTTOMRIGHT);
-            }
-            if (selected.equals("Bottom-Left")) {
-               sizeBar.setPosition(MMScaleBar.Position.BOTTOMLEFT);
-            }
-            sizeBar.addToOverlay(ol);
-            ol.setStrokeColor(overlayColor_);
-            ip.setOverlay(ol);
+         Overlay ol = ip.getOverlay();
+         if (ol != null) {
+            //see if there is an old scale bar and remove it if so
+            removeScaleBarFromOverlay(ol);
+         } else {
+            ol = new Overlay();
          }
+         //ol.setFillColor(Color.white); // this causes the text to get a white background!
+         ol.setStrokeColor(overlayColor_);
+         String selected = (String) sizeBarComboBox_.getSelectedItem();
+         if (selected.equals("Top-Right")) {
+            sizeBar.setPosition(MMScaleBar.Position.TOPRIGHT);
+         }
+         if (selected.equals("Top-Left")) {
+            sizeBar.setPosition(MMScaleBar.Position.TOPLEFT);
+         }
+         if (selected.equals("Bottom-Right")) {
+            sizeBar.setPosition(MMScaleBar.Position.BOTTOMRIGHT);
+         }
+         if (selected.equals("Bottom-Left")) {
+            sizeBar.setPosition(MMScaleBar.Position.BOTTOMLEFT);
+         }
+         sizeBar.addToOverlay(ol);
+         ol.setStrokeColor(overlayColor_);
+         ip.setOverlay(ol);
+
+      } else {
+         //remove scale bar (don't just hide) so other elements of overlay will persist
+         Overlay ol = ip.getOverlay();
+         if (ol != null) {
+            removeScaleBarFromOverlay(ol);
+         }
+         //so that it redraws to remove it
+         ip.setOverlay(ol);
       }
-      ip.setHideOverlay(!show);
       saveCheckBoxStates();
+   }
+   
+   private void removeScaleBarFromOverlay(Overlay ol) {
+      MMScaleBar.removeScaleBarFromOverlay(ol);
    }
 
    private void overlayColorComboBox_ActionPerformed() {
@@ -476,10 +485,6 @@ public class ContrastPanel extends JPanel {
       saveCheckBoxStates();
    }
    
-   private void slowDispCheckBoxAction() {
-      saveCheckBoxStates();
-   }
-
    public void displayModeComboActionPerformed() {
       if (currentDisplay_ == null || !(currentDisplay_.getHyperImage() instanceof CompositeImage)) {
          return;
@@ -496,7 +501,7 @@ public class ContrastPanel extends JPanel {
       CompositeImage ci = (CompositeImage) currentDisplay_.getHyperImage();
       
 
-      if (state == 2 && currentDisplay_.getImageCache().getNumChannels() > 7) {
+      if (state == 2 && currentDisplay_.getImageCache().getNumDisplayChannels() > 7) {
          JOptionPane.showMessageDialog(this, "Images with more than 7 channels cannot be displayed in Composite mode");
          displayModeCombo_.setSelectedIndex(ci.getMode()-2);
          return;
@@ -504,7 +509,7 @@ public class ContrastPanel extends JPanel {
          ci.setMode(mode);
          ci.updateAndDraw();
       }
-      currentDisplay_.updateAndDraw();
+      currentDisplay_.updateAndDraw(true);
       saveCheckBoxStates();
    }
 
@@ -579,5 +584,6 @@ public class ContrastPanel extends JPanel {
 
    public void disableAutostretch() {
       autostretchCheckBox_.setSelected(false);
+      saveCheckBoxStates();
    }
 }

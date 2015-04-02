@@ -10,54 +10,16 @@
 
 (def MS-PER-HOUR (* 60 60 1000))
 
-(defn svn-conflicts []
-  (let [mm-path (.getAbsolutePath micromanager)]
-    (->> (file-seq micromanager)
-         (map #(.getAbsolutePath %))
-         (filter #(.endsWith ".mine" %))
-         (map #(.replace % ".mine" ""))
-         (map #(.replace % mm-path "")))))
-  
 (def today-token
   (let [format (SimpleDateFormat. "yyyyMMdd")
         one-hour-ago (doto (Calendar/getInstance)
                        (.add Calendar/HOUR -1))]
     (.format format (.getTime one-hour-ago))))
 
-(defn result-file [bits mode]
-  (File. micromanager (str "/results" bits ".txt")))
-
 (defn old-file? [file time-limit-hours]
   (let [now (System/currentTimeMillis)
         before (- now (* time-limit-hours MS-PER-HOUR))]
     (< (.lastModified file) before)))
-
-(defn vs-log-files [bits]
-  (->> micromanager
-       file-seq
-       (filter #(and (= "BuildLog.htm" (.getName %))
-                     (.contains (.getAbsolutePath %) "Release")
-                     (.contains (.getAbsolutePath %) (str bits))
-                     (not (old-file? % 24))))))
-
-(defn vs-log-text [f]
-  (->> (slurp f :encoding "utf-16")
-       (re-seq #"(?s)<pre>(.*?)</pre>")
-       (drop 2)
-       (map second)
-       (apply str)))
-
-(defn contains-errors? [log-text]
-  (if (re-find #"\n[^\n]+\b([1-9]|[0-9][1-9]|[0-9][0-9][1-9])\b\serror\(s\)[^\n]+\n"
-               log-text)
-    true false))
-
-(defn visual-studio-errors [bits]
-  (filter contains-errors? (map vs-log-text (vs-log-files bits))))
-
-(defn javac-errors [result-text]
-  (map first
-    (re-seq #"([0-9]*[1-9])\serrors?" result-text)))
 
 (defn device-adapter-dlls [dir]
   (filter
@@ -67,22 +29,14 @@
                (.startsWith file-name "mmgr_dal"))))
       (.listFiles dir)))
 
-(defn old-files [files time-limit-hours]
-  (filter #(old-file? % time-limit-hours) files))
-
-(defn old-dlls [dir time-limit-hours]
-  (old-files (device-adapter-dlls dir) time-limit-hours))
-
-(defn old-jars [dir time-limit-hours]
-  (old-files
-    (filter
-      #(.. % getName (endsWith ".jar"))
-      (file-seq dir))
-    time-limit-hours))
-
 (defn exe-on-server? [bits date-token]
   (let [txt (slurp "http://valelab.ucsf.edu/~MM/nightlyBuilds/1.4/Windows/")
-        pattern (re-pattern (str "MMSetup" bits "BIT_[^\\s]+?_" date-token ".exe"))]
+        pattern (re-pattern (str "MMSetup_" bits "bit_[^\\s]+?_" date-token ".exe"))]
+    (re-find pattern txt)))
+
+(defn mac-build-on-server? [date-token]
+  (let [txt (slurp "http://valelab.ucsf.edu/~MM/nightlyBuilds/1.4/Mac/")
+        pattern (re-pattern (str date-token ".dmg"))]
     (re-find pattern txt)))
 
 (def device-adapter-parent-dirs [(File. micromanager "/DeviceAdapters")
@@ -94,7 +48,7 @@
            (let [txt (slurp blacklist)]
              (map #(first (.split % ":")) (.split txt "\n")))))))
 
-(def non-windows-device-adapters #{"dc1394" "SimpleCam" "Video4Linux"})
+(def non-windows-device-adapters #{"dc1394" "HamamatsuMac" "SimpleCam" "Video4Linux" "Spot"})
 
 (defn device-adapter-dirs []
   (filter #(and (.isDirectory %)
@@ -106,23 +60,19 @@
     (filter #(.. % getName (endsWith ending))
             (mapcat file-seq parent-dirs))))
 
-(defn missing-vcproj []
+(defn missing-vcxproj []
   (let [device-adapter-dirs (device-adapter-dirs)
-        directories-without-vcproj
+        directories-without-vcxproj
         (filter identity
                 (for [device-adapter-dir device-adapter-dirs]
-                  (when (empty? (filter #(.. % getName (endsWith ".vcproj"))
+                  (when (empty? (filter #(.. % getName (endsWith ".vcxproj"))
                                         (file-seq device-adapter-dir)))
                     device-adapter-dir)))]
         (sort
           (clojure.set/difference
-            (set (map #(.getName %) directories-without-vcproj))
+            (set (map #(.getName %) directories-without-vcxproj))
             (do-not-build)
             non-windows-device-adapters))))
-
-(defn device-vcproj-files []
-    (filter #(.. % getName (endsWith ".vcproj"))
-            (mapcat file-seq device-adapter-parent-dirs)))
 
 (defn device-vcxproj-files []
     (filter #(.. % getName (endsWith ".vcxproj"))
@@ -131,45 +81,62 @@
 (defn dll-name [file]
   (second (re-find #"mmgr_dal_(.*?).dll" (.getName file))))
 
-(defn project-name [vcproj-file]
+(defn project-name [vcxproj-file]
   (try
-    (-> vcproj-file clojure.xml/parse :attrs :Name)
-    (catch Exception e (println vcproj-file))))
+    (-> vcxproj-file clojure.xml/parse :attrs :Name)
+    (catch Exception e (println vcxproj-file))))
 
-(defn bin-dir [bits]
+(defn dll-dir [bits]
   (File. micromanager
          (condp = bits
-           32 "bin_Win32"
-           64 "bin_x64")))
+           32 "stage/Release/Win32"
+           64 "stage/Release/x64")))
 
 (defn get-dll-names [bits]
-  (map dll-name (device-adapter-dlls (bin-dir bits))))
+  (map dll-name (device-adapter-dlls (dll-dir bits))))
 
-(def helper-vcprojs #{"DEClientLib" "DEMessaging"})
+(def helper-vcxprojs #{"DEClientLib" "DEMessaging"})
 
 (defn missing-device-adapters [bits]
   (let [dll-names (get-dll-names bits)
         project-names (map project-name (filter #(not (.. % getAbsolutePath (contains "_ATTIC")))
-                                          (device-vcproj-files)))]
+                                          (device-vcxproj-files)))]
     (sort (clojure.set/difference (set project-names)
                                   #{nil}
                                   (set dll-names)
                                   (do-not-build)
-                                  helper-vcprojs))))
+                                  helper-vcxprojs))))
+
+(defn all-devices []
+  (let [dll-names (get-dll-names 32)]
+        (clojure.set/difference
+          (clojure.set/union (set non-windows-device-adapters)
+                             (missing-vcxproj)
+                             (set dll-names))
+          (do-not-build))))
+
+(def device-list-page "http://micro-manager.org/wiki/Device_Support")
 
 (defn device-pages []
-  (let [index-txt (slurp "http://valelab.ucsf.edu/~MM/MMwiki/index.php/Device%20Support")]
-    (map second (re-seq #"a href=\"/~MM/MMwiki/index.php/(.*?)\"" index-txt))))
+  (let [index-txt (slurp device-list-page)]
+    (map second (re-seq #"a href=\"/wiki/(.*?)\"" index-txt))))
+
+(defn device-links []
+  (let [index-txt (slurp device-list-page)]
+    (remove empty? (map #(.trim %) (map second (re-seq #"\>(.*?)\<" index-txt))))))
+
+(def dont-link #{"HamamatsuMac" "NI100X" "NNLC" "Neos" "PriorLegacy" "SimpleCam" "Spot"})
+
+(defn missing-device-links []
+  (sort (clojure.set/difference
+          (all-devices)
+          (set (device-links))
+          dont-link)))
 
 (defn missing-device-pages []
-  (let [dll-names (get-dll-names 32)
-        device-page-names (device-pages)]
-    (sort (clojure.set/difference
-            (clojure.set/union (set non-windows-device-adapters)
-                               (missing-vcproj)
-                               (set dll-names))
-            (set device-page-names)
-            (do-not-build)))))
+  (sort (clojure.set/difference
+            (all-devices)
+            (set (device-pages)))))
 
 (defn str-lines [sequence]
   (apply str (interpose "\n" sequence)))
@@ -180,49 +147,34 @@
          (str-lines (flatten (list data)))
          "None.")))
 
-(defn report-build-errors [bits mode test]
-  (let [f (result-file bits mode)
-        svn-confs (svn-conflicts)
-        result-txt (slurp f)
-        vs-errors (visual-studio-errors bits)
-        outdated-dlls (map #(.getName %) (old-dlls (bin-dir bits) 24))
-        javac-errs (javac-errors result-txt)
-        outdated-jars (map #(.getName %)
-                           (old-jars (File. micromanager "Install_AllPlatforms") 24))
-        installer-ok (exe-on-server? bits today-token)
-        missing-vcproj-files (missing-vcproj)]
-    (when-not (and (not test)
-                   (empty? svn-confs)
-                   (empty? vs-errors)
-                   (empty? outdated-dlls)
-                   (empty? javac-errs)
-                   (empty? outdated-jars)
-                   (empty? missing-vcproj-files)
-                   installer-ok)
+(defn report-build-errors [testmode]
+  (let [installer32-ok (exe-on-server? 32 today-token)
+        installer64-ok (exe-on-server? 64 today-token)
+        mac-ok (mac-build-on-server? today-token)
+        missing-vcxproj-files (missing-vcxproj)
+        missing-links (missing-device-links)]
+    (when-not (and (not testmode)
+                   installer32-ok
+                   installer64-ok
+                   mac-ok
+                   (empty? missing-vcxproj-files)
+                   (empty? missing-links))
       (str
-        "\n\nMICROMANAGER " bits "-bit "
-          ({:inc "INCREMENTAL" :full "FULL"} mode)
-          " BUILD ERROR REPORT\n"
-        "For the full build output, see " (.getAbsolutePath f)
-        (report-segment "Subversion conflicts" svn-confs)
-        (report-segment "Visual Studio reported errors" vs-errors)
-        (report-segment "Outdated device adapter DLLs" outdated-dlls)
-        (report-segment "Errors reported by java compiler" javac-errs)
-        (report-segment "Outdated jar files" outdated-jars)
-        (when (= 32 bits)
-          (report-segment "Missing .vcproj files" missing-vcproj-files))
-        (report-segment "Uncompiled device adapters" (missing-device-adapters bits))
-        (when (= 32 bits)
-          (report-segment "Missing device pages" (missing-device-pages)))
-        "\n\nIs installer download available on website?\n"
-        (if installer-ok "Yes." "No. (build missing)\n")
-      ))))
+        "MICROMANAGER BUILD STATUS REPORT\n"
+        "\n\nIs Windows 32-bit installer download available on website?\n"
+        (if installer32-ok "Yes." "No. (build missing)\n")
+        "\n\nIs Windows 64-bit installer download available on website?\n"
+        (if installer64-ok "Yes." "No. (build missing)\n")
+        "\n\nIs Mac installer download available on website?\n"
+        (if mac-ok "Yes." "No. (build missing)\n")
+        (report-segment "Missing .vcxproj files" missing-vcxproj-files)
+        (report-segment "Uncompiled device adapters (Win32)" (missing-device-adapters 32))
+        (report-segment "Uncompiled device adapters (x64)" (missing-device-adapters 64))
+        (report-segment "Missing device links" missing-links)
+        (report-segment "Missing device pages" (missing-device-pages))))))
 
-(defn make-full-report [mode send?]
-  (let [report
-        (str
-          (report-build-errors 32 mode false)
-          (report-build-errors 64 mode false))]
+(defn make-full-report [send?]
+  (let [report (report-build-errors false)]
     (if-not (empty? report)
       (do 
         (when send?
@@ -232,17 +184,16 @@
                                  :ssl :yes}
                                {:from "mmbuilderrors@gmail.com"
                                 :to "info@micro-manager.org"
-                                :subject "mm build errors!"
+                                :subject (str "MM Nightly Build Status " today-token)
                                 :body report}))
         (println report))
       (println "Nothing to report."))))
 
 (defn test-report []
-  (doseq [bits [32 64]]
-    (println (report-build-errors bits :full true))))
+  (println (report-build-errors true)))
 
-(defn -main [mode]
-  (make-full-report (get {"inc" :inc "full" :full} mode) true))
+(defn -main []
+  (make-full-report true))
 
 ;; other windows stuff (manual)
 
@@ -262,29 +213,29 @@
   (dorun (map #(replace-in-file! % pat new-val) files)))
 
 (defn fix-output-file-tags!
-  "Fix the dll output path specified in all vcproj files."
+  "Fix the dll output path specified in all vcxproj files."
   []
-  (replace-in-files! (device-vcproj-files)
+  (replace-in-files! (device-vcxproj-files)
                     #"\$\(OutDir\)/.+?\.dll" "\\$(OutDir)/mmgr_dal_\\$(ProjectName).dll"))
     
-(defn find-copy-step [vcproj]
-  (re-find #"\"copy .+?\"" (slurp vcproj)))
+(defn find-copy-step [vcxproj]
+  (re-find #"\"copy .+?\"" (slurp vcxproj)))
 
-(defn bad-copy-step [vcproj]
-  (not (.contains (or (find-copy-step vcproj) "PlatformName") "PlatformName")))
+(defn bad-copy-step [vcxproj]
+  (not (.contains (or (find-copy-step vcxproj) "PlatformName") "PlatformName")))
 
 (defn all-bad-copy-steps
-  "Find all vcproj files with a bad post-build copy step"
+  "Find all vcxproj files with a bad post-build copy step"
   []
-  (filter bad-copy-step (device-vcproj-files)))
+  (filter bad-copy-step (device-vcxproj-files)))
 
-(defn find-pdb [vcproj]
-  (re-find #"\".*?\.pdb\"" (slurp vcproj)))
+(defn find-pdb [vcxproj]
+  (re-find #"\".*?\.pdb\"" (slurp vcxproj)))
 
 (defn fix-pdb-file-tags!
-  "Fix the pdb file path specified in all vcproj files."
+  "Fix the pdb file path specified in all vcxproj files."
   []
-  (replace-in-files! (device-vcproj-files)
+  (replace-in-files! (device-vcxproj-files)
                     #"\".*?\.pdb\"" "\"\\$(OutDir)/\\$(ProjectName).pdb\""))
 
 
@@ -314,4 +265,5 @@
         (clojure.set/difference (set (map #(.toLowerCase %) (devices-using-serial-port)))
                                 (set (map #(.toLowerCase %) (unix-built-devices)))
                                 #{"pi_gcs" "pi_gcs_2" "xcite120pc_exacte" "skeleton" "crystal"
-                                  "imic2000" "polychrome5000" "yokogawa"})))
+                                  "imic2000" "polychrome5000" "yokogawa" "ni100x" "twophoton"
+                                  "thorlabsdcstage" "lumencorcia" "toptica_ichrome_mle"})))

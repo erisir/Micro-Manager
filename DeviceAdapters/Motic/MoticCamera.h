@@ -1,3 +1,32 @@
+///////////////////////////////////////////////////////////////////////////////
+// FILE:          MoticCamera.h
+// PROJECT:       Micro-Manager
+// SUBSYSTEM:     DeviceAdapters
+//-----------------------------------------------------------------------------
+// DESCRIPTION:   Motic camera device adapter for Windows
+// COPYRIGHT:     2012 Motic China Group Co., Ltd.
+//                All rights reserved.
+//
+//                This library is free software; you can redistribute it and/or
+//                modify it under the terms of the GNU Lesser General Public
+//                License as published by the Free Software Foundation.
+//
+//                This library is distributed in the hope that it will be
+//                useful, but WITHOUT ANY WARRANTY; without even the implied
+//                warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+//                PURPOSE. See the GNU Lesser General Public License for more
+//                details.
+//
+//                IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+//                LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+//                EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
+//
+//                You should have received a copy of the GNU Lesser General
+//                Public License along with this library; if not, write to the
+//                Free Software Foundation, Inc., 51 Franklin Street, Fifth
+//                Floor, Boston, MA 02110-1301 USA.
+//
+// AUTHOR:        Motic
 
 #ifndef _MOTICAMERA_H_
 #define _MOTICAMERA_H_
@@ -66,12 +95,17 @@ public:
   //////////////////////////////////////////////////////////////////////////
   unsigned GetNumberOfComponents() const 
   {
-    return m_iBytesPerPixel;    
+    if(m_iBytesPerPixel == 1 || m_iBytesPerPixel == 2)return 1;
+    return 4;
   }
 
   int GetComponentName(unsigned channel, char* name)
   {
-    if(channel == 0)
+    if(m_iBytesPerPixel == 1 || m_iBytesPerPixel == 2)
+    {
+       CDeviceUtils::CopyLimitedString(name, "Grayscale");
+    }
+    else if(channel == 0)
     {
       CDeviceUtils::CopyLimitedString(name, "Blue");
     }
@@ -165,16 +199,23 @@ private:
   bool m_bROI;
   vector<string>m_vDevices;
   int m_iCurDeviceIdx;
+  bool stopOnOverflow;
 
+  int m_iBufferSize;
+  bool m_bNeedPush;
 private:
   int ResizeImageBuffer();
+  void ReAllocalBuffer(int size);
  // void GenerateImage();
   int InsertImage();
   void InitBinning();
   void InitPixelType();
   void InitGain();
   void InitExposure();
-  int InitDevice( );
+  int InitDevice( );  
+  void SaveToReg( int pixelsize );
+  int ReadFromReg();
+  void NeedToPush();
 };
 /*
 class SequenceThread : public MMDeviceThreadBase

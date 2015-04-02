@@ -26,7 +26,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.  
 
-// AUTHOR: Nico Stuurman, 02/02/2007
+// Based on CSUX1 adapter by Nico Stuurman
 //
 // Based on NikonTE2000 controller adapter by Nenad Amodaj
 //
@@ -67,18 +67,18 @@ CSUW1Hub g_hub;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-      AddAvailableDeviceName(g_CSUW1Hub,"CSUW1 Hub (Needed for CSUW1. 115200bps)");
-      AddAvailableDeviceName(g_CSUW1FilterWheel,"Filter Wheel");   
-      AddAvailableDeviceName(g_CSUW1Dichroic,"Dichroic Mirror");   
-      AddAvailableDeviceName(g_CSUW1Shutter,"Shutter");   
-      AddAvailableDeviceName(g_CSUW1DriveSpeed,"Drive Speed");   
-      AddAvailableDeviceName(g_CSUW1BrightField,"Bright Field");   
-      AddAvailableDeviceName(g_CSUW1Disk,"Disk");   
-      AddAvailableDeviceName(g_CSUW1Port,"Port");   
-      AddAvailableDeviceName(g_CSUW1Aperture,"Aperture");   
-      AddAvailableDeviceName(g_CSUW1Frap,"FRAP");   
-      AddAvailableDeviceName(g_CSUW1Magnifier,"Magnifier");   
-      AddAvailableDeviceName(g_CSUW1NIRShutter,"NIR Shutter");   
+   RegisterDevice(g_CSUW1Hub, MM::GenericDevice, "CSUW1 Hub (Needed for CSUW1. 115200bps)");
+   RegisterDevice(g_CSUW1FilterWheel, MM::StateDevice, "Filter Wheel");
+   RegisterDevice(g_CSUW1Dichroic, MM::StateDevice, "Dichroic Mirror");
+   RegisterDevice(g_CSUW1Shutter, MM::ShutterDevice, "Shutter");
+   RegisterDevice(g_CSUW1DriveSpeed, MM::StateDevice, "Drive Speed");
+   RegisterDevice(g_CSUW1BrightField, MM::StateDevice, "Bright Field");
+   RegisterDevice(g_CSUW1Disk, MM::StateDevice, "Disk");
+   RegisterDevice(g_CSUW1Port, MM::StateDevice, "Port");
+   RegisterDevice(g_CSUW1Aperture, MM::StateDevice, "Aperture");
+   RegisterDevice(g_CSUW1Frap, MM::StateDevice, "FRAP");
+   RegisterDevice(g_CSUW1Magnifier, MM::StateDevice, "Magnifier");
+   RegisterDevice(g_CSUW1NIRShutter, MM::ShutterDevice, "NIR Shutter");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -331,13 +331,25 @@ bool FilterWheel::Busy()
    MM::MMTime now = GetCurrentMMTime();
    // each position moved takes ?? msec
    if (speed_ == 3)
-      if ((now - lastMoveTime_) < (posMoved_ * 40)) return true;
+   {
+      if ((now - lastMoveTime_) < (posMoved_ * 40))
+         return true;
+   }
    else if (speed_ == 2)
-      if ((now - lastMoveTime_) < (posMoved_ * 66)) return true;
+   {
+      if ((now - lastMoveTime_) < (posMoved_ * 66))
+         return true;
+   }
    else if (speed_ == 1)
-      if ((now - lastMoveTime_) < (posMoved_ * 100)) return true;
+   {
+      if ((now - lastMoveTime_) < (posMoved_ * 100))
+         return true;
+   }
    else
-      if ((now - lastMoveTime_) < (posMoved_ * 400)) return true;
+   {
+      if ((now - lastMoveTime_) < (posMoved_ * 400))
+         return true;
+   }
 
    return false;
 }
@@ -698,7 +710,6 @@ int Shutter::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 // CSUW1 DriveSpeed
 ///////////////////////////////////////////////////////////////////////////////
 DriveSpeed::DriveSpeed () :
-   pos_ (0),
    numPos_ (0),
    initialized_ (false),
    name_ (g_CSUW1DriveSpeed)
@@ -823,7 +834,6 @@ int DriveSpeed::OnRun(MM::PropertyBase* pProp, MM::ActionType eAct)
 ///////////////////////////////////////////////////////////////////////////////
 BrightField::BrightField () :
    initialized_ (false),
-   pos_ (1),
    name_ (g_CSUW1BrightField),
    numPos_ (2)
 {
@@ -903,7 +913,7 @@ int BrightField::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       if (pos == 0)
          pProp->Set("Confocal");
       else
-         pProp->Set("BrightField");
+         pProp->Set("Bright Field");
    }
    else if (eAct == MM::AfterSet)
    {
@@ -923,7 +933,6 @@ int BrightField::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 ///////////////////////////////////////////////////////////////////////////////
 Disk::Disk () :
    initialized_ (false),
-   pos_ (1),
    name_ (g_CSUW1Disk),
    numPos_ (2)
 {
@@ -955,14 +964,19 @@ int Disk::Initialize()
 
    // State
    CPropertyAction* pAct = new CPropertyAction (this, &Disk::OnState);
-   ret = CreateProperty("Disk", "Disk 1", MM::String, false, pAct); 
+   ret = CreateIntegerProperty(MM::g_Keyword_State, 0, false, pAct); 
    if (ret != DEVICE_OK) 
       return ret; 
-   AddAllowedValue("Disk", "Disk 1");
-   AddAllowedValue("Disk", "Disk 2");
+
+   // create default positions and labels
+   pAct = new CPropertyAction (this, &CStateBase::OnLabel);
+   ret = CreateProperty(MM::g_Keyword_Label, "Disk 1", MM::String, false, pAct);
+   if (ret != DEVICE_OK)
+      return ret;
 
    SetPositionLabel(0, "Disk 1");
    SetPositionLabel(1, "Disk 2");
+  // SetPositionLabel(2, "BrightField");
 
    ret = UpdateStatus();
    if (ret != DEVICE_OK) 
@@ -991,30 +1005,25 @@ int Disk::Shutdown()
 ///////////////////////////////////////////////////////////////////////////////
 // Action handlers                                                           
 ///////////////////////////////////////////////////////////////////////////////
-
+// Hub disk positions:
+// -1 - BrightField (state 2)
+//  0 - Disk 1 (state 0)
+//  1 - Disk 2 (state 1)
 int Disk::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
-      int pos;
+      int pos = 1;
       int ret = g_hub.GetDiskPosition(*this, *GetCoreCallback(), pos);
       if (ret != DEVICE_OK)
          return ret;
-      if (pos == 0)
-         pProp->Set("Disk 1");
-      else if (pos == 1)
-         pProp->Set("Disk 2");
-	  else
-	     ;         // Bright Field
+      pProp->Set( (long) pos);
    }
    else if (eAct == MM::AfterSet)
    {
-      std::string setting;
-      pProp->Get(setting);
-      int pos = 1;
-      if (setting == "Disk 1")
-         pos = 0;
-      return g_hub.SetDiskPosition(*this, *GetCoreCallback(), pos);
+      long state;
+      pProp->Get(state);
+      return g_hub.SetDiskPosition(*this, *GetCoreCallback(), state);
    }
 
    return DEVICE_OK;
@@ -1025,7 +1034,6 @@ int Disk::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 ///////////////////////////////////////////////////////////////////////////////
 Port::Port () :
    initialized_ (false),
-   pos_ (1),
    name_ (g_CSUW1Port),
    numPos_ (3)
 {
@@ -1123,7 +1131,6 @@ int Port::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 ///////////////////////////////////////////////////////////////////////////////
 Aperture::Aperture () :
    initialized_ (false),
-   pos_ (9),
    name_ (g_CSUW1Aperture),
    numPos_ (10)
 {
@@ -1213,7 +1220,6 @@ int Aperture::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 ///////////////////////////////////////////////////////////////////////////////
 Frap::Frap () :
    initialized_ (false),
-   pos_ (0),
    name_ (g_CSUW1Frap),
    numPos_ (3)
 {
@@ -1312,7 +1318,6 @@ int Frap::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 Magnifier::Magnifier () :
    initialized_ (false),
    nr_ (1),
-   pos_ (0),
    name_ (g_CSUW1Magnifier),
    numPos_ (2)
 {

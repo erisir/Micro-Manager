@@ -17,7 +17,7 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
+// CVS:           $Id: Configuration.h 13763 2014-07-01 00:43:11Z mark $
 //
 #ifndef _CONFIGURATION_H_
 #define _CONFIGURATION_H_
@@ -75,8 +75,6 @@ struct PropertySetting
 
    static std::string generateKey(const char* device, const char* prop);
 
-   std::string Serialize() const;
-   void Restore(const std::string& data);
    std::string getVerbose() const;
    bool isEqualTo(const PropertySetting& ps);
 
@@ -147,8 +145,6 @@ public:
     */
    size_t size() const {return settings_.size();}
    std::string getVerbose() const;
-   std::string Serialize() const;
-   void Restore(const std::string& data);
  
 private:
    std::vector<PropertySetting> settings_;

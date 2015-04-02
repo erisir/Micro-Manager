@@ -16,7 +16,7 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
+// CVS:           $Id: Configuration.cpp 13763 2014-07-01 00:43:11Z mark $
 //
 #include "Configuration.h"
 #include "../MMDevice/MMDevice.h"
@@ -47,34 +47,6 @@ string PropertySetting::getVerbose() const
    return txt.str();
 }
 
-/**
-  * Creates serialized representation of the object.
-  */
-string PropertySetting::Serialize() const
-{
-   ostringstream txt;
-   txt << deviceLabel_ << " " << propertyName_ << " " << value_;
-   return txt.str();
-}
-
-/**
-  * Restores object contents from the serial data.
-  */
-void PropertySetting::Restore(const string& data)
-{
-   istringstream is(data);
-   if (is)
-      is >> deviceLabel_; 
-
-   if (is)
-      is >> propertyName_;
-
-   char val[MM::MaxStrLength];
-   is.getline(val, MM::MaxStrLength);
-   if (strlen(val) > 1)
-      value_ = val+1; // +1 skips the extra space at the beginning 
-}
-
 bool PropertySetting::isEqualTo(const PropertySetting& ps)
 {
    if (ps.deviceLabel_.compare(deviceLabel_) == 0 &&
@@ -99,43 +71,6 @@ std::string Configuration::getVerbose() const
    txt << "</html>";
 
    return txt.str();
-}
-
-   /**
-    * Creates serialized representation of the object.
-    */
-
-string Configuration::Serialize() const
-{
-   ostringstream os;
-   vector<PropertySetting>::const_iterator it;
-   for (it=settings_.begin(); it!=settings_.end(); it++)
-      os << it->Serialize() << endl;
-   return os.str();
-}
-
-/**
-  * Restores object contents from the serial data.
-  */
-void Configuration::Restore(const string& data)
-{
-   settings_.clear();
-   istringstream is(data);
-
-   char line[3 * MM::MaxStrLength];
-   while(is.getline(line, 3 * MM::MaxStrLength, '\n'))
-   {
-      // strip potential windowsdos CR
-      istringstream il(line);
-      il.getline(line, 3 * MM::MaxStrLength, '\r');
-
-      if (strlen(line) > 1)
-      {
-         PropertySetting s;
-         s.Restore(line);
-         settings_.push_back(s);
-      }
-   }
 }
 
 /**

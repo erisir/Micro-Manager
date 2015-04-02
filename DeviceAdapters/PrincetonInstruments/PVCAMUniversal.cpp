@@ -29,7 +29,6 @@
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <stdint.h>
 #pragma warning(disable : 4996) // disable warning for deperecated CRT functions on Windows 
 #endif
 
@@ -57,6 +56,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <stdint.h>
 
 using namespace std;
 unsigned Universal::refCount_ = 0;
@@ -132,23 +132,23 @@ const int n_param = sizeof(param_set)/sizeof(SParam);
 // &Universal constructor/destructor
 Universal::Universal(short cameraId) :
 CCameraBase<Universal> (),
+restart_(false),
 initialized_(false),
 busy_(false),
 hPVCAM_(0),
 exposure_(0),
 binSize_(1),
 bufferOK_(false),
+imageCounter_(0),
 cameraId_(cameraId),
 name_("Undefined"),
 nrPorts_ (1),
 circBuffer_(0),
 maxReadoutTime_(15),
 stopOnOverflow_(true),
-restart_(false),
 snappingSingleFrame_(false),
 singleFrameModeReady_(false),
 use_pl_exp_check_status_(true),
-imageCounter_(0),
 sequenceModeReady_(false)
 
 {
@@ -415,8 +415,7 @@ int Universal::OnReadoutPort(MM::PropertyBase* pProp, MM::ActionType eAct)
       long port;
       if (!GetLongParam_PvCam_safe(hPVCAM_, PARAM_READOUT_PORT, &port))
          return LogCamError(__LINE__);
-      long enumv;
-      std::string portName;// = GetPortNameAndEnum(port, enumv);
+      std::string portName;
       for( std::map<std::string, int>::iterator iter = portMap_.begin(); iter != portMap_.end(); ++iter)
       {
          if (port  == iter->second)
@@ -486,8 +485,7 @@ void Universal::SuspendSequence()
    if(IsCapturing())
    {
       restart_ = true;
-      thd_->Stop();
-      thd_->wait();
+      CCameraBase<Universal>::StopSequenceAcquisition();
 
       if (!pl_exp_stop_cont(hPVCAM_, CCS_HALT)) 
             LogCamError(__LINE__, "");
@@ -507,9 +505,9 @@ int Universal::ResumeSequence()
       if (!pl_exp_start_cont(hPVCAM_, circBuffer_, bufferSize_)) 
          return LogCamError(__LINE__);
 
-      long imageCount = thd_->GetImageCounter();
-      double intervalMs = thd_->GetIntervalMs();
-      thd_->Start(numImages_ - imageCount, intervalMs);
+      long imageCount = GetImageCounter();
+      double intervalMs = GetIntervalMs();
+      StartSequenceAcquisition(numImages_ - imageCount, intervalMs, isStopOnOverflow());
       restart_ = false;
    }
 
@@ -592,7 +590,7 @@ int Universal::OnCoolingFan(MM::PropertyBase* pProp, MM::ActionType eAct) {
 	  if( par == "On" ) {
 		  //fprintf( stderr, "selected fan to On; par = %s", par );
 		  fanState = COOLING_FAN_CTRL_ON;
-	  } else if( par == "Off" ) {
+	  } else {
 		  //fprintf( stderr, "selected fan to Off; par = %s", par );
 		  fanState = COOLING_FAN_CTRL_OFF;
 	  }
@@ -714,7 +712,6 @@ void Universal::GetName(char* name) const
 
 int Universal::Initialize()
 {
-   rs_bool bAvail;
    // setup the camera
    // ----------------
 
@@ -2026,7 +2023,7 @@ int Universal::StartSequenceAcquisition(long numImages, double interval_ms, bool
    // initially start with the exposure time as the actual interval estimate
    SetProperty(MM::g_Keyword_ActualInterval_ms, CDeviceUtils::ConvertToString(exposure_)); 
 
-   thd_->Start(numImages, interval_ms);
+   CCameraBase<Universal>::StartSequenceAcquisition(numImages, interval_ms, stopOnOverflow);
 
    char label[MM::MaxStrLength];
    GetLabel(label);
@@ -2287,7 +2284,7 @@ void Universal::LogMMMessage(int lineNr, std::string message, bool debug) const 
 /**************************** Post Processing Functions ******************************/
 #ifdef WIN32
 
-int Universal::OnActGainProperties(MM::PropertyBase* pProp, MM::ActionType eAct)
+int Universal::OnActGainProperties(MM::PropertyBase* /*pProp*/, MM::ActionType /*eAct*/)
 {
 	//SuspendSequence();
 

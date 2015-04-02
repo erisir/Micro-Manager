@@ -34,33 +34,14 @@ const char* g_fiber_2 = "Fiber 2";
 // The virtual shutter device uses this global variable to restore state of the switch
 
 
-
-#ifdef WIN32
-// Windows dll entry routine
-bool APIENTRY DllMain( HANDLE /*hModule*/, 
-                       DWORD  ul_reason_for_call, 
-                       LPVOID /*lpReserved*/ ) {
-  switch (ul_reason_for_call) {
-     case DLL_PROCESS_ATTACH:
-      break;
-     case DLL_THREAD_ATTACH:
-     case DLL_THREAD_DETACH:
-     case DLL_PROCESS_DETACH:
-       break;
-   }
-  return TRUE;
-}
-#endif
-
-
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceNameLCShutter, "Shutter");
-   AddAvailableDeviceName(g_DeviceNameLCSafetyShutter, "SafetyShutter");
-   AddAvailableDeviceName(g_DeviceNameLCDA, "DA");
+   RegisterDevice(g_DeviceNameLCShutter, MM::ShutterDevice, "Shutter");
+   RegisterDevice(g_DeviceNameLCSafetyShutter, MM::ShutterDevice, "SafetyShutter");
+   RegisterDevice(g_DeviceNameLCDA, MM::SignalIODevice, "DA");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -571,7 +552,7 @@ int LCShutter::OnState(MM::PropertyBase *pProp, MM::ActionType eAct)
          os >> seq;
          load[i] = (unsigned char) seq;
       }
-      int ret = LaserBoardSetSequenceState(sequence.size(), load);
+      int ret = LaserBoardSetSequenceState(static_cast<unsigned int>(sequence.size()), load);
       delete(load);
       return ret;
    }

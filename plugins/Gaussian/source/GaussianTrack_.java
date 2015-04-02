@@ -8,10 +8,9 @@
  * @author nico
  */
 
-import edu.valelab.GaussianFit.MainForm;
+import edu.valelab.gaussianfit.MainForm;
 
 import ij.plugin.*;
-import mmcorej.CMMCore;
 import org.micromanager.api.MMPlugin;
 import org.micromanager.api.ScriptInterface;
 
@@ -20,42 +19,43 @@ import org.micromanager.api.ScriptInterface;
  * @author nico
  */
 public class GaussianTrack_ implements PlugIn, MMPlugin {
-    public static String menuName = "Localization Microscopy";
-    public static String tooltipDescription = "Toolbox for analysis of spots using Gaussian Fitting";
-    private CMMCore core_;
-    private ScriptInterface gui_;
-    private MainForm theForm_;
-    private static MainForm formInstance_;
+    public static final String menuName = "Localization Microscopy";
+    public static final String tooltipDescription =
+       "Toolbox for analyzing spots using Gaussian fitting";
 
+    private MainForm theForm_;
+
+    @Override
     public void run(String arg) {
-		if (!MainForm.WINDOWOPEN) {
-			theForm_ = new MainForm();
-			formInstance_ = theForm_;
-		} else
-			theForm_ = formInstance_;
+      if (!MainForm.WINDOWOPEN) {
+         theForm_ = new MainForm();
+      }
       theForm_.setVisible(true);
+      /*
       if (gui_ != null) {
          theForm_.setBackground(gui_.getBackgroundColor());
          gui_.addMMBackgroundListener(theForm_);
       }
+       */
       theForm_.formWindowOpened();
       theForm_.toFront();
    }
 
 
 
+    @Override
    public void setApp(ScriptInterface app) {
-      gui_ = app;
-      core_ = app.getMMCore();
-
+      
       run("");
    }
 
+    @Override
    public void dispose() {
       if (theForm_ != null)
          theForm_.dispose();
    }
 
+    @Override
    public void show() {
          String ig = "GaussianFit";
    }
@@ -63,20 +63,24 @@ public class GaussianTrack_ implements PlugIn, MMPlugin {
    public void configurationChanged() {
    }
 
+    @Override
    public String getInfo () {
       return "Gaussian Fitting Plugin";
    }
 
+    @Override
    public String getDescription() {
       return "";
    }
 
+    @Override
    public String getVersion() {
-      return "0.2";
+      return "0.32";
    }
 
+    @Override
    public String getCopyright() {
-      return "University of California, 2010-2012";
+      return "University of California, 2010-2014";
    }
 
 }

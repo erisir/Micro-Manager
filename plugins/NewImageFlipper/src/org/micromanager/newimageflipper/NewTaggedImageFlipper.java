@@ -21,9 +21,7 @@
 
 package org.micromanager.newimageflipper;
 
-import org.micromanager.api.AcquisitionEngine;
-import org.micromanager.api.MMPlugin;
-import org.micromanager.api.ScriptInterface;
+import org.micromanager.api.MMProcessorPlugin;
 
 /**
  * Example demonstrating the use of DataProcessors.  DataProcessors can 
@@ -31,55 +29,39 @@ import org.micromanager.api.ScriptInterface;
  * are inserted into the ImageCache.  DataProcessors can modify images 
  * or even generate totally new ones.
  * 
- * This specific example has grown out to modify images only from a specific camera
- * and is therefore very useful when using multiple cameras
  * 
  * @author arthur
  */
-public class NewTaggedImageFlipper implements MMPlugin {
+public class NewTaggedImageFlipper implements MMProcessorPlugin {
    public static String menuName = "Image Flipper";
    public static String tooltipDescription = "Mirrors, flips and rotates images on the fly";
-   private ScriptInterface gui_;
-   private NewImageFlipperControls ctls_;
-   
-
-   public void dispose() {
-      if (ctls_ != null)
-         ctls_.safePrefs();
-   }
-
-   public void setApp(ScriptInterface app) {
-      gui_ = app;
-   }
-
-   public void show() {
-      if (ctls_ == null)
-         ctls_ = new NewImageFlipperControls();
-      else
-         ctls_.updateCameras();
-      AcquisitionEngine eng = gui_.getAcquisitionEngine();
-      eng.addImageProcessor(ctls_.getProcessor());
-      ctls_.setVisible(true);
+  
+   public static Class<?> getProcessorClass() {
+      return NewImageFlippingProcessor.class;
    }
 
    public void configurationChanged() {
       throw new UnsupportedOperationException("Not supported yet.");
    }
 
+   @Override
    public String getDescription() {
       return "Rotates and/or mirrors images coming from the selected camera";
    }
 
+   @Override
    public String getInfo() {
       return "Not supported yet.";
    }
 
+   @Override
    public String getVersion() {
-      return "Version 0.1";
+      return "Version 0.2";
    }
 
+   @Override
    public String getCopyright() {
-      return "Copyright University of California San Francisco, 2012";
+      return "Copyright University of California San Francisco, 2014";
    }
 
 }

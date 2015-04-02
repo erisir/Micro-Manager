@@ -6,18 +6,21 @@ JAR_FILE := MMCoreJ.jar
 TARGET_NAME := $(PREFIX)$(PROJ_NAME)$(POSTFIX)$(EXTENSION)
 CONFIG := Release
 TARGET = $(CONFIG)/$(TARGET_NAME)
-OBJ_FILES := MMCoreJ_wrap.o
+OBJ_FILES :=  
 MM_ROOT := ../..
+
 THIRD_PARTY := $(MM_ROOT)/3rdpartypublic
+BOOST = $(THIRD_PARTY)/boost/
+INCLUDE := $(THIRD_PARTY)/boost/ $(THIRD_PARTY)/zlib
 IFLAGS := -I"$(WIN_SDK)/Include" -I"$(VC_SDK)/include" -I"$(JAVA_HOME)/include" -I"$(JAVA_HOME)/include/win32"
-PREPROCS := WIN32 _WINDOWS _USRDLL _WINDLL _MBCS WIN32 _LIB MODULE_EXPORTS
+PREPROCS := WIN32 _DEBUG _WINDOWS _USRDLL MMCOREJ_WRAP_EXPORTS
 PREPROC_FLAGS := $(patsubst %,-D%,$(PREPROCS))
 CFLAGS := -c -nologo -W4 -WX- -Oy- -Gm -EHa -GS -fp:precise -Zc:wchar_t -Zc:forScope -GR -Gd -wd"4290" -analyze- -errorReport:queue
 LINK_FLAGS = -INCREMENTAL -NOLOGO -DLL -DEBUG -SUBSYSTEM:WINDOWS -DYNAMICBASE:NO -IMPLIB:"$(CONFIG)/$(PROJ_NAME).lib" -MACHINE:X86 -ERRORREPORT:QUEUE
-MM_LIB := mmcorer.lib
 CXX := cl
-LIBPATH := $(BOOST)/stage/lib $(MM_ROOT)/trunk/lib_Win32
+LIBPATH := $(BOOST)/stage/lib $(MM_ROOT)/micromanager/lib_Win32
 LIB_FLAGS := $(patsubst %,-LIBPATH:"%",$(LIBPATH)) -LIBPATH:"$(WIN_SDK)/Lib" -LIBPATH:"$(VC_SDK)/lib" 
+MM_LIB := MMCore.lib MMCorer.lib
 LIBS = $(MM_LIB) IPHlpApi.lib
 
 .PHONY: all full clean pre-build main-build post-build
@@ -31,7 +34,7 @@ debug: CONFIG := Debug
 debug: PREPROCS += _DEBUG
 debug: CFLAGS += -ZI -Od -RTC1 -MDd
 debug: LINK_FLAGS += -TLBID:1
-debug: MM_LIB := mmcored.lib
+debug: MM_LIB := mmcored.lib MMCore.lib MMCorer.lib
 debug: pre-build main-build post-build
 
 pre-build: 
@@ -73,10 +76,10 @@ $(OBJ_FILES): MMCoreJ_wrap.cxx MMCoreJ_wrap.h
 	
 post-build:
 	@echo $(PROJ_NAME): post-build:	
-	@cp -v -f $(JAR_FILE) $(MM_ROOT)/trunk/bin_Win32
-	@cp -v -f $(JAR_FILE) $(MM_ROOT)/trunk/Install_Win32/micro-manager/plugins/Micro-Manager
-	@cp -v -f $(TARGET) $(MM_ROOT)/trunk/bin_Win32
-	@cp -v -f $(TARGET) $(MM_ROOT)/trunk/Install_Win32/micro-manager
+	@cp -v -f $(JAR_FILE) $(MM_ROOT)/micromanager/bin_Win32
+	@cp -v -f $(JAR_FILE) $(MM_ROOT)/micromanager/Install_Win32/micro-manager/plugins/Micro-Manager
+	@cp -v -f $(TARGET) $(MM_ROOT)/micromanager/bin_Win32
+	@cp -v -f $(TARGET) $(MM_ROOT)/micromanager/stage/Release/Win32
 	@echo
 	
 clean:

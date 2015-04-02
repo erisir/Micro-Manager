@@ -26,10 +26,13 @@ package org.micromanager.api;
 
 import ij.ImagePlus;
 import ij.process.ImageProcessor;
+import org.json.JSONException;
 import org.json.JSONObject;
-import org.micromanager.acquisition.AcquisitionVirtualStack;
-import org.micromanager.acquisition.VirtualAcquisitionDisplay;
+import org.micromanager.imagedisplay.AcquisitionVirtualStack;
+import org.micromanager.imagedisplay.VirtualAcquisitionDisplay;
 import org.micromanager.utils.MMScriptException;
+import org.micromanager.utils.ReportingUtils;
+import mmcorej.TaggedImage;
 
 /*
  * The goal of this class is to give easy programmatic access to pixels and
@@ -64,7 +67,13 @@ public class MMWindow {
    public int getNumberOfPositions() {
       if (virtAcq_ == null)
          return 0;
-      return virtAcq_.getNumPositions();
+      int nrPositions = 1;
+      try {
+         nrPositions = virtAcq_.getNumPositions();
+      } catch (JSONException jex) {
+         ReportingUtils.logError(jex, "Error in MMWindow.getNumberOfPositions");
+      }
+      return nrPositions;
    }
 
    /*
@@ -97,7 +106,7 @@ public class MMWindow {
       return virtAcq_.getImagePlus().getNFrames();
    }
 
-   /**
+    /**
     * Sets the display to the given position
     * Position are 1-based
     * @param position
@@ -112,7 +121,7 @@ public class MMWindow {
 
    /**
     * Returns the current position of the image viewer
-    * Positions are 1-
+    * Positions are 1-based
     * @return The current position of the image viewer
     * @throws MMScriptException
     */
@@ -121,7 +130,6 @@ public class MMWindow {
          return virtAcq_. getCurrentPosition() + 1;
       throw new MMScriptException("This is not a MMWindow");
    }
-
 
    /**
     * Returns an ImageJ ImagePlus for a given position
@@ -140,8 +148,8 @@ public class MMWindow {
    public ImageProcessor getImageProcessor(int channel, int slice, int frame, int position)
       throws MMScriptException {
       setPosition(position);
-      if ( channel >= getNumberOfChannels() || slice >= getNumberOfSlices() || 
-              frame >= getNumberOfFrames() )
+      if (channel >= getNumberOfChannels() || slice >= getNumberOfSlices() ||
+              frame >= getNumberOfFrames())
          throw new MMScriptException ("Parameters out of bounds");
       if (virtAcq_ == null)
          return null;
@@ -172,5 +180,8 @@ public class MMWindow {
       return virtAcq_.getImageCache().getImageTags(channel, slice, frame, position);
    }
 
+   public TaggedImage getTaggedImage(int channel, int slice, int frame, int position) {
+      return virtAcq_.getImageCache().getImage(channel, slice, frame, position);
+   }
 
 }

@@ -70,13 +70,14 @@ std::string port_;
 bool initialized_ = false;
 
 int clearPort(MM::Device& device, MM::Core& core, const char* port);
-int getResult(MM::Device& device, MM::Core& core, const char* port);
 int changeCommandLevel(MM::Device& device, MM::Core& core, const char* commandLevel);
 const int nrShuttersPerDevice = 3;
 const int nrWheelsPerDevice = 2;
 const int nrDevicesPerController = 5;
-bool shuttersUsed [nrDevicesPerController][nrShuttersPerDevice] = { false };
-bool wheelsUsed [nrDevicesPerController][nrWheelsPerDevice] = { false };
+
+// Rely on zero initialization
+bool shuttersUsed [nrDevicesPerController][nrShuttersPerDevice];
+bool wheelsUsed [nrDevicesPerController][nrWheelsPerDevice];
 
 class Hub : public CGenericBase<Hub>
 {
@@ -133,10 +134,9 @@ private:
    int GetWheelPosition(int &position);
    int HomeWheel();
    std::string name_;
-   long pos_;
    bool initialized_;
    unsigned deviceNumber_;
-   unsigned moduleId_;
+   unsigned char moduleId_;
    unsigned wheelNumber_;
    int numPos_;
 };
@@ -173,8 +173,7 @@ private:
    unsigned shutterNumber_;
    bool initialized_;
    unsigned deviceNumber_;
-   unsigned moduleId_;
-   long openTimeUs_;
+   unsigned char moduleId_;
 };
   
 class XYStage : public CXYStageBase<XYStage>

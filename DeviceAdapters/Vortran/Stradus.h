@@ -77,24 +77,22 @@ public:
     void Tokenize(const std::string& str, std::vector<std::string>& tokens, const std::string& delimiters);
     
 private:
-    std::string name_;
-    std::string baseT_;
     std::string port_;
-    std::string hours_;
+    bool initialized_;
+    bool busy_;
+    double power_;
+    int pulPwr_;
     std::string laserOn_;
     std::string epc_;
     std::string digMod_;
     std::string emissionStatus_;
-    std::string current_;
     std::string interlock_;
     std::string fault_;
     std::string faultCode_;
     std::string serialNumber_;
     std::string version_;
-    double power_;
-    int pulPwr_;
-    int serial_;
-    bool busy_;
-    bool initialized_;
-    double answerTimeoutMs_;
+    std::string name_;
+    std::string baseT_;
+    std::string hours_;
+    std::string current_;
 };

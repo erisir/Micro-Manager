@@ -4,7 +4,7 @@
 //SUBSYSTEM:     mmstudio
 //-----------------------------------------------------------------------------
 //
-// CVS:          $Id$
+// CVS:          $Id: WaitDialog.java 3699 2010-01-05 00:15:19Z arthur $
 //
 package org.micromanager.utils;
 import java.awt.Color;

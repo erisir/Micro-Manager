@@ -17,7 +17,7 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
+// CVS:           $Id: NikonTE2000.h 13358 2014-05-09 02:48:15Z mark $
 //
 
 #ifndef _NIKON_TE2000_H_
@@ -58,7 +58,7 @@ public:
    int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   void InstallIfMounted(std::string deviceName, char* deviceCode);
+   void InstallIfMounted(std::string deviceName, const char* deviceCode);
    bool initialized_;
    std::string name_;
    std::string port_;
@@ -225,7 +225,6 @@ public:
 
 private:
    int stepSize_nm_;
-   bool busy_;
    bool initialized_;
    double lowerLimit_;
    double upperLimit_;
@@ -435,7 +434,6 @@ public:
 
 private:
    double stepSize_nm_;
-   bool busy_;
    bool initialized_;
    double lowerLimit_;
    double upperLimit_;

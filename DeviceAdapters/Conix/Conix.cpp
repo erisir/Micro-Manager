@@ -39,10 +39,10 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-	AddAvailableDeviceName(g_ConixQuadFilterName,"External Filter Cube Switcher");
-	AddAvailableDeviceName(g_ConixHexFilterName,"External Filter Cube Switcher(6)");
-	AddAvailableDeviceName(g_ConixXYStageName, "Conix XY stage");
-	AddAvailableDeviceName(g_ConixZStageName, "Conix Z stage");
+	RegisterDevice(g_ConixQuadFilterName, MM::StateDevice, "External Filter Cube Switcher");
+	RegisterDevice(g_ConixHexFilterName, MM::StateDevice, "External Filter Cube Switcher(6)");
+	RegisterDevice(g_ConixXYStageName, MM::XYStageDevice, "Conix XY stage");
+	RegisterDevice(g_ConixZStageName, MM::StageDevice, "Conix Z stage");
 }
 
 
@@ -85,8 +85,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 QuadFluor::QuadFluor() :
    initialized_(false),
    numPos_(4),
-   port_("Undefined"),
-   pendingCommand_(false)
+   port_("Undefined")
 {
    InitializeDefaultErrorMessages();
 
@@ -236,7 +235,7 @@ int QuadFluor::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 
 
-int QuadFluor::GetPosition(int& position) 
+int QuadFluor::GetDevicePosition(int& position) 
 {
    const char* command="Quad ";
 
@@ -270,7 +269,7 @@ int QuadFluor::GetPosition(int& position)
 
 
 
-int QuadFluor::SetPosition(int position)
+int QuadFluor::SetDevicePosition(int position)
 {
    ostringstream command;
    command << "Quad " << position;
@@ -306,7 +305,7 @@ int QuadFluor::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet) {
       int position, ret;
-      ret = GetPosition(position);
+      ret = GetDevicePosition(position);
       if (ret != DEVICE_OK)
          return ret;
       pProp->Set((long) position - 1);
@@ -315,7 +314,7 @@ int QuadFluor::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       long position;
       int ret;
       pProp->Get(position);
-      ret = SetPosition((int) position + 1);
+      ret = SetDevicePosition((int) position + 1);
       if (ret != DEVICE_OK)
          return ret;
    }
@@ -331,7 +330,6 @@ HexaFluor::HexaFluor() :
    initialized_(false),
    numPos_(6),
    port_("Undefined"),
-   pendingCommand_(false),
    baseCommand_("Cube "),
    changedTime_(0)
 {
@@ -455,7 +453,7 @@ int HexaFluor::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 }
 
 
-int HexaFluor::GetPosition(int& position) 
+int HexaFluor::GetDevicePosition(int& position) 
 {
    // send command
    int ret = SendSerialCommand(port_.c_str(), baseCommand_.c_str(), "\r");
@@ -487,7 +485,7 @@ int HexaFluor::GetPosition(int& position)
 
 
 
-int HexaFluor::SetPosition(int position)
+int HexaFluor::SetDevicePosition(int position)
 {
    ostringstream command;
    command << baseCommand_ << position;
@@ -524,7 +522,7 @@ int HexaFluor::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet) {
       int position, ret;
-      ret = GetPosition(position);
+      ret = GetDevicePosition(position);
       if (ret != DEVICE_OK)
          return ret;
       pProp->Set((long) position - 1);
@@ -533,7 +531,7 @@ int HexaFluor::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       long position;
       int ret;
       pProp->Get(position);
-      ret = SetPosition((int) position + 1);
+      ret = SetDevicePosition((int) position + 1);
       if (ret != DEVICE_OK)
          return ret;
    }
@@ -551,7 +549,6 @@ port_("Undefined"),
 stepSize_um_(0.015),
 posX_um_(0.0),
 posY_um_(0.0),
-busy_(false),
 initialized_(false),
 lowerLimit_(0.0),
 upperLimit_(20000.0)
@@ -902,10 +899,7 @@ CStageBase<ConixZStage>(),
 port_("Undefined"),
 stepSize_um_(0.1),
 posZ_um_(0.0),
-busy_(false),
-initialized_(false),
-lowerLimit_(0.0),
-upperLimit_(20000.0)
+initialized_(false)
 {
 	InitializeDefaultErrorMessages();
 

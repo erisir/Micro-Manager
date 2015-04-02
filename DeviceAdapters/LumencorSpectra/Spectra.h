@@ -27,7 +27,6 @@
 #include "../../MMDevice/DeviceBase.h"
 
 #include <string>
-#include <map>
 
 //////////////////////////////////////////////////////////////////////////////
 // Error codes
@@ -49,8 +48,8 @@
 #define ERR_OFFSET 10100
 #define ERR_Lumencor_OFFSET 10200
 
-enum ColorNameT {VIOLET,CYAN,GREEN,RED,BLUE,TEAL,WHITE,ALL,YGFILTER,SHUTTER};
-
+enum ColorNameT {VIOLET,CYAN,GREEN,RED,BLUE,TEAL,WHITE,YGFILTER};
+enum LEType {Aura_Type,Sola_Type,Spectra_Type,SpectraX_Type};
 
 class Spectra : public CShutterBase<Spectra>
 {
@@ -76,10 +75,7 @@ public:
    // ----------------
    int OnPort(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnVersion(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnSetLE_Type(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnInitLE(MM::PropertyBase* pProp, MM::ActionType eAct);
 
    int OnRedEnable(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnGreenEnable(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -100,10 +96,10 @@ public:
    int OnWhiteValue(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
+   int SendColorEnableMask(unsigned char mask);
    int SetShutterPosition(bool state);
-   int GetVersion();
    int SendColorLevelCmd(ColorNameT ColorName, int ColorLevel);
-   int SendColorEnableCmd(ColorNameT ColorName, bool State, char* EnableMask);
+   int SetColorEnabled(ColorNameT colorName, bool newState);
    int InitLE();
 
    // MMCore name of serial port
@@ -114,17 +110,18 @@ private:
    double openingTimeMs_;                                                    
    // Command exchange with MMCore                                           
    std::string command_;           
-   // close (0) or open (1)
-   int state_;
+   // flag stating whether the shutter is open or closed
+   bool open_;
+   // LightEngine identifier
+   LEType lightEngine_;
+   // byte used to indicate which LEDs should be switched on
+   unsigned char enableMask_;
    bool initialized_;
-   // channel that we are currently working on 
-   std::string activeChannel_;
    // version string returned by device
    std::string version_;
    double answerTimeoutMs_;
    // Current Color Selected
    std::string ActiveColor_;
-   
 };
 
 

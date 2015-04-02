@@ -1,45 +1,165 @@
+
 AUTOMAKE_OPTIONS = foreign
 ACLOCAL_AMFLAGS = -I ../m4
 
-if BUILD_PVCAM
-   PVCAM = PVCAM PrincetonInstruments
-endif
-if BUILD_QCAM
-   QCAM = QCam
-endif
-if BUILD_SPOT
-   SPOT = Spot
-endif
-if BUILD_DC1394
-   DC1394 = dc1394
-endif
 if BUILD_ANDOR
    ANDOR = Andor
 endif
 if BUILD_ANDORLASERCOMBINER
    ANDORLASERCOMBINER = AndorLaserCombiner
 endif
-if BUILD_SENSICAM
-   SENSICAM = Sensicam
+if BUILD_ANDORSDK3
+   ANDORSDK3 = AndorSDK3
 endif
-if BUILD_SIMPLECAM
-   SIMPLECAM = SimpleCam
+if BUILD_DC1394
+   DC1394 = dc1394
 endif
-if BUILD_USBMANAGER
-   USBMANAGER = USBManager 
+if BUILD_HID
+   HIDMANAGER = HIDManager
+endif
+if BUILD_IDSUEYE
+   IDSUEYE = IDS_uEye
+endif
+if BUILD_IIDC
+   IIDC = IIDC
 endif
 if BUILD_ITC
    ITC = ITC18
 endif
+if BUILD_OPENCV
+   OPENCVGRABBER = OpenCVgrabber
+endif
+if BUILD_PVCAM
+   PVCAM = PVCAM PrincetonInstruments
+endif
+if BUILD_QCAM
+   QCAM = QCam
+endif
 if BUILD_SCION
    SCION = ScionCam
+endif
+if BUILD_SENSICAM
+   SENSICAM = Sensicam
+endif
+if BUILD_SEQUENCER_TEST
+   SEQUENCE_TESTER = SequenceTester
+endif
+if BUILD_SIMPLECAM
+   SIMPLECAM = SimpleCam
+endif
+if BUILD_SPOT
+   SPOT = Spot
+endif
+if BUILD_USBMANAGER
+   USBMANAGER = USBManager 
 endif
 if BUILD_V4L2
    V4L = Video4Linux
 endif
-if BUILD_OPENCV
-   OPENCVGRABBER = OpenCVgrabber
-endif
 
-SUBDIRS =  AAAOTF Aladdin AOTF $(ANDOR) $(ANDORLASERCOMBINER) Aquinas Arduino ASIFW1000 ASIStage ASIWPTR CARVII Cobolt CoherentCube Conix CSUW1 $(DC1394) DTOpenLayer DemoCamera Corvus ImageProcessorChain $(ITC) FreeSerialPort kdv K8055 K8061 LeicaDMI LeicaDMR LeicaDMSTC Ludl LudlLow LumencorSpectra MaestroServo Marzhauser Marzhauser-LStep MP285 Neos $(NIDAQ) Nikon NikonTE2000 nPoint Omicron $(OPENCVGRABBER) PI PI_GCS PI_GCS_2 Prior PriorLegacy ParallelPort Pecon PrecisExcite $(PVCAM) $(QCAM) Sapphire $(SCION) Scientifica $(SIMPLECAM) $(SENSICAM) SerialManager SimpleAutofocus $(SPOT) SpectralLMM5 SutterLambda SutterStage Thorlabs ThorlabsDCxxxx ThorlabsFilterWheel ThorlabsSC10 Tofra $(USBMANAGER) Utilities VariLC Vincent Vortran $(V4L) XCite120PC_Exacte XCiteLed Xcite Yokogawa ZeissCAN ZeissCAN29
- 
+# Please keep these ASCII-lexically sorted (pass through sort(1)).
+SUBDIRS = \
+	$(ANDOR) \
+	$(ANDORLASERCOMBINER) \
+	$(ANDORSDK3) \
+	$(DC1394) \
+	$(HIDMANAGER) \
+	$(IDSUEYE) \
+	$(IIDC) \
+	$(ITC) \
+	$(NIDAQ) \
+	$(OPENCVGRABBER) \
+	$(PVCAM) \
+	$(QCAM) \
+	$(SCION) \
+	$(SENSICAM) \
+	$(SEQUENCE_TESTER) \
+	$(SIMPLECAM) \
+	$(SPOT) \
+	$(USBMANAGER) \
+	$(V4L) \
+	AAAOTF \
+	AOTF \
+	ASIFW1000 \
+	ASIStage \
+	ASITiger \
+	ASIWPTR \
+	Aladdin \
+	Aquinas \
+	Arduino \
+	CARVII \
+	CSUW1 \
+	Cobolt \
+	CoherentCube \
+	CoherentOBIS \
+	Conix \
+	Corvus \
+	DTOpenLayer \
+	DemoCamera \
+	FocalPoint \
+	FreeSerialPort \
+	ImageProcessorChain \
+	K8055 \
+	K8061 \
+	LeicaDMI \
+	LeicaDMR \
+	LeicaDMSTC \
+	Ludl \
+	LudlLow \
+	LumencorSpectra \
+	MP285 \
+	MaestroServo \
+	Marzhauser \
+	Marzhauser-LStep \
+	MicroPoint \
+	Motic_mac \
+	Neos \
+	NewportCONEX \
+	NewportSMC \
+	Nikon \
+	NikonTE2000 \
+	OVP_ECS2 \
+	Omicron \
+	Oxxius \
+	PI \
+	PI_GCS \
+	PI_GCS_2 \
+	ParallelPort \
+	Pecon \
+	Piezosystem_30DV50 \
+	Piezosystem_NV120_1 \
+	Piezosystem_NV40_1 \
+	Piezosystem_NV40_3 \
+	Piezosystem_dDrive \
+	PrecisExcite \
+	Prior \
+	PriorLegacy \
+	Sapphire \
+	Scientifica \
+	SerialManager \
+	SimpleAutofocus \
+	SpectralLMM5 \
+	SutterLambda \
+	SutterStage \
+	Thorlabs \
+	ThorlabsDCxxxx \
+	ThorlabsFilterWheel \
+	ThorlabsSC10 \
+	Tofra \
+	TriggerScope \
+	UserDefinedSerial \
+	Utilities \
+	VariLC \
+	Vincent \
+	Vortran \
+	XCite120PC_Exacte \
+	XCiteLed \
+	XLight \
+	Xcite \
+	Yokogawa \
+	Zaber \
+	ZeissCAN \
+	ZeissCAN29 \
+	kdv \
+	nPoint \
+	pgFocus

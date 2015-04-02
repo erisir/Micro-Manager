@@ -42,7 +42,6 @@
 #include <sstream>
 #include <math.h>
 #include <time.h>
-#include "../../MMCore/MMCore.h"
 #include "../../MMDevice/ModuleInterface.h"
 #include "../../MMDevice/DeviceUtils.h"
 #include "MP285Error.h"
@@ -82,7 +81,7 @@ MODULE_API void InitializeModuleData()
     //    if (ofsLogfile.is_open())
     //    {
     //        ofsLogfile << "[" << tmNewTime.tm_year << "::" << tmNewTime.tm_mon << "::" << tmNewTime.tm_mday << "::" << tmNewTime.tm_hour << "::" << tmNewTime.tm_min << "::" << tmNewTime.tm_sec << "]   ";
-    //        ofsLogfile << "<MP285::AddAvailableDeviceName> :: MP285Ctrl = (" << MP285::Instance()->GetMPStr(MP285::MPSTR_CtrlDevName).c_str() << ")";
+    //        ofsLogfile << "<MP285::RegisterDevice> :: MP285Ctrl = (" << MP285::Instance()->GetMPStr(MP285::MPSTR_CtrlDevName).c_str() << ")";
     //        ofsLogfile << " :: MP285XY = (" << MP285::Instance()->GetMPStr(MP285::MPSTR_XYStgaeDevName).c_str() << ")";
     //        ofsLogfile << " :: MP285Z = (" << MP285::Instance()->GetMPStr(MP285::MPSTR_ZStageDevName).c_str() << ")\n" << flush;
     //        ofsLogfile.close();
@@ -94,13 +93,13 @@ MODULE_API void InitializeModuleData()
 	//}
 
 	// initialize the controller device name
-	AddAvailableDeviceName( MP285::Instance()->GetMPStr(MP285::MPSTR_CtrlDevName).c_str(),  MP285::Instance()->GetMPStr(MP285::MPSTR_CtrlDevName).c_str());
+	RegisterDevice(MP285::Instance()->GetMPStr(MP285::MPSTR_CtrlDevName).c_str(), MM::GenericDevice, MP285::Instance()->GetMPStr(MP285::MPSTR_CtrlDevName).c_str());
 
 	// initialize the XY stage device name
-	AddAvailableDeviceName(MP285::Instance()->GetMPStr(MP285::MPSTR_XYStgaeDevName).c_str(), MP285::Instance()->GetMPStr(MP285::MPSTR_XYStgaeDevName).c_str());
+	RegisterDevice(MP285::Instance()->GetMPStr(MP285::MPSTR_XYStgaeDevName).c_str(), MM::XYStageDevice, MP285::Instance()->GetMPStr(MP285::MPSTR_XYStgaeDevName).c_str());
 
 	// initialize the Z stage device name
-	AddAvailableDeviceName(MP285::Instance()->GetMPStr(MP285::MPSTR_ZStageDevName).c_str(), MP285::Instance()->GetMPStr(MP285::MPSTR_ZStageDevName).c_str());
+	RegisterDevice(MP285::Instance()->GetMPStr(MP285::MPSTR_ZStageDevName).c_str(), MM::StageDevice, MP285::Instance()->GetMPStr(MP285::MPSTR_ZStageDevName).c_str());
 }
 
 //
@@ -327,7 +326,7 @@ int MP285::ByteCopy(unsigned char* bDst, const unsigned char* bSrc, int nLength)
 void MP285::Byte2Hex(const unsigned char bByte, char* sHex)
 {
     char sHexDigit[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
-    sHex[2] =  NULL;
+    sHex[2] = '\0';
     sHex[1] = sHexDigit[(int)(bByte & 0xF)];
     sHex[0] = sHexDigit[(int)(bByte / 0x10)];
     return;

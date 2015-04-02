@@ -17,7 +17,7 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
+// CVS:           $Id: NikonTE2000.cpp 13358 2014-05-09 02:48:15Z mark $
 // 
 
 #include "NikonTE2000.h"
@@ -55,48 +55,24 @@ const char* g_ModelName = "Version";
 TEHub g_hub;
 bool g_PFSinstalled = false;
 
-//#ifdef WIN32
-//   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-//                          DWORD  ul_reason_for_call, 
-//                          LPVOID /*lpReserved*/
-//		   			 )
-//   {
-//   	switch (ul_reason_for_call)
-//   	{
-//   	   case DLL_PROCESS_ATTACH:
-//         break;
-//   	
-//         case DLL_THREAD_ATTACH:
-//         break;
-//
-//   	   case DLL_THREAD_DETACH:
-//         break;
-//
-//   	   case DLL_PROCESS_DETACH:
-//         break;
-//   	}
-//      
-//      return TRUE;
-//   }
-//#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_HubName, "TE2000 controller - required for all other devices");
-   AddAvailableDeviceName(g_NosepieceName, "Nosepiece (objective turret)");
-   AddAvailableDeviceName(g_FocusName, "Z-stage");
-   AddAvailableDeviceName(g_OpticalPathName, "Optical path switch - camera, eyepiece, etc.");
-   AddAvailableDeviceName(g_AnalyzerName, "Analyzer control");
-   AddAvailableDeviceName(g_FilterBlockName, "Filter changer");
-   AddAvailableDeviceName(g_LampName, "Halogen lamp");
-   AddAvailableDeviceName(g_EpiShutterName, "Epi-fluorescence shutter");
-   AddAvailableDeviceName(g_UniblitzShutterName, "Uniblitz shutter");
-   AddAvailableDeviceName(g_AutoFocusName,  "PFS autofocus device");
-   AddAvailableDeviceName(g_PFSOffsetName,  "PFS Offset Lens");
-   AddAvailableDeviceName(g_ExcitationFilterWheelName, "Nikon excitation side filter changer");
+   RegisterDevice(g_HubName, MM::HubDevice, "TE2000 controller - required for all other devices");
+   RegisterDevice(g_NosepieceName, MM::StateDevice, "Nosepiece (objective turret)");
+   RegisterDevice(g_FocusName, MM::StageDevice, "Z-stage");
+   RegisterDevice(g_OpticalPathName, MM::StateDevice, "Optical path switch - camera, eyepiece, etc.");
+   RegisterDevice(g_AnalyzerName, MM::StateDevice, "Analyzer control");
+   RegisterDevice(g_FilterBlockName, MM::StateDevice, "Filter changer");
+   RegisterDevice(g_LampName, MM::ShutterDevice, "Halogen lamp");
+   RegisterDevice(g_EpiShutterName, MM::ShutterDevice, "Epi-fluorescence shutter");
+   RegisterDevice(g_UniblitzShutterName, MM::ShutterDevice, "Uniblitz shutter");
+   RegisterDevice(g_AutoFocusName, MM::AutoFocusDevice, "PFS autofocus device");
+   RegisterDevice(g_PFSOffsetName, MM::StageDevice, "PFS Offset Lens");
+   RegisterDevice(g_ExcitationFilterWheelName, MM::StateDevice, "Nikon excitation side filter changer");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -259,7 +235,7 @@ int Hub::Initialize()
    return DEVICE_OK;
 }
 
-void Hub::InstallIfMounted(std::string deviceName, char* deviceCode)
+void Hub::InstallIfMounted(std::string deviceName, const char* deviceCode)
 {
    if (g_hub.IsComponentMounted(*this, *GetCoreCallback(), deviceCode))
    {
@@ -723,7 +699,6 @@ int FilterBlock::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 FocusStage::FocusStage() : 
    stepSize_nm_(100),
-   busy_(false),
    initialized_(false),
    lowerLimit_(0.0),
    upperLimit_(20000.0)
@@ -1524,7 +1499,7 @@ int EpiShutter::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 UniblitzShutter::UniblitzShutter() : 
    initialized_(false), 
-   name_(g_EpiShutterName), 
+   name_(g_UniblitzShutterName),
    shutterNr_(1), 
    state_(0),
    changedTime_(0)
@@ -1881,7 +1856,6 @@ int PerfectFocus::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 PFSOffset::PFSOffset() : 
    stepSize_nm_(0.5),
-   busy_(false),
    initialized_(false),
    lowerLimit_(-20000.0),
    upperLimit_(20000.0)

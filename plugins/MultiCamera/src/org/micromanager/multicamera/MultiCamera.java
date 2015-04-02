@@ -3,14 +3,15 @@ package org.micromanager.multicamera;
 import mmcorej.CMMCore;
 import org.micromanager.api.MMPlugin;
 import org.micromanager.api.ScriptInterface;
+import org.micromanager.utils.ReportingUtils;
 
 
 public class MultiCamera implements MMPlugin {
-   public static String menuName = "Multi-Andor Control";
-   public static String tooltipDescription = "This plugin lets your control multiple "
-           + "cameras simultanuously.  It is specifically written for Andor cameras. "
-           + "Use the Utilities->Multi Camera adapter to combine multiple Andor cameras "
-           + "into a single logical camera."; 
+   public static final String menuName = "Multi-Andor Control";
+   public static final String tooltipDescription =
+      "Control settings for one or more Andor EM-CCD cameras via the " +
+      "Multi Camera device"; 
+
    private CMMCore core_;
    private ScriptInterface gui_;
    private MultiCameraFrame myFrame_;
@@ -22,9 +23,10 @@ public class MultiCamera implements MMPlugin {
       if (myFrame_ == null) {
          try {
             myFrame_ = new MultiCameraFrame(gui_);
+            gui_.addMMListener(myFrame_);
             gui_.addMMBackgroundListener(myFrame_);
          } catch (Exception e) {
-            e.printStackTrace();
+            ReportingUtils.showError(e);
             return;
          }
       }
@@ -40,10 +42,6 @@ public class MultiCamera implements MMPlugin {
     @Override
    public void show() {
          String ig = "Andor Control";
-   }
-
-    @Override
-   public void configurationChanged() {
    }
 
     @Override

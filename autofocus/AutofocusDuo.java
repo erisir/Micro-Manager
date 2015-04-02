@@ -21,21 +21,13 @@
 //
 
 import ij.IJ;
-import ij.ImagePlus;
-import ij.gui.ImageWindow;
-
-import java.util.Date;
+import ij.process.ImageProcessor;
 import java.util.prefs.Preferences;
 
 import mmcorej.CMMCore;
-import mmcorej.DeviceType;
-import mmcorej.MMCoreJ;
-import mmcorej.StrVector;
 
 import org.micromanager.api.Autofocus;
 import org.micromanager.api.ScriptInterface;
-import org.micromanager.acquisition.AcquisitionData;
-import org.micromanager.utils.AutofocusManager;
 import org.micromanager.utils.AutofocusBase;
 import org.micromanager.utils.MMException;
 import org.micromanager.utils.PropertyItem;
@@ -76,7 +68,7 @@ public class AutofocusDuo extends AutofocusBase implements Autofocus  {
       applySettings();
    }
    
-   public void applySettings() {
+   public final void applySettings() {
       try {
          autoFocus1_ = getPropertyValue(KEY_AUTOFOCUS1);
          autoFocus2_ = getPropertyValue(KEY_AUTOFOCUS2);
@@ -137,7 +129,7 @@ public class AutofocusDuo extends AutofocusBase implements Autofocus  {
    }
 
    public String getVerboseStatus() {
-      return new String("OK");
+      return "OK";
    }
 
    public double incrementalFocus() {
@@ -149,11 +141,12 @@ public class AutofocusDuo extends AutofocusBase implements Autofocus  {
       run("silent");
    }
 
+   @Override
    public PropertyItem[] getProperties() {
       // use default dialog
             
       String afDevices[] = MMStudioPlugin.getAutofocusManager().getAfDevices();
-      String allowedAfDevices[] = new String[(int)afDevices.length - 1];
+      String allowedAfDevices[] = new String[afDevices.length - 1];
 
       try {
          PropertyItem p1 = getProperty(KEY_AUTOFOCUS1);
@@ -187,6 +180,10 @@ public class AutofocusDuo extends AutofocusBase implements Autofocus  {
       return super.getProperties();
    }
       
+   public double computeScore(final ImageProcessor ip) {
+      return 0.0;
+   }
+   
    public double getCurrentFocusScore() {
       // TODO Auto-generated method stub
       return 0;

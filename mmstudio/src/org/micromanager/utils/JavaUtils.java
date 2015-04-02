@@ -28,8 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.prefs.Preferences;
 import java.util.prefs.BackingStoreException;
 
@@ -37,69 +35,95 @@ public class JavaUtils {
 
    private static final String BACKING_STORE_AVAIL = "BackingStoreAvail";
 
-   public static List<Class<?>> findClasses(File directory, int recursionLevel) throws ClassNotFoundException {
+   /**
+    * Add directories and JARs to the classpath, and return the classes found
+    * in the process.
+    *
+    * This method does two things that are really completely separate tasks.
+    *
+    * First, it adds the given directory and all JARs directly in directory to
+    * the search path of the system class loader. If recursionLevel is greater
+    * than 0, it does the same with subdirectories, up to that level of
+    * nesting.
+    *
+    * Second, it finds all classes in the directories and JARs that were added
+    * to the class path in the first step, and returns them. Classes are found
+    * anywhere within the JARs, or as .class files directly within directories.
+    *
+    * There is no support for .class files contained in a hierarchy of
+    * directories representing the package names (they will be loadable because
+    * the directory is in the search path, but they will not be included in the
+    * returned list unless they are within the recursionLevel).
+    *
+    * On most errors, an empty list is returned and the error is logged.
+    *
+    * @param directory The directory to search for classes
+    * @param recursionLevel Nesting level for searching subdirectories
+    * @return The discovered classes
+    */
+   public static List<Class<?>> findAndLoadClasses(File directory, int recursionLevel) {
       List<Class<?>> classes = new ArrayList<Class<?>>();
       if (!directory.exists()) {
          return classes;
       }
-      File[] files = directory.listFiles();
-      URL url;
-      try {
-         url = directory.toURI().toURL();
 
-         for (File file : files) {
-            if (file.isDirectory() && recursionLevel > 0) {
-               try {
-                  addFile(file);
-               } catch (IOException e1) {
-                  ReportingUtils.logError(e1);
-               }
-               classes.addAll(findClasses(file, recursionLevel - 1));
-            } else if (file.getName().endsWith(".class")) {
-               try {
-                  addFile(file);
-               } catch (IOException e) {
-                  ReportingUtils.logError(e);
-               }
-               try {
-                  classes.add(Class.forName(stripFilenameExtension(file.getName())));
-               } catch (NoClassDefFoundError e2) {
-                  ReportingUtils.logError(e2, "Not found:" + url + "  :  " + file.getName());
-               }
-            } else if (file.getName().endsWith(".jar")) {
-               try {
-                  addURL(new URL("jar:file:" + file.getAbsolutePath() + "!/"));
-                  JarInputStream jarFile = new JarInputStream(new FileInputStream(file));
-                  JarEntry jarEntry;
-                  do {
-                     jarEntry = jarFile.getNextJarEntry();
-                     if (jarEntry != null) {
-                        String classFile = jarEntry.getName();
-                        if (classFile.endsWith(".class")) {
-                           String className = stripFilenameExtension(classFile).replace("/", ".");
-                           try {
-                              //String cl = JavaUtils.class.getClassLoader().toString();
-                              //System.out.println("Attempting to load: "+className + " in " + cl);
-                              //long t1 = System.currentTimeMillis();
-                              classes.add(Class.forName(className));
-                              //System.out.println(className +": " + (System.currentTimeMillis() - t1));
-                           } catch (Throwable e3) {
-                              ReportingUtils.logError(e3, "Failed to load "+className + " " + e3.getCause());
-                              for (StackTraceElement t:e3.getCause().getStackTrace()) {
-                                 ReportingUtils.logMessage(t.toString());
-                              }
-                           }
-                        }
+      final URL directoryURL;
+      try {
+         directoryURL = directory.toURI().toURL();
+      }
+      catch (MalformedURLException e) {
+         ReportingUtils.logError(e, "Failed to search for classes");
+         return classes;
+      }
+
+      try {
+         addURL(directoryURL);
+      }
+      catch (IOException ignore) {
+         // Logged by addURL()
+      }
+
+      File[] files = directory.listFiles();
+      for (File file : files) {
+         final String fileName = file.getName();
+         if (file.isDirectory() && recursionLevel > 0) {
+            classes.addAll(findAndLoadClasses(file, recursionLevel - 1));
+         } else if (fileName.endsWith(".class")) {
+            final String className = stripFilenameExtension(fileName);
+            try {
+               classes.add(Class.forName(className));
+            }
+            catch (ClassNotFoundException e) {
+               ReportingUtils.logError(e, "Failed to load class: " +
+                     className + " (expected in " + fileName + ")");
+            }
+         } else if (file.getName().endsWith(".jar")) {
+            try {
+               addURL(new URL("jar:file:" + file.getAbsolutePath() + "!/"));
+               JarInputStream jarFile = new JarInputStream(new FileInputStream(file));
+               for (JarEntry jarEntry = jarFile.getNextJarEntry();
+                       jarEntry != null;
+                       jarEntry = jarFile.getNextJarEntry()) {
+                  final String classFileName = jarEntry.getName();
+                  if (classFileName.endsWith(".class")) {
+                     final String className = stripFilenameExtension(classFileName).replace("/", ".");
+                     try {
+                        classes.add(Class.forName(className));
+                     } catch (ClassNotFoundException e) {
+                        ReportingUtils.logError(e, "Failed to load class: " +
+                              className + " (expected in " +
+                              file.getAbsolutePath() + " based on JAR entry");
+                     } catch (NoClassDefFoundError ncfe) {
+                        ReportingUtils.logError(ncfe, "Failed to load class: " +
+                              className + " (expected in " +
+                              file.getAbsolutePath() + " based on JAR entry");
                      }
-                  } while (jarEntry != null);
-               } catch (Exception e) {
-                  ReportingUtils.logError(e);
+                  }
                }
+            } catch (Exception e) {
+               ReportingUtils.logError(e);
             }
          }
-
-      } catch (MalformedURLException e1) {
-         ReportingUtils.logError(e1);
       }
 
       return classes;
@@ -117,15 +141,6 @@ public class JavaUtils {
    // Borrowed from http://forums.sun.com/thread.jspa?threadID=300557
    private static final Class<?>[] parameters = new Class[]{URL.class};
 
-   public static void addFile(String s) throws IOException {
-      File f = new File(s);
-      addFile(f);
-   }
-
-   public static void addFile(File f) throws IOException {
-      addURL(f.toURI().toURL());
-   }
-
    public static void addURL(URL u) throws IOException {
 
       URLClassLoader loader = (URLClassLoader) JavaUtils.class.getClassLoader();
@@ -135,9 +150,10 @@ public class JavaUtils {
          Method method = sysclass.getDeclaredMethod("addURL", parameters);
          method.setAccessible(true);
          method.invoke(loader, new Object[]{u});
+         ReportingUtils.logMessage("Added URL to system class loader: " + u);
       } catch (Throwable t) {
-         ReportingUtils.logError(t);
-         throw new IOException("Error, could not add URL to system classloader");
+         ReportingUtils.logError(t, "Failed to add URL to system class loader: " + u);
+         throw new IOException("Failed to add URL to system class loader: " + u);
       }//end try catch
 
    }//end method
@@ -174,7 +190,11 @@ public class JavaUtils {
       return invokeRestrictedMethod(obj, theClass, methodName, params, paramTypes);
    }
 
-   public static Object invokeRestrictedMethod(Object obj, Class theClass, String methodName, Object[] params, Class[] paramTypes) throws NoSuchMethodException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+   /*
+    * Invoked a method of a private or protected field.
+    * Pass a null first argument for static methods.
+    */
+   public static Object invokeRestrictedMethod(Object obj, Class<?> theClass, String methodName, Object[] params, Class[] paramTypes) throws NoSuchMethodException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
       Method method = theClass.getDeclaredMethod(methodName, paramTypes);
       Object result;
 
@@ -189,6 +209,10 @@ public class JavaUtils {
       return result;
    }
 
+   /*
+    * Returns a value of a private or protected field. Method of last resort!
+    * Pass a null first argument for static fields.
+    */
    public static Object getRestrictedFieldValue(Object obj, Class theClass, String fieldName) throws NoSuchFieldException {
       Field field = theClass.getDeclaredField(fieldName);
       field.setAccessible(true);
@@ -200,6 +224,11 @@ public class JavaUtils {
       }
    }
 
+   /*
+    * Allows private or protected field values to be changed. Method of
+    * last resort!
+    * Pass a null first argument for static fields.
+    */
    public static void setRestrictedFieldValue(Object obj, Class theClass, String fieldName, Object value) throws NoSuchFieldException {
       Field field = theClass.getDeclaredField(fieldName);
       field.setAccessible(true);
@@ -260,7 +289,8 @@ public class JavaUtils {
    /**
     * Retrieves an object from Preferences (deserialized).
     */
-    public static Object getObjectFromPrefs(Preferences prefs, String key, Object def) {
+   @SuppressWarnings("unchecked")
+    public static <T> T getObjectFromPrefs(Preferences prefs, String key, T def) {
         ArrayList<byte[]> chunks = new ArrayList<byte[]>();
         byte[] serialBytes = new byte[0];
         int totalLength = 0;
@@ -286,7 +316,7 @@ public class JavaUtils {
         ByteArrayInputStream byteStream = new ByteArrayInputStream(serialBytes);
         try {
             ObjectInputStream objectStream = new ObjectInputStream(byteStream);
-            return objectStream.readObject();
+            return (T) objectStream.readObject();
         } catch (Exception e) {
             ReportingUtils.logError(e, "Failed to get object from preferences.");
             return def;
@@ -304,7 +334,7 @@ public class JavaUtils {
       File dir = new File(dirPath);
       if (!dir.exists()) {
          if (!dir.mkdirs()) {
-            throw new Exception("Unable to create directory.");
+            throw new Exception("Unable to create directory " + dirPath);
          }
       }
       return dir;
@@ -365,7 +395,7 @@ public class JavaUtils {
          //FileReader always assumes default encoding is OK!
          BufferedReader input = new BufferedReader(new FileReader(filepath));
          try {
-            String line = null; //not declared within while loop
+            String line; //not declared within while loop
              /*
              * readLine is a bit quirky :
              * it returns the content of a line MINUS the newline.
@@ -463,7 +493,7 @@ public class JavaUtils {
       Map<Thread, StackTraceElement[]> liveThreads = Thread.getAllStackTraces();
       for (Thread key : liveThreads.keySet()) {
          System.err.println("Thread " + key.getName());
-         StackTraceElement[] trace = (StackTraceElement[]) liveThreads.get(key);
+         StackTraceElement[] trace = liveThreads.get(key);
          for (int j = 0; j < trace.length; j++) {
             System.err.println("\tat " + trace[j]);
          }

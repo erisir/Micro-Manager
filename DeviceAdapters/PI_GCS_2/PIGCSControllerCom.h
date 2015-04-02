@@ -19,7 +19,7 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id: PIGCSControllerCom.h,v 1.5, 2010-12-09 13:54:01Z, Rachel Bach$
+// CVS:           $Id: PIGCSControllerCom.h,v 1.8, 2014-03-31 12:51:24Z, Steffen Rau$
 //
 
 #ifndef _PI_GCS_CONTROLLER_H_
@@ -81,14 +81,12 @@ private:
 class PIGCSControllerCom : public PIController
 {
 public:
-	PIGCSControllerCom(const std::string& label, PIGCSControllerComDevice* proxy);
+	PIGCSControllerCom(const std::string& label, PIGCSControllerComDevice* proxy, MM::Core* logsink);
 	~PIGCSControllerCom();
 
 	int Connect();
-	int Close();
 
 	virtual bool qIDN(std::string& sIDN);
-	//virtual bool qHLP(std::string& sIDN);
 	virtual bool INI(const std::string& axis);
 	virtual bool CST(const std::string& axis, const std::string& stagetype);
 	virtual bool SVO(const std::string& axis, BOOL svo);
@@ -128,11 +126,12 @@ public:
 	virtual bool HasJON() {return hasJON_;}
 	virtual bool HasVEL() {return hasVEL_;}
 	virtual bool Has_qTPC() {return has_qTPC_;}
-   bool HasONL() {return hasONL_;}
+   bool HasONL() const {return hasONL_;}
 
 private:
 	std::string ConvertToAxesStringWithSpaces(const std::string& axes) const;
 	bool CheckError(bool& hasCmdFlag);
+	bool CheckError(void);
    PIGCSControllerComDevice* deviceProxy_;
 	bool hasCST_;
 	bool hasSVO_;
@@ -141,6 +140,9 @@ private:
 	bool hasVEL_;
    bool has_qTPC_;
    bool hasONL_;
+protected:
+   //lint -e{1401} // dummy ctor without any initialization
+   PIGCSControllerCom () {}
 };
 
 

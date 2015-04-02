@@ -20,6 +20,8 @@
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+//#include <fcntl.h>
+//#include <io.h>
 #pragma warning(disable : 4996) // disable warning for deprecated CRT functions on Windows 
 #endif
 
@@ -47,34 +49,13 @@ using namespace std;
 // global constants
 const char* g_DeviceTsiCam = "TSICam";
 const char* g_ReadoutRate = "ReadoutRate";
+const char* g_Gain = "Gain";
 const char* g_NumberOfTaps = "Taps";
 
 TsiSDK* TsiCam::tsiSdk = 0;
 
-#ifdef WIN32
-   /**
-    * Windows DLL entry code
-    * Dynamically loads TSI SDK and instantiates the API
-    */
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-      break;
-  	   case DLL_THREAD_ATTACH:
-      break;
-   	case DLL_THREAD_DETACH:
-      break;
-   	case DLL_PROCESS_DETACH:
-   	break;
-   	}
-      return TRUE;
-   }
-#endif
+
+static const WORD MAX_CONSOLE_LINES = 500;
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -82,7 +63,7 @@ TsiSDK* TsiCam::tsiSdk = 0;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceTsiCam, "Thorlabs Scientific Imaging camera");
+   RegisterDevice(g_DeviceTsiCam, MM::CameraDevice, "Thorlabs Scientific Imaging camera");
 }
 
 MODULE_API void DeleteDevice(MM::Device* pDevice)
@@ -126,8 +107,7 @@ TsiCam::TsiCam() :
    roiBinData.XPixels = 0;
 
    // this identifies which camera we want to access
-   int ret = CreateProperty(MM::g_Keyword_CameraID, "0", MM::Integer, false, 0, true);
-   assert(ret == DEVICE_OK);
+   CreateProperty(MM::g_Keyword_CameraID, "0", MM::Integer, false, 0, true);
    liveAcqThd_ = new AcqSequenceThread(this);
 }
 
@@ -209,6 +189,11 @@ int TsiCam::Initialize()
    // exposure
    pAct = new CPropertyAction (this, &TsiCam::OnExposure);
    ret = CreateProperty(MM::g_Keyword_Exposure, "2.0", MM::Float, false, pAct);
+   assert(ret == DEVICE_OK);
+
+   // gain
+   pAct = new CPropertyAction (this, &TsiCam::OnGain);
+   ret = CreateProperty(g_Gain, "0", MM::Integer, false, pAct);
    assert(ret == DEVICE_OK);
 
    bool bRet;
@@ -442,10 +427,6 @@ int TsiCam::SnapImage()
    if (img.Width() != tsiImg->m_Width || img.Height() != tsiImg->m_Height || img.Depth() != tsiImg->m_BytesPerPixel)
       img.Resize(tsiImg->m_Width, tsiImg->m_Height, tsiImg->m_BytesPerPixel);
 
-   ostringstream os;
-   os << "TSI: Snapped image " << tsiImg->m_Width << "X" << tsiImg->m_Height;
-   LogMessage(os.str().c_str());
-
    img.SetPixels(tsiImg->m_PixelData.vptr);
    camHandle_->FreeImage(tsiImg);
    camHandle_->Stop();
@@ -455,21 +436,36 @@ int TsiCam::SnapImage()
 
 unsigned TsiCam::GetBitDepth() const
 {
-   // TODO: obtain bit depth from the camera API
-   unsigned bitDepth = 12;
-   if (img.Width() > 1392)
-      bitDepth = 14;
+bool         success;
+unsigned int bitpix   = 0;
+unsigned     bitDepth = 12;
+
+   success = camHandle_->GetParameter(TSI_PARAM_BITS_PER_PIXEL, sizeof(uint32_t), (void*)&bitpix);
+   if(success == true)
+   {
+      bitDepth     = bitpix;
+   }
 
    return bitDepth;
 }
 
 int TsiCam::GetBinning() const
 {
-   return roiBinData.XBin;
+bool success;
+int  xbin;
+
+   success = camHandle_->GetParameter(TSI_PARAM_XBIN, sizeof(uint32_t), (void*)&xbin);
+   if(success == false)
+   {
+      xbin = 1;
+   }
+
+   return xbin;
 }
 
 int TsiCam::SetBinning(int binSize)
 {
+   printf("[MicroManager] TsiCam::SetBinning(binSize:%d)\n", binSize);
    ostringstream os;                                                         
    os << binSize;
    return SetProperty(MM::g_Keyword_Binning, os.str().c_str());                                                                                     
@@ -478,15 +474,14 @@ int TsiCam::SetBinning(int binSize)
 double TsiCam::GetExposure() const
 {
    uint32_t exp(0);
-   bool bret = camHandle_->GetParameter(TSI_PARAM_ACTUAL_EXPOSURE_TIME, sizeof(uint32_t), (void*)&exp);
+   (void)camHandle_->GetParameter(TSI_PARAM_ACTUAL_EXPOSURE_TIME, sizeof(uint32_t), (void*)&exp);
    return (double)exp / 1000.0; // exposure is expressed always in ms
 }
 
 void TsiCam::SetExposure(double dExpMs)
 {
    uint32_t exp      = (uint32_t)(dExpMs + 0.5);
-   bool bret = camHandle_->SetParameter(TSI_PARAM_EXPOSURE_TIME, (void*)&exp);
-   assert(bret);
+   (void)camHandle_->SetParameter(TSI_PARAM_EXPOSURE_TIME, (void*)&exp);
 }
 
 int TsiCam::SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize)
@@ -523,7 +518,10 @@ int TsiCam::ClearROI()
 int TsiCam::PrepareSequenceAcqusition()
 {
    if (IsCapturing())
+   {
+
       return DEVICE_CAMERA_BUSY_ACQUIRING;
+   }
 
    int ret = GetCoreCallback()->PrepareForAcq(this);
    if (ret != DEVICE_OK)
@@ -535,10 +533,14 @@ int TsiCam::PrepareSequenceAcqusition()
 int TsiCam::StartSequenceAcquisition(long numImages, double /*interval_ms*/, bool stopOnOvl)
 {
    if (IsCapturing())
+   {
+      printf("[MicroManager] - TsiCam::StartSequenceAcquisition() - Camera is acquiring images returning\n");
       return DEVICE_CAMERA_BUSY_ACQUIRING;
+   }
 
    // the camera ignores interval, running at the rate dictated by the exposure
    stopOnOverflow = stopOnOvl;
+   printf("[MicroManager] - TsiCam::StartSequenceAcquisition() - numImages %d - calling Start() stopOnOverflow:%d\n", numImages, stopOnOverflow);
    liveAcqThd_->SetNumFrames(numImages); // continuous
    liveAcqThd_->Start();
    // TSI cameras can be too fast in starting-up acquisition
@@ -555,6 +557,8 @@ int TsiCam::StartSequenceAcquisition(double /*interval_ms*/)
 
    // the camera ignores interval, running at the rate dictated by the exposure
    stopOnOverflow = false;
+   printf("[MicroManager] - TsiCam::StartSequenceAcquisition() - numImages 0 - calling Start() stopOnOverflow:false\n");
+
    liveAcqThd_->SetNumFrames(0); // continuous
    liveAcqThd_->Start();
 
@@ -563,6 +567,8 @@ int TsiCam::StartSequenceAcquisition(double /*interval_ms*/)
 
 int TsiCam::StopSequenceAcquisition()
 {
+   printf("[MicroManager] - TsiCam::StopSequenceAcquisition()\n");
+
    liveAcqThd_->Stop();
    liveAcqThd_->wait();
    //CDeviceUtils::SleepMs(50); 
@@ -590,16 +596,22 @@ int TsiCam::ResizeImageBuffer()
    // TODO: bytes per pixel
 
    // set full frame
-   roiBinData.XBin = 1;
-   roiBinData.YBin = 1;
+   roiBinData.XBin    = 1;
+   roiBinData.YBin    = 1;
    roiBinData.XOrigin = 0;
    roiBinData.YOrigin = 0;
    roiBinData.XPixels = width;
    roiBinData.YPixels = height;
-   if (!camHandle_->GetParameter(TSI_PARAM_ROI_BIN, sizeof(uint32_t), (void*)&roiBinData))
+   // TT 11-5-2013: This was originally GetParameter() - not sure if bug and meant to be SetParam, or not.
+   //if (!camHandle_->SetParameter(TSI_PARAM_ROI_BIN, sizeof(uint32_t), (void*)&roiBinData))
+   if (!camHandle_->SetParameter(TSI_PARAM_ROI_BIN, (void*)&roiBinData))
+   {
+      printf("[MicroManager] TsiCam::ResizeImageBuffer() w:%d h:%d xbin:%d ybin:%d - FAILED **********\n", roiBinData.XPixels, roiBinData.YPixels, roiBinData.XBin, roiBinData.YBin);
       return camHandle_->GetErrorCode();
+   }
 
    img.Resize(width, height, 2);
+
    fullFrame = roiBinData; // save full frame info
 
    return DEVICE_OK;
@@ -608,6 +620,8 @@ int TsiCam::ResizeImageBuffer()
 int TsiCam::ResizeImageBuffer(TSI_ROI_BIN& roiBin)
 {
    const int byteDepth = 2; // TODO
+
+   printf("[MicroManager] TsiCam::ResizeImageBuffer(TSI_ROI_BIN& roiBin) w:%d h:%d xbin:%d ybin:%d\n", roiBinData.XPixels, roiBinData.YPixels, roiBinData.XBin, roiBinData.YBin);
 
    bool bret = camHandle_->SetParameter(TSI_PARAM_ROI_BIN, (void*)&roiBin);
    if (!bret)
@@ -628,10 +642,12 @@ int TsiCam::ResizeImageBuffer(TSI_ROI_BIN& roiBin)
       << roiBinData.XBin;
    LogMessage(os.str().c_str());
 
+   printf("[MicroManager] TsiCam::ResizeImageBuffer() image resized to w:%d h:%d\n", img.Width(), img.Height());
+
    return DEVICE_OK;
 }
 
-void TsiCam::ReadoutComplete(int callback_type_id, TsiImage *tsiImg, void *context)
+void TsiCam::ReadoutComplete(int /*callback_type_id*/, TsiImage *tsiImg, void *context)
 {
    //assert(callback_type_id == TSI_CALLBACK_CAMERA_FRAME_READOUT_COMPLETE);
    TsiCam* cam = static_cast<TsiCam*>(context);
@@ -654,6 +670,11 @@ int TsiCam::PushImage(unsigned char* imgBuf)
    {
       // do not stop on overflow - just reset the buffer
       GetCoreCallback()->ClearImageBuffer(this);
+      retCode = GetCoreCallback()->InsertImage(this,
+         imgBuf,
+         img.Width(),
+         img.Height(),
+         img.Depth());
    }
 
    return DEVICE_OK;
@@ -673,6 +694,11 @@ int TsiCam::InsertImage()
       {
          // do not stop on overflow - just reset the buffer
          GetCoreCallback()->ClearImageBuffer(this);
+         retCode = GetCoreCallback()->InsertImage(this,
+            img.GetPixels(),
+            img.Width(),
+            img.Height(),
+            img.Depth());
          return DEVICE_OK;
       }
       else
@@ -761,9 +787,9 @@ int AcqSequenceThread::svc (void)
             camInstance->LogMessage("Acquired image.");
             start = camInstance->GetCurrentMMTime();
             count++;
-
             if (numFrames > 0 && count == numFrames)
             {
+               printf("[MicroManager] - AcqSequenceThread::svc() - numFrames:%d count:%d - calling Stop()\n", numFrames, count);
                camInstance->LogMessage("Number of frames reached: exiting.");
                camInstance->camHandle_->Stop();
                InterlockedExchange(&camInstance->acquiring, 0);
@@ -774,6 +800,10 @@ int AcqSequenceThread::svc (void)
          {
             camInstance->LogMessage("Error: image dimensions do not match.");
             camInstance->camHandle_->FreeImage(tsiImg);
+            printf("[MicroManager] - AcqSequenceThread::svc() - image dimensions don't match calling stop\n");
+            printf("[MicroManager] - Expected image size w:%5d h:%5d bytes_per_pixel:%5d\n", camInstance->img.Width(), camInstance->img.Height(), camInstance->img.Depth());
+            printf("[MicroManager] - Actual   image size w:%5d h:%5d bytes_per_pixel:%5d\n", tsiImg->m_Width, tsiImg->m_Height, tsiImg->m_BytesPerPixel);
+
             camInstance->camHandle_->Stop();
             InterlockedExchange(&camInstance->acquiring, 0);
             return 1;

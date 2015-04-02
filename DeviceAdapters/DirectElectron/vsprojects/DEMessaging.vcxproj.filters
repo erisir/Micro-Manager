@@ -35,6 +35,9 @@
     <ClInclude Include="..\src\DEMessaging\DEExceptions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\DEMessaging\DEServer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\DEMessaging\DEServer.pb.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -49,6 +52,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="DEServer.proto" />
+    <CustomBuild Include="..\src\DEMessaging\DEServer.proto" />
   </ItemGroup>
 </Project>

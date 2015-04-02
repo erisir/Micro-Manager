@@ -28,9 +28,6 @@
 #include <stdint.h>
 #include <cstdio>
 #include <string>
-#if WIN32
-#include <stdint.h>
-#endif
 
 //////////////////////////////////////////////////////////////////////////////
 // Error codes
@@ -94,6 +91,7 @@ public:
    // ----------------
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnLabel(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnStateEx(MM::PropertyBase* pProp, MM::ActionType eAct, long line);
    unsigned long GetNumberOfPositions();
    int LabelToState(std::string label);
    std::string StateToLabel(int state);

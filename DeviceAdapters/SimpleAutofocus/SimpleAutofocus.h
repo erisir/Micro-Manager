@@ -107,9 +107,11 @@ public:
 
 
 private:
-   double offset_; // TODO - need to know what this is.
+
+   std::string name_;
 
    // parameters for the Pakpoom Subsoontorn & Hernan Garcia brute force search
+   double offset_; // TODO - need to know what this is.
    double coarseStepSize_;
    long coarseSteps_; // +/- #of snapshot
    double fineStepSize_;
@@ -118,7 +120,6 @@ private:
 
    bool continuousFocusing_;
    bool locked_;
-   std::string name_;
    SimpleAutofocus& operator=(SimpleAutofocus& /*rhs*/) {
       assert(false);
       return *this;
@@ -129,11 +130,14 @@ private:
       std::sort(values.begin(), values.end());
       return values[(values.size())>>1];
    };
+
    double SharpnessAtZ(const double zvalue);
    double DoubleFunctionOfDouble(const double zvalue);
+
    MM::Core* pCore_;
    double cropFactor_;
    bool busy_;
+
    MMThreadLock busyLock_;
    double latestSharpness_;
 
@@ -214,7 +218,11 @@ private:
    class AFThread : public MMDeviceThreadBase
    {
    public:
-      AFThread(FocusMonitor* fm) : fm_(fm), delaySec_(2.0), running_(false) {}
+      AFThread(FocusMonitor* fm) : 
+         delaySec_(2.0), 
+         fm_(fm), 
+         running_(false) 
+      {}
       ~AFThread() {}
 
       int svc (void)
@@ -251,63 +259,6 @@ private:
 
    AFThread* delayThd_;
    int DoAF();
-};
-
-//////////////////////////////////////////////////////////////////////////////
-// ThreePointAF class
-// Image based auto-focus. Sequential search.
-//////////////////////////////////////////////////////////////////////////////
-class ThreePointAF : public CAutoFocusBase<ThreePointAF>
-{
-public:
-   ThreePointAF() ;
-   ~ThreePointAF() {}
-
-   // MMDevice API
-   bool Busy() {
-      return busy_;
-   }
-   void GetName(char* pszName) const;
-
-   int Initialize();
-   int Shutdown();
-
-   // AutoFocus API
-   int SetContinuousFocusing(bool state) {
-      return state ? DEVICE_UNSUPPORTED_COMMAND : DEVICE_OK;
-   }
-   int GetContinuousFocusing(bool& state) {
-      state = false;
-      return DEVICE_OK;
-   }
-   bool IsContinuousFocusLocked() {
-      return false;
-   }
-   int FullFocus();
-   int IncrementalFocus() {
-      return FullFocus();
-   }
-   int SetOffset(double offset);
-   int GetOffset(double & offset);
-
-   // Helper functions
-   int GetLastFocusScore(double& score);
-   int GetCurrentFocusScore(double& score);
-
-   // properties
-   int OnExposure(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnStepsize(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnFocusChannel(MM::PropertyBase * pProp, MM::ActionType eAct);
-   int OnThreshold(MM::PropertyBase * pProp, MM::ActionType eAct);
-   int OnCropFactor(MM::PropertyBase * pProp, MM::ActionType eAct);
-
-private:
-   bool					busy_;
-   bool					initialized_;
-   double				stepSize_;
-   double				score_;
-   double				cropFactor_;
-   double exposure_;
 };
 
 #endif // _SIMPLEAUTOFOCUS_H_

@@ -10,10 +10,14 @@
  *
  */
 
-package edu.valelab.GaussianFit;
+package edu.valelab.gaussianfit;
 
+import edu.valelab.gaussianfit.algorithm.FindLocalMaxima;
+import edu.valelab.gaussianfit.algorithm.GaussianFit;
+import edu.valelab.gaussianfit.data.GaussianInfo;
+import edu.valelab.gaussianfit.data.SpotData;
+import edu.valelab.gaussianfit.utils.ReportingUtils;
 import java.awt.geom.Point2D;
-import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.prefs.Preferences;
 
@@ -50,8 +54,9 @@ public class GaussianTrackThread extends GaussianInfo implements Runnable  {
   
    private Thread t;
    
-   private FindLocalMaxima.FilterType preFilterType_;
+   private final FindLocalMaxima.FilterType preFilterType_;
    private boolean silent_;
+   private final ImagePlus siPlusLocal_;
    
 
    public void setWindowClosed() {
@@ -62,33 +67,32 @@ public class GaussianTrackThread extends GaussianInfo implements Runnable  {
    /**
     *
     * 
+    * @param siPlus
+    * @param preFilterType
     */
-   public GaussianTrackThread(FindLocalMaxima.FilterType preFilterType) {
+   public GaussianTrackThread(ImagePlus siPlus, FindLocalMaxima.FilterType preFilterType) {
       super();
       preFilterType_ = preFilterType;
-
+      siPlusLocal_ = siPlus;
    }   
 
    public void trackGaussians(boolean silent) {
       silent_ = silent;
       ArrayList<Point2D.Double> xyPoints = new ArrayList<Point2D.Double>();
       ArrayList<Double> timePoints = new ArrayList<Double>();
-      resultList_ = Collections.synchronizedList(new ArrayList<GaussianSpotData>());
-
-      ImagePlus siPlus;
-      try {
-         siPlus = IJ.getImage();
-      } catch(Exception e) {
-         return;
+      resultList_ = Collections.synchronizedList(new ArrayList<SpotData>());
+     
+      if (siPlusLocal_ == null) {
+         ReportingUtils.showError("Empty ImagePlus");
       }
-
-      if (!track(siPlus, xyPoints, timePoints))
+      
+      if (!track(siPlusLocal_, xyPoints, timePoints))
          return;
 
 
-      String name = siPlus.getWindow().getTitle() + "-" + firstX_ + "-" + firstY_;
+      String name = siPlusLocal_.getWindow().getTitle() + "-" + firstX_ + "-" + firstY_;
       if (resultList_.size() > 0)
-         addListToForm(name, resultList_, siPlus, timePoints);
+         addListToForm(name, resultList_, siPlusLocal_, timePoints);
    }
 
 
@@ -110,11 +114,12 @@ public class GaussianTrackThread extends GaussianInfo implements Runnable  {
          return false;
       }
       
-      Rectangle rect = originalRoi.getBounds();
       Polygon pol = FindLocalMaxima.FindMax(siPlus, halfSize_, noiseTolerance_, preFilterType_);
       if (pol.npoints == 0) {
          if (!silent_)
-            ij.IJ.showMessage("No local maxima found in ROI" );
+            ReportingUtils.showError("No local maxima found in ROI" );
+         else
+            ReportingUtils.logError("No local maxima found in ROI");
          return false;
       }
       
@@ -154,34 +159,33 @@ public class GaussianTrackThread extends GaussianInfo implements Runnable  {
 
       
       for (int i = n; i <= nMax && !stop; i++) {
-         GaussianSpotData spot;
+         SpotData spot;
 
          // Give user feedback
          ij.IJ.showStatus("Tracking...");
          ij.IJ.showProgress(i, nMax);
 
-         //if (missedFrames == 0) {
-            // Search in next slice in same Roi for local maximum
-            Roi searchRoi = new Roi(xc - size, yc - size, 2 * size + 1, 2 * size + 1);
-            if (useSlices) {
-               siPlus.setSliceWithoutUpdate(siPlus.getStackIndex(ch, i, 1));
-            } else {
-               siPlus.setSliceWithoutUpdate(siPlus.getStackIndex(ch, 1, i));
-            }
-            siPlus.setRoi(searchRoi, false);
+        
+         // Search in next slice in same Roi for local maximum
+         Roi searchRoi = new Roi(xc - size, yc - size, 2 * size + 1, 2 * size + 1);
+         if (useSlices) {
+            siPlus.setSliceWithoutUpdate(siPlus.getStackIndex(ch, i, 1));
+         } else {
+            siPlus.setSliceWithoutUpdate(siPlus.getStackIndex(ch, 1, i));
+         }
+         siPlus.setRoi(searchRoi, false);
 
-            // Find maximum in Roi, might not be needed....
-            pol = FindLocalMaxima.FindMax(siPlus, 2 * halfSize_, noiseTolerance_, preFilterType_);
+         // Find maximum in Roi, might not be needed....
+         pol = FindLocalMaxima.FindMax(siPlus, 2 * halfSize_, noiseTolerance_, preFilterType_);
 
-            // do not stray more than 2 pixels in x or y.  
-            // This velocity maximum parameter should be tunable by the user
-            if (pol.npoints >= 1) {
-               if (Math.abs(xc - pol.xpoints[0]) < 2 && Math.abs(yc - pol.ypoints[0]) < 2) {
-                  xc = pol.xpoints[0];
-                  yc = pol.ypoints[0];
-               }
+         // do not stray more than 2 pixels in x or y.  
+         // This velocity maximum parameter should be tunable by the user
+         if (pol.npoints >= 1) {
+            if (Math.abs(xc - pol.xpoints[0]) < 2 && Math.abs(yc - pol.ypoints[0]) < 2) {
+               xc = pol.xpoints[0];
+               yc = pol.ypoints[0];
             }
-         //}
+         }
 
          // Reset ROI to the original
          if (i==n) {
@@ -192,11 +196,24 @@ public class GaussianTrackThread extends GaussianInfo implements Runnable  {
          // Set Roi for fitting centered around maximum
          Roi spotRoi = new Roi(xc - halfSize_, yc - halfSize_, 2 * halfSize_, 2*halfSize_);
          siPlus.setRoi(spotRoi, false);
-         ImageProcessor ip = siPlus.getProcessor().crop();
-         spot = new GaussianSpotData(ip, ch, 1, i, 1, i, xc,yc);
-         double[] paramsOut = gs.doGaussianFit(ip, maxIterations_);
-         double sx = 0;
-         double sy = 0;
+         ImageProcessor ip;
+         try {
+            if (siPlus.getRoi() != spotRoi) {
+               ReportingUtils.logError(
+                       "There seems to be a thread synchronization issue going on that causes this weirdness");
+            }
+            ip = siPlus.getProcessor().crop();
+         } catch (ArrayIndexOutOfBoundsException aex) {
+            ReportingUtils.logError(aex, 
+                    "ImageJ failed to crop the image, not sure why");
+            siPlus.setRoi(spotRoi, true);
+            ip = siPlus.getProcessor().crop();
+         }
+            
+         spot = new SpotData(ip, ch, 1, i, 1, i, xc,yc);
+         double[] paramsOut = gs.dogaussianfit(ip, maxIterations_);
+         double sx;
+         double sy;
          double a = 1.0;
          double theta = 0.0;
          if (paramsOut.length >= 4) {
@@ -266,7 +283,7 @@ public class GaussianTrackThread extends GaussianInfo implements Runnable  {
       return true;
    }
 
-   private void addListToForm(String name, List<GaussianSpotData> resultList, ImagePlus siPlus, ArrayList<Double> timePoints) {
+   private void addListToForm(String name, List<SpotData> resultList, ImagePlus siPlus, ArrayList<Double> timePoints) {
       // Add data to data overview window
       DataCollectionForm dcForm = DataCollectionForm.getInstance();
       dcForm.addSpotData(name, siPlus.getTitle(), "", siPlus.getWidth(), 

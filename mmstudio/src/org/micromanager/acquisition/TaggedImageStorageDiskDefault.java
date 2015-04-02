@@ -1,7 +1,4 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
+
 package org.micromanager.acquisition;
 
 import org.micromanager.api.TaggedImageStorage;
@@ -26,7 +23,7 @@ import mmcorej.TaggedImage;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.utils.*;
 
 /**
@@ -34,7 +31,6 @@ import org.micromanager.utils.*;
  * @author arthur
  */
 public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
-   public static String menuName_ = "Micro-Manager default file format";
    private final String dir_;
    private boolean firstElement_;
    private HashMap<Integer,Writer> metadataStreams_;
@@ -78,6 +74,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
 
    }
 
+   @Override
    public int lastAcquiredFrame() {
       return lastFrame_;
    }
@@ -88,17 +85,17 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
    
    private String getPosition(JSONObject tags) {
       try {
-         String pos;
-         if (tags.has("PositionName") && !tags.isNull("PositionName")) {
-            return MDUtils.getPositionName(tags);
-         } else {
+         String pos = MDUtils.getPositionName(tags);
+         if (pos == null) {
             return "";
          }
+         return pos;
       } catch (Exception e) {
          return "";
       }
    }
 
+   @Override
    public void putImage(TaggedImage taggedImg) throws MMException {
       try {
          if (!newDataSet_) {
@@ -115,12 +112,12 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
          Object img = taggedImg.pix;
          String tiffFileName = createFileName(md);
          MDUtils.setFileName(md, tiffFileName);
-         String posName = "";
+         String posName;
          String fileName = tiffFileName;
          try {
-
             posName = positionNames_.get(MDUtils.getPositionIndex(md));
-            if (posName != null && posName.length() > 0 && !posName.contentEquals("null")) {
+            if (posName != null && posName.length() > 0 && 
+                  !posName.contentEquals("null")) {
                JavaUtils.createDirectory(dir_ + "/" + posName);
                fileName = posName + "/" + tiffFileName;
             } else {
@@ -132,20 +129,20 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
 
          File saveFile = new File(dir_, fileName);
          if (saveFile.exists()) {
-            MMStudioMainFrame.getInstance().stopAllActivity();
-            throw new Exception("Image saving failed: " + saveFile.getAbsolutePath());
+            MMStudio.getInstance().stopAllActivity();
+            throw new IOException("Image saving failed: " + saveFile.getAbsolutePath());
          }
          
          saveImageFile(img, md, dir_, fileName);
          writeFrameMetadata(md);
          String label = MDUtils.getLabel(md);
          filenameTable_.put(label, fileName);
-         //metadataTable_.put(label, md);
       } catch (Exception ex) {
          ReportingUtils.showError(ex);
       }
    }
 
+   @Override
    public TaggedImage getImage(int channel, int slice, int frame, int position) {
       String label = MDUtils.generateLabel(channel, slice, frame, position);
       if (filenameTable_.get(label) == null) {
@@ -196,6 +193,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       }
    }
 
+   @Override
    public JSONObject getImageTags(int channel, int slice, int frame, int position) {
       String label = MDUtils.generateLabel(channel, slice, frame, position);
       TiffDecoder td = new TiffDecoder(dir_, filenameTable_.get(label));
@@ -207,6 +205,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       }
    }
 
+   @Override
    public Set<String> imageKeys() {
       return filenameTable_.keySet();
    }
@@ -257,7 +256,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       try {
          Writer metadataStream = metadataStreams_.get(pos);
          if (!firstElement_) {
-            metadataStream.write(",\r\n");
+            metadataStream.write(",\n");
          }
          metadataStream.write("\"" + title + "\": ");
          metadataStream.write(md.toString(2));
@@ -271,7 +270,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
    private void saveImageFile(Object img, JSONObject md, String path, String tiffFileName) {
       ImagePlus imp;
       try {
-         ImageProcessor ip = null;
+         ImageProcessor ip;
          int width = MDUtils.getWidth(md);
          int height = MDUtils.getHeight(md);
          String pixelType = MDUtils.getPixelType(md);
@@ -281,7 +280,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
             saveImageProcessor(ip, md, path, tiffFileName);
          } else if (pixelType.equals("GRAY16")) {
             ip = new ShortProcessor(width, height);
-            ip.setPixels((short[]) img);
+            ip.setPixels((short[]) img);           
             saveImageProcessor(ip, md, path, tiffFileName);
          } else if (pixelType.equals("RGB32")) {
             byte[][] planes = ImageUtils.getColorPlanesFromRGB32((byte []) img);
@@ -308,7 +307,32 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
    private void saveImageProcessor(ImageProcessor ip, JSONObject md, String path, String tiffFileName) {
       if (ip != null) {
          ImagePlus imp = new ImagePlus(path + "/" + tiffFileName, ip);
+         applyPixelSizeCalibration(imp);
          saveImagePlus(imp, md, path, tiffFileName);
+      }
+   }
+   
+   private void applyPixelSizeCalibration(final ImagePlus ip) {
+      try {
+         JSONObject summary = getSummaryMetadata();
+         double pixSizeUm = summary.getDouble("PixelSize_um");
+         if (pixSizeUm > 0) {
+            ij.measure.Calibration cal = new ij.measure.Calibration();
+            cal.setUnit("um");
+            cal.pixelWidth = pixSizeUm;
+            cal.pixelHeight = pixSizeUm;
+            String intMs = "Interval_ms";
+            if (summary.has(intMs)) {
+               cal.frameInterval = summary.getDouble(intMs) / 1000.0;
+            }
+            String zStepUm = "z-step_um";
+            if (summary.has(zStepUm)) {
+               cal.pixelDepth = summary.getDouble(zStepUm);
+            }
+            ip.setCalibration(cal);
+         }
+      } catch (JSONException ex) {
+         // no pixelsize defined.  Nothing to do
       }
    }
 
@@ -323,8 +347,8 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       fs.saveAsTiff(path + "/" + tiffFileName);
    }
 
-   private void openNewDataSet(TaggedImage firstImage) throws Exception, IOException {
-      String time = firstImage.tags.getString("Time");
+   private void openNewDataSet(TaggedImage firstImage) throws IOException, Exception {
+      String time = MDUtils.getImageTime(firstImage.tags);
       int pos;
       String posName = getPosition(firstImage);
       
@@ -338,7 +362,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       if (positionNames_.containsKey(pos)
               && positionNames_.get(pos) != null
               && !positionNames_.get(pos).contentEquals(posName)) {
-         throw new Exception ("Position name changed during acquisition.");
+         throw new IOException ("Position name changed during acquisition.");
       }
 
       positionNames_.put(pos, posName);
@@ -346,7 +370,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       firstElement_ = true;
       Writer metadataStream = new BufferedWriter(new FileWriter(dir_ + "/" + posName + "/metadata.txt"));
       metadataStreams_.put(pos, metadataStream);
-      metadataStream.write("{" + "\r\n");
+      metadataStream.write("{" + "\n");
       JSONObject summaryMetadata = getSummaryMetadata();
       summaryMetadata.put("Time", time);
       summaryMetadata.put("Date", time.split(" ")[0]);
@@ -354,11 +378,13 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       writeMetadata(pos, summaryMetadata, "Summary");
    }
 
+   @Override
    public void finished() {
       closeMetadataStreams();
       newDataSet_ = false;
    }
 
+   @Override
    public boolean isFinished() {
       return !newDataSet_;
    }
@@ -367,7 +393,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       if (newDataSet_) {
          try {
             for (Writer metadataStream:metadataStreams_.values()) {
-               metadataStream.write("\r\n}\r\n");
+               metadataStream.write("\n}\n");
                metadataStream.close();
             }
          } catch (IOException ex) {
@@ -435,7 +461,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
                ReportingUtils.showError(ex);
             }
          } else {
-            throw (new Exception("No metadata file found"));
+            throw (new IOException("No metadata file found"));
          }
         
       }
@@ -445,7 +471,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
    private int getChannelIndex(String channelName) {
       try {
          JSONArray channelNames;
-         Object tmp = null;
+         Object tmp;
          try {
             tmp = getSummaryMetadata().get("ChNames");
             if (tmp instanceof String) {
@@ -475,6 +501,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
 
    private Iterable<String> makeJsonIterableKeys(final JSONObject data) {
       return new Iterable<String>() {
+            @Override
             public Iterator<String> iterator() {
                return data.keys();
             }
@@ -486,7 +513,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       try {
          Iterable<String> keys = makeJsonIterableKeys(data);
          for (String key:keys) {
-            md.put((String) key, (String) data.getString(key));
+            md.put(key, data.getString(key));
          }
       } catch (JSONException ex) {
          ReportingUtils.showError(ex);
@@ -509,6 +536,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
    /**
     * @return the summaryMetadata_
     */
+   @Override
    public JSONObject getSummaryMetadata() {
       return summaryMetadata_;
    }
@@ -516,29 +544,29 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
    /**
     * @param summaryMetadata the summaryMetadata to set
     */
+   @Override
    public final void setSummaryMetadata(JSONObject summaryMetadata) {
       summaryMetadata_ = summaryMetadata;
       if (summaryMetadata_ != null) {
-         try {
-            boolean slicesFirst = summaryMetadata_.getBoolean("SlicesFirst");
-            boolean timeFirst = summaryMetadata_.getBoolean("TimeFirst");
-            TreeMap<String, String> oldFilenameTable = filenameTable_;
-            filenameTable_ = new TreeMap<String, String>(new ImageLabelComparator(slicesFirst, timeFirst));
-            filenameTable_.putAll(oldFilenameTable);
-         } catch (JSONException ex) {
-            ReportingUtils.logError("Couldn't find SlicesFirst or TimeFirst in summary metadata");
-         }
+         boolean slicesFirst = summaryMetadata_.optBoolean("SlicesFirst", true);
+         boolean timeFirst = summaryMetadata_.optBoolean("TimeFirst", false);
+         TreeMap<String, String> oldFilenameTable = filenameTable_;
+         filenameTable_ = new TreeMap<String, String>(new ImageLabelComparator(slicesFirst, timeFirst));
+         filenameTable_.putAll(oldFilenameTable);
       }
    }
 
+   @Override
    public void setDisplayAndComments(JSONObject settings) {
       displaySettings_ = settings;
    }
 
+   @Override
    public JSONObject getDisplayAndComments() {
       return displaySettings_;
    }
 
+   @Override
    public void writeDisplaySettings() {
       if (displaySettings_ == null)
          return;
@@ -577,6 +605,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       }
    }
 
+   @Override
    public void close() {
       try {
          writeDisplaySettings();
@@ -586,15 +615,9 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       } catch (Exception e) {
          ReportingUtils.logError(e);
       }
-      /*
-      this.summaryMetadata_ = null;
-      this.metadataStreams_ = null;
-      this.metadataTable_ = null;
-      this.filenameTable_ = null;
-      this.displaySettings_ = null;
-       */
    }
 
+   @Override
    public String getDiskLocation() {
       return dir_;
    }
@@ -605,8 +628,10 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
       super.finalize();
    }
 
+   @Override
    public long getDataSetSize() {
       File[] files = new File(dir_).listFiles(new FileFilter() {
+         @Override
          public boolean accept(File pathname) {
             return pathname.getName().toLowerCase().endsWith(".tif");
          }

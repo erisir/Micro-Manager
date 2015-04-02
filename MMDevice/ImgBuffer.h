@@ -48,6 +48,7 @@ public:
    unsigned int Height() const {return height_;}
    unsigned int Depth() const {return pixDepth_;}
    void SetPixels(const void* pixArray);
+   void SetPixelsPadded(const void* pixArray, int paddingBytesPerLine);
    void ResetPixels();
    const unsigned char* GetPixels() const;
    unsigned char* GetPixelsRW();
@@ -70,7 +71,6 @@ private:
    unsigned int height_;
    unsigned int pixDepth_;
    std::string name_;
-   //MM::ImageMetadata metadata_;
    Metadata metadata_;
 };
 

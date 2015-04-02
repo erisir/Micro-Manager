@@ -20,7 +20,7 @@
 //
 // NOTE:          This adapter is unfinished and does not work.
 //
-// CVS:           $Id$
+// CVS:           $Id: StanfordPhotonics.cpp 12458 2013-12-23 02:19:19Z mark $
 //
 
 #include <itxcore.h>
@@ -61,22 +61,6 @@ const char* g_ShutterMode_Closed = "Closed";
 MegaZ* MegaZ::instance_ = 0;
 unsigned MegaZ::refCount_ = 0;
 
-// Windows dll entry routine
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                       DWORD  ul_reason_for_call, 
-                       LPVOID /*lpReserved*/
-					 )
-{
-	switch (ul_reason_for_call)
-	{
-	case DLL_PROCESS_ATTACH:
-	case DLL_THREAD_ATTACH:
-	case DLL_THREAD_DETACH:
-	case DLL_PROCESS_DETACH:
-		break;
-	}
-    return TRUE;
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
@@ -84,7 +68,7 @@ BOOL APIENTRY DllMain( HANDLE /*hModule*/,
 MODULE_API void InitializeModuleData()
 {
    // >>> do not declare any devices, since this adapter does not work properly
-   // AddAvailableDeviceName(g_MegaZName);
+   // RegisterDevice(g_MegaZName, MM::CameraDevice, "Stanford Photonics MegaZ camera");
 }
 
 MODULE_API void DeleteDevice(MM::Device* pDevice)

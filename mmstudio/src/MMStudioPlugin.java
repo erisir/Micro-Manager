@@ -32,9 +32,10 @@ import javax.swing.UIManager;
 
 import mmcorej.CMMCore;
 
-import org.micromanager.MMStudioMainFrame;
-import org.micromanager.acquisition.AcquisitionVirtualStack;
+import org.micromanager.MMStudio;
+import org.micromanager.imagedisplay.AcquisitionVirtualStack;
 import org.micromanager.utils.AutofocusManager;
+import org.micromanager.utils.GUIUtils;
 import org.micromanager.utils.JavaUtils;
 import org.micromanager.utils.ReportingUtils;
 
@@ -43,17 +44,17 @@ import org.micromanager.utils.ReportingUtils;
  */
 public class MMStudioPlugin implements PlugIn, CommandListener {
 
-   static MMStudioMainFrame frame_;
+   static MMStudio studio_;
 
    @SuppressWarnings("unchecked")
-    @Override
+   @Override
    public void run(final String arg) {
 
       SwingUtilities.invokeLater(new Runnable() {
-            @Override
+         @Override
          public void run() {
             try {
-               if (frame_ == null || !frame_.isRunning()) {
+               if (studio_ == null || !studio_.getIsProgramRunning()) {
                   // OS-specific stuff
                   if (JavaUtils.isMac()) {
                      System.setProperty("apple.laf.useScreenMenuBar", "true");
@@ -66,15 +67,18 @@ public class MMStudioPlugin implements PlugIn, CommandListener {
 
 
                   // create and display control panel frame
+                  // warn user about old ImageJ version, but do not stop
+                  IJ.versionLessThan("1.48g");
+                  
                   if (!IJ.versionLessThan("1.46e")) {
                      Executer.addCommandListener(MMStudioPlugin.this);
                   }
-                  frame_ = new MMStudioMainFrame(true);
-                  frame_.setVisible(true);
-                  frame_.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+                  studio_ = new MMStudio(true);
+                  MMStudio.getFrame().setVisible(true);
+                  MMStudio.getFrame().setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
                }
                if (arg.equals("OpenAcq")) {
-                  frame_.openAcquisitionData(true);
+                  studio_.promptForAcquisitionToOpen(true);
                }
             } catch (Exception e) {
                ReportingUtils.logError(e);
@@ -82,14 +86,30 @@ public class MMStudioPlugin implements PlugIn, CommandListener {
          }
       });
    }
-    
-    @Override
+   
+   private boolean frameSuccessfullyClosed = true;
+   private void setFrameClosingResult(boolean res) {
+      frameSuccessfullyClosed = res;
+   }
+   
+   @Override
    public String commandExecuting(String command) { 
-      if (command.equalsIgnoreCase("Quit") && frame_ != null) {
+      if (command.equalsIgnoreCase("Quit") && studio_ != null) {
          try {
-            frame_.closeSequence(true);
+            GUIUtils.invokeAndWait(new Runnable() {
+               public void run() {
+                  boolean result = true;
+                  if (!studio_.closeSequence(true)) {
+                     result = false;
+                  }
+                  setFrameClosingResult(result);
+               }
+            });
          } catch (Exception ex) {
             // do nothing, just make sure to continue quitting
+         }
+         if (!frameSuccessfullyClosed) {
+            return null;
          }
          return command;
       }  else if (command.equals("Crop")) {
@@ -121,22 +141,22 @@ public class MMStudioPlugin implements PlugIn, CommandListener {
       return command;
    }
 
-   public static MMStudioMainFrame getMMStudioMainFrameInstance() {
-       return frame_;
+   public static MMStudio getMMStudioInstance() {
+       return studio_;
    }
 
    public static CMMCore getMMCoreInstance() {
-      if (frame_ == null || !frame_.isRunning())
+      if (studio_ == null || !studio_.getIsProgramRunning())
          return null;
       else
-         return frame_.getMMCore();
+         return studio_.getMMCore();
    }
 
    public static AutofocusManager getAutofocusManager() {
-      if (frame_ == null || !frame_.isRunning())
+      if (studio_ == null || !studio_.getIsProgramRunning())
          return null;
       else
-         return frame_.getAutofocusManager();
+         return studio_.getAutofocusManager();
    }
 
 }

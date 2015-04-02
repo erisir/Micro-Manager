@@ -11,7 +11,7 @@ import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.Rectangle;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.slideexplorer.Hub.ModeManager;
 import org.micromanager.utils.ContrastSettings;
 import org.micromanager.utils.ImageUtils;
@@ -43,13 +43,13 @@ public class Display {
 		imgp_ = new ImagePlus("Slide Explorer",proc_);
 
 		cvs_ = new Canvas(this, imgp_);
-		
+
 		win_ = new Window(imgp_, (ImageCanvas) cvs_, this);
 		imgCount_=0;
 		win_.setVisible(true);
 
         }
-	
+
     public void setCoords(Coordinates coords) {
         coords_ = coords;
 		updateDimensions();
@@ -80,12 +80,12 @@ public class Display {
     public Window getWindow() {
         return win_;
     }
-    
+
 	public void placeImage(Point offScreenPosition, ImageProcessor img) {
 		proc_.insert(img, offScreenPosition.x, offScreenPosition.y);
         imgCount_++;
 	}
-	
+
 	public void pan(Rectangle panRectangle, boolean update) {
         if (!currentlyPanning_) {
             currentlyPanning_ = true;
@@ -110,7 +110,7 @@ public class Display {
         }
 	}
 
-    
+
     protected void panRoisBy(int dx, int dy) {
         Roi roi = imgp_.getRoi();
 		panRoi(roi, dx, dy);
@@ -123,7 +123,7 @@ public class Display {
 
     protected void panRoi(Roi roi, int dx, int dy) {
 		if (roi != null) {
-			Rectangle rect = roi.getBoundingRect();
+			Rectangle rect = roi.getBounds();
 			roi.setLocation(rect.x-dx, rect.y-dy);
 		}
 	}
@@ -131,7 +131,7 @@ public class Display {
 	void showRoiAt(Rectangle roiRect) {
 		imgp_.setRoi(roiRect);
 	}
-	
+
 	public void updateAndDraw() {
 		imgp_.updateAndDraw();
 		/*ImageStatistics stats = imgp_.getStatistics();
@@ -156,7 +156,7 @@ public class Display {
 	protected void reapplyDisplayRange() {
 		imgp_.setDisplayRange(displayRangeMin_, displayRangeMax_);
 	}
-	
+
 	public void zoomOut(Point point) {
 		hub_.zoomBy(-1);
 	}
@@ -171,7 +171,7 @@ public class Display {
 
 	public void shutdown() {
 		hub_.shutdown();
-		
+
 	}
 
 	public void navigate(Point canvasPos) {
@@ -180,7 +180,7 @@ public class Display {
 
 	public void survey() {
 		hub_.survey();
-		
+
 	}
 
     public void pauseSlideExplorer() {
@@ -195,7 +195,7 @@ public class Display {
         proc_ = ImageUtils.makeProcessor(type_, imgp_.getWidth(), imgp_.getHeight());
         imgp_.setProcessor(imgp_.getTitle(), proc_);
         try {
-        ContrastSettings contrastSettings = ((MMStudioMainFrame) hub_.getApp()).getContrastSettings();
+        ContrastSettings contrastSettings = ((MMStudio) hub_.getApp()).getContrastSettings();
         imgp_.setDisplayRange(contrastSettings.min, contrastSettings.max);
         } catch (Exception e) {
             ReportingUtils.logError(e);
@@ -242,7 +242,10 @@ public class Display {
     }
 
     void roiDrawn() {
-      roiManager_.add(imgp_,imgp_.getRoi(),-1);
+      Roi roi = imgp_.getRoi();
+      if (roi.getState() == Roi.NORMAL) {
+         roiManager_.add(imgp_,roi,-1);
+      }
       cvs_.setShowAllROIs(true);
       cvs_.repaint();
     }
@@ -250,9 +253,16 @@ public class Display {
     void clearRois() {
         imgp_.killRoi();
         roiManager_.getROIs().clear();
-        roiManager_.getList().removeAll();
+        // Not sure why this was there - remove if nothing bad happens
+        // roiManager_.getList().removeAll();
         cvs_.setShowAllROIs(false);
         cvs_.repaint();
     }
-   
+
+    public void reactivateRoiManager() {
+    	roiManager_.runCommand("Reset");
+    	roiManager_.setVisible(true);
+    	roiManager_.close();
+    }
+
 }

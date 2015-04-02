@@ -10,7 +10,7 @@
 // COPYRIGHT:     University of California San Francisco
 // LICENSE:       This file is distributed under the BSD license.
 //                License text is included with the source distribution.
-// CVS:           $Id$
+// CVS:           $Id: TEHub.h 11877 2013-10-05 06:14:11Z mark $
 //
 #ifndef _TEHUB_H_
 #define _TEHUB_H_
@@ -54,7 +54,7 @@ public:
    CommandMode GetCommandMode() {return commandMode_.compare("c") == 0 ? Sync : Async;}
    void SetCommandMode(CommandMode cm) {cm == Sync ? commandMode_ = "c" : commandMode_ = "f";}
 
-   bool IsComponentMounted(MM::Device& device, MM::Core& core, char* deviceCode);
+   bool IsComponentMounted(MM::Device& device, MM::Core& core, const char* deviceCode);
    bool DetectPerfectFocus(MM::Device& device, MM::Core& core);
 
    int SetNosepiecePosition(MM::Device& device, MM::Core& core, int pos);

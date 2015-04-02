@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: GraphFrame.java 14650 2014-11-19 18:39:21Z nico $
 //
 
 package org.micromanager.graph;
@@ -27,22 +27,17 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
 import java.text.DecimalFormat;
-import java.util.prefs.Preferences;
 
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JTextField;
 import javax.swing.SpringLayout;
-import javax.swing.UIManager;
 import javax.swing.border.LineBorder;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.utils.MMFrame;
-import org.micromanager.utils.ReportingUtils;
 
 /**
  * XY Graph window.
@@ -61,6 +56,7 @@ public class GraphFrame extends MMFrame {
    private SpringLayout springLayout;
    private GraphPanel panel_;
    
+   /*
    public static void main(String args[]) {
       try {
          UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
@@ -70,6 +66,7 @@ public class GraphFrame extends MMFrame {
          ReportingUtils.showError(e);
       }
    }
+   */
    
    private void updateBounds(){
       GraphData.Bounds bounds = panel_.getGraphBounds();
@@ -123,20 +120,13 @@ public class GraphFrame extends MMFrame {
 
    public GraphFrame() {
       super();
-      Preferences root = Preferences.userNodeForPackage(this.getClass());
-      setPrefsNode(root.node(root.absolutePath() + "/GraphFrame"));
-      
+     
       setFont(new Font("Arial", Font.PLAIN, 10));
-      addWindowListener(new WindowAdapter() {
-         public void windowClosing(WindowEvent e) {
-            savePosition();
-         }
-      });
       
       setTitle("Graph");
       springLayout = new SpringLayout();
       getContentPane().setLayout(springLayout);
-      loadPosition(100, 100, 542, 298);
+      loadAndRestorePosition(100, 100, 542, 298);
       setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
       panel_ = new GraphPanel();
@@ -213,6 +203,7 @@ public class GraphFrame extends MMFrame {
       final JButton btnAutoscale = new JButton();
       btnAutoscale.setFont(new Font("Arial", Font.PLAIN, 10));
       btnAutoscale.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent e) {
             setAutoScale();
          }
@@ -226,8 +217,9 @@ public class GraphFrame extends MMFrame {
       final JButton btnRefresh = new JButton();
       btnRefresh.setFont(new Font("Arial", Font.PLAIN, 10));
       btnRefresh.addActionListener(new ActionListener() {
+         @Override
          public void actionPerformed(ActionEvent e) {
-            MMStudioMainFrame.getInstance().updateLineProfile();
+            MMStudio.getInstance().updateLineProfile();
          }
       });
       btnRefresh.setText("Refresh");

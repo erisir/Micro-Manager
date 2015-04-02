@@ -17,7 +17,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: DeviceUtils.h 7237 2011-05-17 19:50:42Z karlh $
 //
 
 #ifndef _DEVICEUTILS_H_
@@ -65,8 +65,6 @@ public:
    static bool CheckEnvironment(std::string environment);
 private:
    static char m_pszBuffer[MM::MaxStrLength];
-   // string trim
-   static std::string trim(const std::string str);
 };
 
 #endif //_DEVICEUTILS_H_

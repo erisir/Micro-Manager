@@ -38,6 +38,15 @@
 #include <map>
 #include <algorithm>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4267)
+#endif
+#include "opencv/highgui.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 //////////////////////////////////////////////////////////////////////////////
 // Error codes
 //
@@ -46,6 +55,8 @@
 #define ERR_IN_SEQUENCE          104
 #define ERR_SEQUENCE_INACTIVE    105
 #define SIMULATED_ERROR          200
+#define FAILED_TO_GET_IMAGE      201
+#define CAMERA_NOT_INITIALIZED   202
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -105,6 +116,7 @@ public:
    // action interface
    // ----------------
 
+	int OnCameraID(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnGain(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -131,9 +143,11 @@ private:
    static const double nominalPixelSizeUm_;
 
 
+   // CvCapture* capture_;
+   // IplImage* frame_; // do not modify, do not release!
+
+   long int cameraID_;
    ImgBuffer img_;
-   bool busy_;
-   bool stopOnOverFlow_;
    bool initialized_;
    double readoutUs_;
    MM::MMTime readoutStartTime_;
@@ -146,13 +160,13 @@ private:
 	long binSize_;
 	long cameraCCDXSize_;
 	long cameraCCDYSize_;
-	std::string triggerDevice_;
-
+   int nComponents_;
    bool xFlip_;
    bool yFlip_;
+	std::string triggerDevice_;
+   bool stopOnOverFlow_;
 
    MMThreadLock imgPixelsLock_;
-   int nComponents_;
    
 
    friend class MySequenceThread;
@@ -178,17 +192,20 @@ class MySequenceThread : public MMDeviceThreadBase
       long GetImageCounter(){return imageCounter_;}                             
       MM::MMTime GetStartTime(){return startTime_;}                             
       MM::MMTime GetActualDuration(){return actualDuration_;}
+
    private:                                                                     
       int svc(void) throw();
-      COpenCVgrabber* camera_;                                                     
-      bool stop_;                                                               
-      bool suspend_;                                                            
+
+      double intervalMs_;                                                       
       long numImages_;                                                          
       long imageCounter_;                                                       
-      double intervalMs_;                                                       
+      bool stop_;                                                               
+      bool suspend_;                                                            
+      COpenCVgrabber* camera_;   
       MM::MMTime startTime_;                                                    
       MM::MMTime actualDuration_;                                               
       MM::MMTime lastFrameTime_;                                                
+
       MMThreadLock stopLock_;                                                   
       MMThreadLock suspendLock_;                                                
 }; 

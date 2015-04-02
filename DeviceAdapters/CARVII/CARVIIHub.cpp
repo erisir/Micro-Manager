@@ -30,19 +30,14 @@
 #include <sstream>
 #include <iostream>
 
-#ifdef WIN32
-#include <windows.h>
-#define usleep(us) Sleep(us/1000) 
-#endif
+#include "../../MMDevice/DeviceUtils.h"
 
 using namespace std;
 
 CARVIIHub::CARVIIHub() {
-    expireTimeUs_ = 5000000; // each command will finish within 5sec
-
     // CARVII does not confirm successful device movement; wait time
-    // in microsec to ensure movement has ended
-    deviceWait_ = 20000;
+    // in millisec to ensure movement has ended
+    deviceWaitMs_ = 20;
 
     ClearRcvBuf();
 }
@@ -85,14 +80,14 @@ int CARVIIHub::SetExFilterPosition(MM::Device& device, MM::Core& core, int pos) 
     os << "A" << posCommand;
     bool succeeded = false;
     int counter = 0;
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;
@@ -124,14 +119,14 @@ int CARVIIHub::SetEmFilterPosition(MM::Device& device, MM::Core& core, int pos) 
     os << "B" << posCommand;
     bool succeeded = false;
     int counter = 0;
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;
@@ -163,14 +158,14 @@ int CARVIIHub::SetDichroicPosition(MM::Device& device, MM::Core& core, int pos) 
     os << "C" << posCommand;
     bool succeeded = false;
     int counter = 0;
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;
@@ -202,14 +197,14 @@ int CARVIIHub::SetFRAPIrisPosition(MM::Device& device, MM::Core& core, int pos) 
     bool succeeded = false;
     int counter = 0;
 
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;
@@ -245,14 +240,14 @@ int CARVIIHub::SetIntensityIrisPosition(MM::Device& device, MM::Core& core, int 
     bool succeeded = false;
     int counter = 0;
 
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;
@@ -288,14 +283,14 @@ int CARVIIHub::SetSpinMotorState(MM::Device& device, MM::Core& core, int state) 
     bool succeeded = false;
     int counter = 0;
 
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;
@@ -327,13 +322,13 @@ int CARVIIHub::SetTouchScreenState(MM::Device& device, MM::Core& core, int state
     bool succeeded = false;
     int counter = 0;
 
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times, wait 50 ms in between tries
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
         if (ret != DEVICE_OK) {
-            usleep(50000);
+            CDeviceUtils::SleepMs(50);
             counter++;
         } else
             succeeded = true;
@@ -362,14 +357,14 @@ int CARVIIHub::SetDiskSliderPosition(MM::Device& device, MM::Core& core, int pos
     bool succeeded = false;
     int counter = 0;
 
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;
@@ -401,14 +396,14 @@ int CARVIIHub::SetPrismSliderPosition(MM::Device& device, MM::Core& core, int po
     bool succeeded = false;
     int counter = 0;
 
-    int ret;
+    int ret = DEVICE_OK;
 
     // try up to 10 times
     while (!succeeded && counter < 10) {
         ret = ExecuteCommand(device, core, os.str().c_str());
 
         //to ensure wheel finishes movement, CARVII does not signal movement succeeded
-        usleep(deviceWait_);
+        CDeviceUtils::SleepMs(deviceWaitMs_);
 
         if (ret != DEVICE_OK)
             counter++;

@@ -25,7 +25,7 @@
 //                
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 09/01/2005
 //
-// CVS:           $Id$
+// CVS:           $Id: ParallelPort.cpp 12458 2013-12-23 02:19:19Z mark $
 //
 
 #ifdef WIN32
@@ -50,31 +50,13 @@ short _stdcall Inp32(short PortAddress);
 void _stdcall Out32(short PortAddress, short data);
 
 
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-					  DWORD  ul_reason_for_call, 
-					  LPVOID /*lpReserved*/
-					  )
-{
-	switch (ul_reason_for_call)
-	{
-	case DLL_PROCESS_ATTACH:
-	case DLL_THREAD_ATTACH:
-	case DLL_THREAD_DETACH:
-	case DLL_PROCESS_DETACH:
-		break;
-	}
-	return TRUE;
-}
-#endif
-
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-	AddAvailableDeviceName(g_DeviceName, "Printer port TTL digital output");
-	AddAvailableDeviceName(g_ShutterDevice, "Printer port TTLs used as shutters");
+	RegisterDevice(g_DeviceName, MM::StateDevice, "Printer port TTL digital output");
+	RegisterDevice(g_ShutterDevice, MM::ShutterDevice, "Printer port TTLs used as shutters");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)

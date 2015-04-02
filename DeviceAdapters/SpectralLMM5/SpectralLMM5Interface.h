@@ -31,8 +31,8 @@ public:
    int GetExposureConfig(MM::Device& device, MM::Core& core, std::string& config);
    int SetTriggerOutConfig(MM::Device& device, MM::Core& core, unsigned char * config);
    int GetTriggerOutConfig(MM::Device& device, MM::Core& core, unsigned char *);
+   int GetFirmwareVersion(MM::Device& device, MM::Core& core, std::string& version);
    int GetNrLines() { return nrLines_;}
-   void setReadWriteSame(bool setting) { readWriteSame_ = setting; }
 
    const static int maxLines_ = 8;
    availableLines* getAvailableLaserLines() { return laserLines_;}
@@ -43,10 +43,8 @@ private:
    std::string port_;
    bool initialized_;
    bool laserLinesDetected_;
-   uint8_t lineSwitch_;
    MM::PortType portType_;
    int nrLines_;
-   bool readWriteSame_;
 };
 #endif  // _SPECTRALLMM5INTERFACE_H_
 

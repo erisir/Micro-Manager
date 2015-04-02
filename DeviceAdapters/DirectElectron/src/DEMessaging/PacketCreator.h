@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 #include "DEConstants.h"
-#include "DEServer.pb.h"
+#include "DEServer.h"
 
 using namespace std;
 using namespace DEMessaging;
@@ -16,7 +16,7 @@ namespace DEMessaging
 	{
 		public:
 			PacketCreator();
-			PacketCreator(bool persistent);
+			explicit PacketCreator(bool persistent);
 			~PacketCreator();
 			void add(AnyP value, string label);
 			void add(AnyP value);

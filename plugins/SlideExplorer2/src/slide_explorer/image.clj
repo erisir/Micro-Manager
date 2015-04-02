@@ -33,6 +33,12 @@
 
 ; ImageProcessor-related utilities
 
+(defn clone
+  "Duplicates and ImageProcessor."
+  [processor]
+  (when processor
+    (.duplicate processor)))
+
 (defn insert-image!
   "Inserts one ImageProcessor into another."
   [proc-host proc-guest x-host y-host]
@@ -137,19 +143,22 @@
 
 ; 5.9 ms
 
-(defn insert-half-tile
-  [tile [left? upper?] mosaic]
-  (let [test-img (or mosaic tile)
-        w (.getWidth test-img)
-        h (.getHeight test-img)
+(defn insert-half-tile!
+  "Creates a new ImageProcessor with the old
+   ImageProcessor, tile, inserted into a dest."
+  [dest tile [left? upper?]]
+  (let [w (.getWidth dest)
+        h (.getHeight dest)
         x (if left? 0 (/ w 2))
-        y (if upper? 0 (/ h 2))
-        dest (if mosaic
-               (.duplicate mosaic)
-               (.createProcessor test-img w h))]
+        y (if upper? 0 (/ h 2))]
     (doto dest
       (.setInterpolationMethod ImageProcessor/BILINEAR)
       (insert-image! (half-size tile) x y))))
+
+(defn insert-half-tile
+  [tile [left? upper?] mosaic]
+  (let [dest (or (clone mosaic) (black-processor-like tile))]
+    (insert-half-tile! dest tile [left? upper?])))
 
 ;; stats
  
@@ -280,20 +289,19 @@
 (defn gaussian-blur
   "Applys a gaussian blur to ImageProcessor, with given radius."
   [processor radius]
-  (let [new-proc (.duplicate processor)]
+  (let [new-proc (clone processor)]
     (.blurGaussian (GaussianBlur.) new-proc radius radius 0.0002)
     new-proc))
 
-(defn normalize
+(defn divide
   [processor value]
-  (let [float-proc (.convertToFloat processor)]
-    (.multiply processor (/ 1 value))
-    float-proc))
+  (doto (.convertToFloat processor)
+    (.multiply (/ value))))
 
 (defn normalize-to-max
   "Rescale intensities so the max value of processor is 1.0."
   [processor]
-  (normalize processor (.max (.getStatistics processor))))
+  (divide processor (.max (.getStatistics processor))))
 
 (defn combine-processors
   "Arithmetically combine processor 1 with processor 2, where op
@@ -306,10 +314,25 @@
         (ImagePlus. "" proc2))
       .getProcessor))
 
-(defn pixel [proc x y]
+(defn multiply
+  "Multiply an image processor by a factor."
+  [processor factor]
+  (doto (clone processor)
+    (.multiply factor)))
+
+(def add-processors
+  "Arithmetically add two processors, pixel by pixel."
+  (partial combine-processors :add))
+
+(defn pixel
+  "Returns the intensity value of a pixel at x,y."
+  [proc x y]
   (.getPixelValue proc x y)) 
 
-(defn center-pixel [proc]
+(defn center-pixel
+  "Returns the intensity value of a pixel at the center of
+   the image."
+  [proc]
   (let [x (long (/ (.getWidth proc) 2))
         y (long (/ (.getHeight proc) 2))]
     (pixel proc x y)))    

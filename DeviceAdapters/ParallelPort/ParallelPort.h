@@ -19,7 +19,7 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 09/01/2005
 //
-// CVS:           $Id$
+// CVS:           $Id: ParallelPort.h 4054 2010-02-25 21:59:20Z karlh $
 //
 
 #ifndef _PARALLELPORT_H_

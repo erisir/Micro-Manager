@@ -65,23 +65,14 @@ public:
    int OnRun(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-
-   double volume_;
-   double diameter_;
-   int error_;
-
    bool initialized_;
    std::string name_;
+   int error_;
+   MM::MMTime changedTime_;
+
    std::string port_;
-   unsigned char buf_[1000];
    string buf_string_;
    vector<string> buf_tokens_;
-   unsigned long buf_bytes_;
-   long armState_;
-
-   bool busy_;
-   double answerTimeoutMs_;
-   MM::MMTime changedTime_;
 
    void SetVolume(double volume);
    void GetVolume(double& volume);
@@ -107,8 +98,6 @@ private:
    int HandleErrors();
 
    static const int RCV_BUF_LENGTH = 1024;
-   char rcvBuf_[RCV_BUF_LENGTH];
-   
 
    AladdinController& operator=(AladdinController& /*rhs*/) {assert(false); return *this;}
 };

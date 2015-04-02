@@ -75,7 +75,6 @@ class Hub : public CGenericBase<Hub>
       // Command exchange with MMCore
       std::string command_;
       bool initialized_;
-      double answerTimeoutMs_;
 };
 
 
@@ -120,6 +119,7 @@ public:
    int OnSpeed    (MM::PropertyBase* pProp, MM::ActionType eAct);
 //   int OnSpeedY    (MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnAccel    (MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnJoystick(MM::PropertyBase* pProp, MM::ActionType eAct);
 //   int OnAccelY    (MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
@@ -133,6 +133,7 @@ private:
    double accel_;
    double originX_;
    double originY_;
+   bool joystickEnabled_;
 };
 
 

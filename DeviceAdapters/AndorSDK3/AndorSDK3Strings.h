@@ -19,8 +19,11 @@ public:
    static const std::string SENSOR_COOLING;
    static const std::string OVERLAP;
    static const std::string FRAME_RATE;
+   static const std::string FRAME_RATE_LIMITS;
    static const std::string TRIGGER_MODE;
    static const std::string GAIN_TEXT;
+   static const std::string GLOBAL_CLEAR;
+   static const std::string AUX_SOURCE;
 };
 
 
@@ -37,8 +40,11 @@ const std::string TAndorSDK3Strings::SPURIOUS_NOISE_FILTER("SpuriousNoiseFilter"
 const std::string TAndorSDK3Strings::SENSOR_COOLING("SensorCooling");
 const std::string TAndorSDK3Strings::OVERLAP("Overlap");
 const std::string TAndorSDK3Strings::FRAME_RATE("FrameRate");
+const std::string TAndorSDK3Strings::FRAME_RATE_LIMITS("FrameRateLimits");
 const std::string TAndorSDK3Strings::TRIGGER_MODE("TriggerMode");
 const std::string TAndorSDK3Strings::GAIN_TEXT("Sensitivity/DynamicRange");
+const std::string TAndorSDK3Strings::GLOBAL_CLEAR("RollingShutterGlobalClear");
+const std::string TAndorSDK3Strings::AUX_SOURCE("AuxiliaryOutSource (TTL I/O)");
 
 #endif //include only once
 

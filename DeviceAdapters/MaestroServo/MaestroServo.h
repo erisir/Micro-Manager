@@ -64,9 +64,9 @@ public:
 private:
    bool initialized_;
    bool moving_;
+   long servoNr_;
    long minPos_;
    long maxPos_;
-   long servoNr_;
    long speed_;
    long acceleration_;
    // MMCore name of serial port
@@ -123,7 +123,6 @@ private:
    std::string command_;
    // Time that last command was sent to device
    MM::MMTime changedTime_;
-   double position_;
 };
 
 #endif //_MaestroServo_H_

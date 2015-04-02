@@ -37,7 +37,6 @@ import java.util.Vector;
 import java.util.prefs.Preferences;
 
 import javax.swing.JButton;
-import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
@@ -55,7 +54,6 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableModel;
 import javax.swing.tree.DefaultMutableTreeNode;
 
-import mmcorej.CMMCore;
 import mmcorej.MMCoreJ;
 
 import org.micromanager.utils.ReportingUtils;
@@ -104,7 +102,7 @@ private JComboBox byLibCombo_;
          setMicroscopeModel(model);
       }
       
-      public void setMicroscopeModel(MicroscopeModel mod) {
+      public final void setMicroscopeModel(MicroscopeModel mod) {
          devices_ = mod.getDevices();
          model_ = mod;
       }
@@ -239,7 +237,7 @@ private JComboBox byLibCombo_;
       setLayout(null);
       prefs_ = prefs;
       setHelpFileName(HELP_FILE_NAME);
-      documentationURLroot_ = "https://valelab.ucsf.edu/~MM/MMwiki/index.php/";
+      documentationURLroot_ = "https://micro-manager.org/wiki/";
 
       installedScrollPane_ = new JScrollPane();
       installedScrollPane_.setBounds(10, 21, 431, 241);
@@ -484,26 +482,27 @@ private JComboBox byLibCombo_;
    }
    
 	public boolean enterPage(boolean fromNextPage) {
+      Cursor oldCur = getCursor();
+      setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 		try {
          // double check that list of device libraries is valid before continuing.
-         CMMCore.getDeviceLibraries();
+         core_.getDeviceAdapterNames();
 			model_.removeDuplicateComPorts();
 			rebuildDevicesTable();
 			if (fromNextPage) {
 			   // do nothing for now
 			} else {
 			   model_.loadModel(core_);
-			   Cursor oldCur = getCursor();
-			   setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
             model_.initializeModel(core_);
-            setCursor(oldCur);
 			}
 	      buildTree();
 			return true;
 		} catch (Exception e2) {
 			ReportingUtils.showError(e2);
 			setCursor(Cursor.getDefaultCursor());
-		}
+		} finally {
+         setCursor(oldCur);
+      }
       
 		return false;
 	}

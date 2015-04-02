@@ -82,9 +82,8 @@ private:
    std::string response_;
    std::string responseTerminator_; // response terminator
 
-   bool initialized_;
    bool busy_;
-   bool detailedLog_;
+   bool initialized_;
 
    std::string TokenizeControlCharacters(const std::string ) const;
    std::string DetokenizeControlCharacters(const std::string ) const;

@@ -114,10 +114,10 @@ public:
 
   // MMCamera API - sequence acqusition
   // ----------------------------------
-  int   StartSequenceAcquisition( long numImages, double interval_ms, bool stopOnOverflow );
-  int   StopSequenceAcquisition();
+  virtual int StartSequenceAcquisition( long numImages, double interval_ms, bool stopOnOverflow );
+  virtual int StopSequenceAcquisition();
   int   InsertImage();
-  int   ThreadRun();
+  virtual int ThreadRun (void);
 
   double GetNominalPixelSizeUm() const {return nominalPixelSizeUm_;}
   double GetPixelSizeUm() const {return nominalPixelSizeUm_ * GetBinning();}
@@ -184,7 +184,7 @@ public:
   int   OnShadingCorrectionSetup  (MM::PropertyBase* pProp, MM::ActionType eAct);
   int   OnFractionOfPixelsToDropOrSaturate(MM::PropertyBase* pProp, MM::ActionType eAct);
 
-  string buildCameraDeviceID( unsigned long serialNumber, const char* deviceName );
+  string buildCameraDeviceID( unsigned long serialNumber, const string & deviceName );
   string cameraDeviceID( void ) const;
   void  setCameraDeviceID( string cameraDeviceID );
 
@@ -193,8 +193,8 @@ public:
   int   GetPropertyString( const char* name, std::string & value );
 
 protected:
-  static int  accquireDeviceNumber( void );
-  static void releaseDeviceNumber( int deviceNo );
+  static u08  accquireDeviceNumber( void );
+  static void releaseDeviceNumber( const u08  deviceNo );
 
   double  getFramerate() const;
   void    setFramerate( double fps );
@@ -235,7 +235,7 @@ protected:
   void  setColor( const bool colorCamera );
   void  getAvailableCameras( CCameraList & cCameraList );
   void  setDeviceNo( int deviceNo );
-  int   deviceNo( void ) const;
+  u08   deviceNo( void ) const;
 
   int convertApiErrorCode( unsigned long errorNumber, const char* functionName = 0 );	
 
@@ -257,6 +257,9 @@ private:
   int   apiToMMErrorCode( unsigned long apiErrorNumber ) const;
   int   mmToApiErrorCode( unsigned long mmErrorNumber ) const;
   string getFramerateString( void ) const;
+  string getDeviceNameString( void ) const;
+  string getDeviceNameString( const S_CAMERA_VERSION & sCamVer ) const;
+
 
   static volatile int staticDeviceNo;
   string                    cameraDeviceID_;
@@ -319,8 +322,17 @@ private:
   int           nComponents_;
 
   string        exposureLongTime_;
-};
 
+  bool          stopOnOverflow_;
+  long          numImages_;
+  double        interval_ms_;
+  volatile bool abortGetImageFired_;
+  volatile bool bFirstExposureLongTimeImage_;
+
+  //CABSCameraSequenceThread* thread_;
+ // CABSCameraSequenceThread* thd_;
+};
+/*
 // image aquisition thread class
 class CABSCameraSequenceThread : public CCameraBase<CABSCamera>::BaseSequenceThread
 {
@@ -336,5 +348,5 @@ private:
   //! them into the circular buffer
   int svc(void) throw();
 }; 
-
+*/
 #endif // __ABSCAMERA_H__

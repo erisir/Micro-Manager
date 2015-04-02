@@ -13,7 +13,6 @@
 #include <iostream>
 #include <math.h>
 #include "MMDevice/ModuleInterface.h"
-#include "MMCore/Error.h"
 #include "DEExceptions.h"
 #include <sstream>
 #include <boost/exception/all.hpp>
@@ -65,43 +64,19 @@ const char* g_Property_DE_BinningY = "Binning Y";
 const char* g_DECamera_InconsistentStateMessage = "Operation failed. Please try again.";
 
 // Minimal communication timeout
-const int DE_minimal_communication_timeout = 30; //60 seconds of minimal timeout to account for network overhead and server response
+const unsigned long DE_minimal_communication_timeout = 30; // seconds of minimal timeout to account for network overhead and server response
 
 // Custom error for custom messages
 #define DEVICE_CUSTOM_ERROR 36
 
-// windows DLL entry code
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-							 DWORD  ul_reason_for_call, 
-							 LPVOID /*lpReserved*/
-							 )
-{
-	switch (ul_reason_for_call)
-	{
-	case DLL_PROCESS_ATTACH:
-	case DLL_THREAD_ATTACH:
-	case DLL_THREAD_DETACH:
-	case DLL_PROCESS_DETACH:
-		break;
-	}
-	return TRUE;
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 
-/**
- * List all suppoerted hardware devices here
- * Do not discover devices at runtime.  To avoid warnings about missing DLLs, Micro-Manager
- * maintains a list of supported device (MMDeviceList.txt).  This list is generated using 
- * information supplied by this function, so runtime discovery will create problems.
- */
 MODULE_API void InitializeModuleData()
 {
-	AddAvailableDeviceName(g_CameraDeviceName, "Direct Electron Camera");
+	RegisterDevice(g_CameraDeviceName, MM::CameraDevice, "Direct Electron Camera");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -145,7 +120,8 @@ CDECamera::CDECamera() :
 	readoutUs_(0.0),
 	bitDepth_(16),
 	sensorSizeX_(0),
-	sensorSizeY_(0)
+	sensorSizeY_(0),
+   stopOnOverflow_(false)
 {
 	// call the base class method to set-up default error codes/messages
 	InitializeDefaultErrorMessages();
@@ -263,7 +239,7 @@ int CDECamera::Initialize()
 			this->proxy_->get_Property(g_Property_DE_PixelSizeX, pixelSize_.x);
 			this->proxy_->get_Property(g_Property_DE_PixelSizeY, pixelSize_.y);			
 		}
-		catch (const CommandException& e){
+		catch (const CommandException&){
 			// Ignore optional parameters.			
 		}		
 
@@ -273,10 +249,10 @@ int CDECamera::Initialize()
 			this->proxy_->get_Property(g_Property_DE_ExposureTime, exposureTime_); 
 			exposureTime_ = exposureTime_*1000; // convert to millisec
 		}
-		catch (const CommandException& e){
+		catch (const CommandException&){
 			// Ignore optional parameters.			
 		}
-		this->proxy_->set_ImageTimeout((size_t)(exposureTime_/1000*1.5 + DE_minimal_communication_timeout));
+		this->proxy_->set_ImageTimeout((unsigned long)(exposureTime_/1000*1.5 + DE_minimal_communication_timeout));
 
 		// synchronize all properties
 		// --------------------------
@@ -395,8 +371,7 @@ int CDECamera::StartSequenceAcquisition(long numImages, double interval_ms, bool
 	}	
 
 	 // Start thread.
-	thd_->Start(numImages,interval_ms);
-	stopOnOverflow_ = stopOnOverflow;
+   CCameraBase::StartSequenceAcquisition(numImages, interval_ms, stopOnOverflow);
 	return DEVICE_OK;
 }
 
@@ -717,7 +692,7 @@ double CDECamera::GetExposure() const
 	try {
 		retval = this->proxy_->get_Property(g_Property_DE_ExposureTime, doubleTemp);
 	}
-	catch (const std::exception& e){
+	catch (const std::exception&){
 	}
 	if(retval){
 		return doubleTemp*1000; //get latest value from the server (cannot update local copy as the method is const)
@@ -742,7 +717,7 @@ void CDECamera::SetExposure(double exp)
 			//verify setting from the server
 			if(this->proxy_->get_Property(g_Property_DE_ExposureTime, doubleTemp)){
 				this->exposureTime_ = doubleTemp*1000; //update local variable
-				this->proxy_->set_ImageTimeout((size_t)(doubleTemp*1.5 + DE_minimal_communication_timeout));
+				this->proxy_->set_ImageTimeout((unsigned long)(doubleTemp*1.5 + DE_minimal_communication_timeout));
 			}
 		}
 	}
@@ -870,13 +845,11 @@ int CDECamera::OnProperty(MM::PropertyBase* pProp, MM::ActionType eAct)
 				break;
 			case MM::Float:
 				pProp->Get(dblTemp);
-				flTemp = dblTemp;
-				this->proxy_->set_Property(name, flTemp);
+				this->proxy_->set_Property(name, static_cast<float>(dblTemp));
 				break;
 			case MM::Integer:
 				pProp->Get(longTemp);
-				intTemp = (int)longTemp;
-				this->proxy_->set_Property(name, intTemp);
+				this->proxy_->set_Property(name, static_cast<int>(longTemp));
 				break;
 			default:
 				return DEVICE_INVALID_PROPERTY_TYPE;

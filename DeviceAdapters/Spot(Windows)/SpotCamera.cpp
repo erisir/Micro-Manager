@@ -40,38 +40,13 @@
 #include "../../MMDevice/ModuleInterface.h"
 #include "CodeUtility.h"
 
-bool requestShutdown;
 using namespace std;
 const char* g_DeviceName = "Spot";
 
-//
 typedef std::pair<std::string, std::string> DeviceInfo;
 extern std::vector<DeviceInfo> g_availableDevices;
 
 static bool bApiAvailable_s;
-
-
-// ------------------------------ DLL main --------------------------------------
-//
-// windows DLL entry code
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, DWORD  ul_reason_for_call, LPVOID /*lpReserved*/ ) 
-{
-	switch (ul_reason_for_call)
-	{
-	case DLL_PROCESS_ATTACH:
-
-	case DLL_THREAD_ATTACH:
-		break;
-	case DLL_THREAD_DETACH:
-	case DLL_PROCESS_DETACH:
-		requestShutdown = true;
-		break;
-	}
-	return TRUE;
-}
-#endif
-
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -80,8 +55,7 @@ BOOL APIENTRY DllMain( HANDLE /*hModule*/, DWORD  ul_reason_for_call, LPVOID /*l
 
 MODULE_API void InitializeModuleData()
 {
-	// could query driver and load up all cameras present on the system
-   AddAvailableDeviceName(g_DeviceName, "SpotCam");
+   RegisterDevice(g_DeviceName, MM::CameraDevice, "SPOT camera");
 }
 
 // the device name will contain the name specified by the spot driver
@@ -577,18 +551,14 @@ int SpotCamera::SnapImage()
  * appropriate properties are set (such as binning, pixel type, etc.)
  */
 const unsigned char* SpotCamera::GetImageBuffer()
-{     
+{
 
 	unsigned long singleChannelSize =0 ;
-	//CodeUtility::DebugOutput("entering getimagebuffer ...\n");
 
 	try
 	{
-
 		NextSequentialImage(img_[0] );
-		
 
-	  //  while (GetCurrentMMTime() - readoutStartTime_ < MM::MMTime(readoutUs_)) {CDeviceUtils::SleepMs(5);}
 		singleChannelSize = img_[0].Width() * img_[0].Height() * img_[0].Depth();
 
 		memcpy(rawBuffer_, img_[0].GetPixels(), singleChannelSize);
@@ -596,38 +566,21 @@ const unsigned char* SpotCamera::GetImageBuffer()
 	
 	catch(SpotBad& ex)
 	{
-
 		std::ostringstream  messs;
 		messs << " Spot Camera GetImageBuffer fails: " << ex.ReasonText() << std::endl;
 		LogMessage(messs.str().c_str());
 		CodeUtility::DebugOutput(messs.str().c_str());
 
-		// a mechanism to throw an error here would be nice
+		return 0;
 	}
-
-	//double elapsedMilli = this->GetCurrentMMTime().getMsec() - snapImageStartTime_ - pImplementation_->ExposureTime();
-
-
-	//double mebibytesPerSecond = singleChannelSize*MEBIBYTESINVERSE/(elapsedMilli/1000.);
-	//double megabytesPerSecond = singleChannelSize*0.000001/(elapsedMilli/1000.);
-
-	//std::stringstream ostring;
-
-	//ostring << " throughput: " << mebibytesPerSecond << " mebibytes per sec. " << ", i.e. " << megabytesPerSecond << " mega bytes / sec. \n";
-
-	//CodeUtility::DebugOutput(ostring.str());
-	
 
 	if( pImplementation_->AutoExposure())
 	{
 		SetExposure(pImplementation_->ExposureTime());
 		SetProperty(MM::g_Keyword_Gain, CDeviceUtils::ConvertToString(pImplementation_->Gain()));
-
 	}
-	//CodeUtility::DebugOutput("exiting getimagebuffer ...\n");
 
-
-   return rawBuffer_;
+	return rawBuffer_;
 }
 
 
@@ -658,8 +611,7 @@ int SpotCamera::NextSequentialImage(ImgBuffer& img)
 	unsigned int sourceheight, sourcewidth, sourcedepth;
 	char cdepth;
 	char *pData;
-	pData = 	pImplementation_->GetNextSequentialImage( sourceheight, sourcewidth, cdepth  );
-
+	pData = pImplementation_->GetNextSequentialImage(sourceheight, sourcewidth, cdepth);
 
 	sourcedepth = (int)cdepth;
 	if (3 == sourcedepth)
@@ -679,12 +631,9 @@ int SpotCamera::NextSequentialImage(ImgBuffer& img)
 		this->ResizeImageBuffer( sourcewidth, sourceheight, bytesPerPixel);
 	}
 
-
 	unsigned int destdepth = img.Depth();
 	unsigned int destwidth = img.Width();
 	unsigned int destheight = img.Height();
-
-	//memset(ptemp, 0, destdepth*destwidth*destheight);
 
 	// handle case where buffer doesn't match returned image size
 	unsigned int xdest, ydest;//, xsource, ysource;
@@ -694,18 +643,17 @@ int SpotCamera::NextSequentialImage(ImgBuffer& img)
 	unsigned int workingwidth = min(destwidth, sourcewidth);
 	unsigned int workingheight = min(destheight, sourceheight);
 
-	unsigned char* ptemp = img.GetPixelsRW();
+	unsigned char* pBuf = img.GetPixelsRW();
 
-	memset(ptemp,0, destdepth*destwidth*destheight);
+	memset(pBuf,0, destdepth*destwidth*destheight);
+
 #ifndef WIN32 // __APPLE__
-	memcpy( ptemp, pData, destdepth*destwidth*destheight);
+	memcpy(pBuf, pData, destdepth*destwidth*destheight);
 #else
-
-
-#if 1 // no right left swap needed
-	for( ydest = 0; ydest < workingheight; ++ydest)
+	// Convert RGB24 to RGBA32 (A = padding) if color; otherwise just copy
+	for (ydest = 0; ydest < workingheight; ++ydest)
 	{
-		for( xdest = 0; xdest < workingwidth; ++xdest)
+		for (xdest = 0; xdest < workingwidth; ++xdest)
 		{
 			roffsetdest = xdest*destdepth + destdepth*ydest*destwidth;
 			goffsetdest = roffsetdest + 1;
@@ -714,45 +662,18 @@ int SpotCamera::NextSequentialImage(ImgBuffer& img)
 			roffsetsource = xdest*sourcedepth + sourcedepth*ydest*sourcewidth;
 			goffsetsource = roffsetsource + 1;
 			boffsetsource = goffsetsource + 1;
-			ptemp[roffsetdest] = pData[roffsetsource];
-			if( 1 < destdepth)
+
+			pBuf[roffsetdest] = pData[roffsetsource];
+			if (1 < destdepth)
 			{
-			ptemp[goffsetdest] = pData[goffsetsource];			
-			ptemp[boffsetdest] = pData[boffsetsource];
+				pBuf[goffsetdest] = pData[goffsetsource];
+				pBuf[boffsetdest] = pData[boffsetsource];
 			}
 		}
 	}
 #endif
-
-
-#if 0
-
-	for( ydest = 0; ydest < workingheight; ++ydest)
-	{
-		for( int xsource  = 0; xsource < workingwidth; ++xsource)
-		{
-			xdest = workingwidth - 1 - xsource;
-			roffsetdest = xdest*destdepth + destdepth*ydest*destwidth;
-			goffsetdest = roffsetdest + 1;
-			boffsetdest = goffsetdest + 1;
-
-			roffsetsource = xsource*sourcedepth + sourcedepth*ydest*sourcewidth;
-			goffsetsource = roffsetsource + 1;
-			boffsetsource = goffsetsource + 1;
-			ptemp[roffsetdest] = pData[roffsetsource];
-			if( 1 < destdepth)
-			{
-				ptemp[goffsetdest] = pData[goffsetsource];			
-				ptemp[boffsetdest] = pData[boffsetsource];
-			}
-		}
-	}
-#endif
-	//img.SetPixels(ptemp);
-#endif 
 
 	return nRet;
-
 }
 
 
@@ -1686,7 +1607,7 @@ int SpotCamera::StartSequenceAcquisition(long numImages, double interval_ms, boo
 	numImages_ = numImages;
 
 	
-   thd_->Start(numImages, interval_ms);
+   CCameraBase::StartSequenceAcquisition(numImages, interval_ms, stopOnOverflow);
 
 
    return DEVICE_OK;
@@ -1699,8 +1620,14 @@ int SpotCamera::ThreadRun(void)
 	{
 		startme_ = false;
 		exposureTime_ = pImplementation_->ExposureTime();
-		pImplementation_->SetupNonStopSequence();
 
+		try {
+			pImplementation_->SetupNonStopSequence();
+		}
+		catch (const SpotBad& e) {
+			LogMessage(e.ReasonText());
+			return DEVICE_ERR;
+		}
 	}
 	return DEVICE_OK;
 

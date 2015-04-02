@@ -6,14 +6,9 @@
 // DESCRIPTION:   The interface to the Micro-Manager devices. Defines the 
 //                plugin API for all devices.
 //
-// NOTE:          This file is also used in the main control module MMCore.
-//                Do not change it undless as a part of the MMCore module
-//                revision. Discrepancy between this file and the one used to
-//                build MMCore will cause a malfunction and likely a crash too.
-// 
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 06/08/2005
 //
-// COPYRIGHT:     University of California, San Francisco, 2006
+// COPYRIGHT:     University of California, San Francisco, 2006-2014
 //                100X Imaging Inc, 2008
 //
 // LICENSE:       This file is distributed under the BSD license.
@@ -26,16 +21,24 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-//
-// CVS:           $Id$
-//
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Header version
-// If any of the class declarations changes, the interface version
+// If any of the class definitions changes, the interface version
 // must be incremented
-#define DEVICE_INTERFACE_VERSION 53
+#define DEVICE_INTERFACE_VERSION 61
 ///////////////////////////////////////////////////////////////////////////////
+
+
+// N.B.
+//
+// Never add parameters or return values that are not POD
+// (http://stackoverflow.com/a/146454) to any method of class Device and its
+// derived classes defined in this file. For example, a std::string parameter
+// is not acceptable (use const char*). This is to prevent inter-DLL
+// incompatibilities.
+
 
 #pragma once
 #ifndef MMMMDEVICE_H
@@ -53,14 +56,29 @@
 #include <sstream>
 
 
+#ifdef MODULE_EXPORTS
+#   ifdef _MSC_VER
+#      define MM_DEPRECATED(prototype) __declspec(deprecated) prototype
+#   elif defined(__GNUC__)
+#      define MM_DEPRECATED(prototype) prototype __attribute__((deprecated))
+#   else
+#      define MM_DEPRECATED(prototype) prototype
+#   endif
+#else
+#   define MM_DEPRECATED(prototype) prototype
+#endif
+
 
 #ifdef WIN32
    #define WIN32_LEAN_AND_MEAN
    #include <windows.h>
    #define snprintf _snprintf 
+
+   typedef HMODULE HDEVMODULE;
+#else
+   typedef void* HDEVMODULE;
 #endif
 
-#define HDEVMODULE void*
 
 class ImgBuffer;
 
@@ -216,23 +234,6 @@ namespace MM {
    };
 
 
-
-
-
-   /**
-    * Information about images passed from the camera
-    */
-   struct ImageMetadata
-   {
-      ImageMetadata() : exposureMs(0.0), ZUm(0.0), score(0.0) {}
-      ImageMetadata(MMTime& time, double expMs) : exposureMs(expMs), timestamp(time) {}
-
-      double exposureMs;
-      MMTime timestamp;
-      double ZUm;
-      double score;
-   };
-
    /**
     * Generic device interface.
     */
@@ -296,6 +297,8 @@ namespace MM {
       /*
        * library handle management (for use only in the client code)
        */
+      // TODO Get/SetModuleHandle() is no longer used; can remove at a
+      // convenient time.
       virtual HDEVMODULE GetModuleHandle() const = 0;
       virtual void SetModuleHandle(HDEVMODULE hLibraryHandle) = 0;
       virtual void SetLabel(const char* label) = 0;
@@ -338,6 +341,16 @@ namespace MM {
       // virtual void GetID(char* id) const = 0;
    };
 
+   /**
+    * Generic Device
+    */
+   class Generic : public Device
+   {
+   public:
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
+   };
+
    /** 
     * Camera API
     */
@@ -346,8 +359,8 @@ namespace MM {
       Camera() {}
       virtual ~Camera() {}
 
-      DeviceType GetType() const {return Type;}
-      static const DeviceType Type = CameraDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       // Camera API
       /**
@@ -504,18 +517,31 @@ namespace MM {
        * Return true when Sequence acquisition is activce, false otherwise
        */
       virtual bool IsCapturing() = 0;
+
       /**
-       * Adds a metadata tag that should be added to the metadata during image sequence acquisition
-       */
-      virtual void AddTag(const char* key, std::string deviceLabel, const char* value) = 0;
-      /**
-       * Remove the tag with the given key from the metadata that will be added during sequence acquisition
-       */
-      virtual void RemoveTag(const char* key) = 0;
-      /**
-       * Get the tags stored in this device.
+       * Get the metadata tags stored in this device.
+       * These tags will automatically be add to the metadata of an image inserted 
+       * into the circular buffer
+       *
        */
       virtual void GetTags(char* serializedMetadata) = 0;
+
+      /**
+       * Adds new tag or modifies the value of an existing one 
+       * These will automatically be added to images inserted into the circular buffer.
+       * Use this mechanism for tags that do not change often.  For metadata that
+       * change often, create an instance of metadata yourself and add to one of 
+       * the versions of the InsertImage function
+       */
+      virtual void AddTag(const char* key, const char* deviceLabel, const char* value) = 0;
+
+      /**
+       * Removes an existing tag from the metadata assoicated with this device
+       * These tags will automatically be add to the metadata of an image inserted 
+       * into the circular buffer
+       */
+      virtual void RemoveTag(const char* key) = 0;
+
       /*
        * Returns whether a camera's exposure time can be sequenced.
        * If returning true, then a Camera adapter class should also inherit
@@ -552,8 +578,8 @@ namespace MM {
       virtual ~Shutter() {}
    
       // Device API
-      virtual DeviceType GetType() const {return Type;}
-      static const DeviceType Type = ShutterDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
    
       // Shutter API
       virtual int SetOpen(bool open = true) = 0;
@@ -575,8 +601,8 @@ namespace MM {
       virtual ~Stage() {}
    
       // Device API
-      virtual DeviceType GetType() const {return Type;}
-      static const DeviceType Type = StageDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
    
       // Stage API
       virtual int SetPositionUm(double pos) = 0;
@@ -588,7 +614,6 @@ namespace MM {
       virtual int GetPositionSteps(long& steps) = 0;
       virtual int SetOrigin() = 0;
       virtual int GetLimits(double& lower, double& upper) = 0;
-      virtual int Home() { return DEVICE_OK; }
       /*
        * Returns whether a stage can be sequenced (synchronized by TTLs)
        * If returning true, then a Stage class should also inherit
@@ -628,10 +653,15 @@ namespace MM {
       virtual ~XYStage() {}
 
       // Device API
-      virtual DeviceType GetType() const {return Type;}
-      static const DeviceType Type = XYStageDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       // XYStage API
+      // it is recommended that device adapters implement the  "Steps" methods taking
+      // long integers but leave the default implementations (in DeviceBase.h) for
+      // the "Um" methods taking doubles.  The latter utilize directionality and origin
+      // settings set by user and operate via the "Steps" methods.  The step size is
+      // the inherent minimum distance/step and should be defined by the adapter.
       virtual int SetPositionUm(double x, double y) = 0;
       virtual int SetRelativePositionUm(double dx, double dy) = 0;
       virtual int SetAdapterOriginUm(double x, double y) = 0;
@@ -644,7 +674,7 @@ namespace MM {
       virtual int SetRelativePositionSteps(long x, long y) = 0;
       virtual int Home() = 0;
       virtual int Stop() = 0;
-	   virtual int SetOrigin() = 0;//jizhen, 4/12/2007
+      virtual int SetOrigin() = 0;//jizhen, 4/12/2007
       virtual int GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax) = 0;
       virtual double GetStepSizeXUm() = 0;
       virtual double GetStepSizeYUm() = 0;
@@ -684,8 +714,8 @@ namespace MM {
       virtual ~State() {}
       
       // MMDevice API
-      virtual DeviceType GetType() const {return Type;}
-      static const DeviceType Type = StateDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
       
       // MMStateDevice API
       virtual int SetPosition(long pos) = 0;
@@ -701,71 +731,6 @@ namespace MM {
    };
 
    /**
-    * Programmable I/O device API, for programmable I/O boards with patterns
-    * and sequences
-    */
-   class ProgrammableIO : public Device
-   {
-   public:
-      ProgrammableIO() {}
-      virtual ~ProgrammableIO() {}
-      
-      // MMDevice API
-      virtual DeviceType GetType() const {return Type;}
-      static const DeviceType Type = ProgrammableIODevice;
-      
-      // ProgrammableIO API
-
-      /**
-       * Stores the current set of properties (state) into a specified slot.
-       * The device should automatically resize its internal pattern array to the highest
-       * requested index, or return error if it can't.
-       * NOTE: the device must handle the concept of the 'undefined'or 'default' pattern in order to
-       * pad the pattern array if necessary
-       */
-      virtual int DefineCurrentStateAsPattern(long index) = 0;
-
-      /**
-       * Cycles through the pattern array.
-       * Convenient to use for external triggering.
-       */
-      virtual int SetNextPattern() = 0;
-
-      /**
-       * Set the pattern based either on the index.
-       */
-      virtual int SetPattern(long index) = 0;
-      /**
-       * Set the pattern based either on the label.
-       */
-      virtual int SetPattern(const char* label) = 0;
-
-      /**
-       * Get current pattern index.
-       */
-      virtual int GetPattern(long& index) const = 0;
-      /**
-       * Get current pattern label.
-       */
-      virtual int GetPattern(char* label) const = 0;
-
-      /**
-       * Get the label assigned to a specific position.
-       */
-      virtual int GetPatternLabel(long pos, char* label) const = 0;
-      /**
-       * Assign a label to the specific position.
-       */
-      virtual int SetPatternLabel(long pos, const char* label) = 0;
-
-      /**
-       * Returns size of the pattern array.
-       */
-      virtual unsigned long GetNumberOfPatterns() const = 0;
-   };
-
-
-   /**
     * Serial port API.
     */
    class Serial : public Device
@@ -775,8 +740,8 @@ namespace MM {
       virtual ~Serial() {}
       
       // MMDevice API
-      virtual DeviceType GetType() const {return Type;}
-      static const DeviceType Type = SerialDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
       
       // Serial API
       virtual PortType GetPortType() const = 0;
@@ -797,8 +762,8 @@ namespace MM {
       virtual ~AutoFocus() {}
       
       // MMDevice API
-      virtual DeviceType GetType() const {return AutoFocusDevice;}
-      static const DeviceType Type = AutoFocusDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       // AutoFocus API
       virtual int SetContinuousFocusing(bool state) = 0;
@@ -814,25 +779,6 @@ namespace MM {
    };
 
    /**
-    * Streaming API.
-    */
-   class ImageStreamer : public Device
-   {
-   public:
-      ImageStreamer();
-      virtual ~ImageStreamer();
-
-      // MM Device API
-      virtual DeviceType GetType() const {return ImageStreamerDevice;}
-      static const DeviceType Type = ImageStreamerDevice;
-
-      // image streaming API
-      virtual int OpenContext(unsigned width, unsigned height, unsigned depth, const char* path, const Metadata* contextMd = 0);
-      virtual int CloseContext();
-      virtual int SaveImage(unsigned char* buffer, unsigned width, unsigned height, unsigned depth, const Metadata* imageMd = 0);
-   };
-
-   /**
     * Image processor API.
     */
    class ImageProcessor : public Device
@@ -842,8 +788,8 @@ namespace MM {
          virtual ~ImageProcessor() {}
 
       // MMDevice API
-      virtual DeviceType GetType() const {return ImageProcessorDevice;}
-      static const DeviceType Type = ImageProcessorDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       // image processor API
       virtual int Process(unsigned char* buffer, unsigned width, unsigned height, unsigned byteDepth) = 0;
@@ -861,8 +807,8 @@ namespace MM {
       virtual ~SignalIO() {}
 
       // MMDevice API
-      virtual DeviceType GetType() const {return SignalIODevice;}
-      static const DeviceType Type = SignalIODevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       // signal io API
       virtual int SetGateOpen(bool open = true) = 0;
@@ -945,8 +891,8 @@ namespace MM {
       virtual ~Magnifier() {}
 
       // MMDevice API
-      virtual DeviceType GetType() const {return MagnifierDevice;}
-      static const DeviceType Type = MagnifierDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       virtual double GetMagnification() = 0;
    };
@@ -961,8 +907,8 @@ namespace MM {
       SLM() {}
       virtual ~SLM() {}
 
-      DeviceType GetType() const {return Type;}
-      static const DeviceType Type = SLMDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       // SLM API
       /**
@@ -991,6 +937,16 @@ namespace MM {
       virtual int SetPixelsTo(unsigned char red, unsigned char green, unsigned char blue) = 0;
 
       /**
+       * Command the SLM to turn off after a specified interval.
+       */
+      virtual int SetExposure(double interval_ms) = 0;
+
+      /**
+       * Find out the exposure interval of an SLM.
+       */
+      virtual double GetExposure() = 0;
+
+      /**
        * Get the SLM width in pixels.
        */
       virtual unsigned GetWidth() = 0;
@@ -1010,6 +966,84 @@ namespace MM {
        */
       virtual unsigned GetBytesPerPixel() = 0;
 
+      // SLM Sequence functions
+      // Sequences can be used for fast acquisitions, synchronized by TTLs rather than
+      // computer commands. 
+      // Sequences of images can be uploaded to the SLM.  The SLM will cycle through
+      // the uploaded list of images (perhaps triggered by an external trigger or by
+      // an internal clock.
+      // If the device is capable (and ready) to do so IsSLMSequenceable will return
+      // be true. If your device can not execute sequences, IsSLMSequenceable returns false.
+
+      /**
+       * Lets the core know whether or not this SLM device accepts sequences
+       * If the device is sequenceable, it is usually best to add a property through which 
+       * the user can set "isSequenceable", since only the user knows whether the device
+       * is actually connected to a trigger source.
+       * If IsSLMSequenceable returns true, the device adapter must also implement the
+       * sequencing functions for the SLM.
+       * @param isSequenceable signals whether other sequence functions will work
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int IsSLMSequenceable(bool& isSequenceable) const = 0;
+
+      /**
+       * Returns the maximum length of a sequence that the hardware can store.
+       * @param nrEvents max length of sequence
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int GetSLMSequenceMaxLength(long& nrEvents) const = 0; 
+
+      /**
+       * Tells the device to start running a sequnece (i.e. start switching between images 
+       * sent previously, triggered by a TTL or internal clock).
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int StartSLMSequence() = 0;
+
+      /**
+       * Tells the device to stop running the sequence.
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int StopSLMSequence() = 0;
+
+      /**
+       * Clears the SLM sequence from the device and the adapter.
+       * If this function is not called in between running 
+       * two sequences, it is expected that the same sequence will run twice.
+       * To upload a new sequence, first call this function, then call
+       * AddToSLMSequence(image)
+       * as often as needed.
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int ClearSLMSequence() = 0;
+
+      /**
+       * Adds a new 8-bit projection image to the sequence.
+       * The image can either be added to a representation of the sequence in the 
+       * adapter, or it can be directly written to the device
+       * @param pixels An array of 8-bit pixels whose length matches that expected by the SLM.
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int AddToSLMSequence(const unsigned char * const pixels) = 0;
+
+      /**
+       * Adds a new 32-bit (RGB) projection image to the sequence.
+       * The image can either be added to a representation of the sequence in the 
+       * adapter, or it can be directly written to the device
+       * @param pixels An array of 32-bit RGB pixels whose length matches that expected by the SLM.
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int AddToSLMSequence(const unsigned int * const pixels) = 0;
+
+      /**
+       * Sends the complete sequence to the device.
+       * If the individual images were already send to the device, there is 
+       * nothing to be done.
+       * @return errorcode (DEVICE_OK if no error)
+       */
+      virtual int SendSLMSequence() = 0;
+
    };
 
    /**
@@ -1021,12 +1055,12 @@ namespace MM {
       Galvo() {}
       virtual ~Galvo() {}
 
-      DeviceType GetType() const {return Type;}
-      static const DeviceType Type = GalvoDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
       
    //Galvo API:
       virtual int PointAndFire(double x, double y, double time_us) = 0;
-	  virtual int SetSpotInterval(double pulseInterval_us) = 0;
+      virtual int SetSpotInterval(double pulseInterval_us) = 0;
       virtual int SetPosition(double x, double y) = 0;
       virtual int GetPosition(double& x, double& y) = 0;
       virtual int SetIlluminationState(bool on) = 0;
@@ -1039,24 +1073,7 @@ namespace MM {
       virtual int SetPolygonRepetitions(int repetitions) = 0;
       virtual int RunPolygons() = 0;
       virtual int StopSequence() = 0;
-	  virtual int GetChannel(char* channelName) = 0;
-   };
-
-   /**
-    * Command monitoring and control device.
-    */
-   class CommandDispatch : public Device
-   {
-   public:
-      CommandDispatch() {}
-      virtual ~CommandDispatch() {}
-
-      // MMDevice API
-      virtual DeviceType GetType() const {return CommandDispatchDevice;}
-      static const DeviceType Type = CommandDispatchDevice;
-
-      // Command dispatch API
-      virtual int LogCommand(const char* logCommandText) = 0;
+      virtual int GetChannel(char* channelName) = 0;
    };
 
    /**
@@ -1070,28 +1087,46 @@ namespace MM {
       virtual ~Hub() {}
 
       // MMDevice API
-      virtual DeviceType GetType() const {return HubDevice;}
-      static const DeviceType Type = HubDevice;
+      virtual DeviceType GetType() const { return Type; }
+      static const DeviceType Type;
 
       /**
-       * Attempts to detect child device hardware by communicating with hub hardware.
-       * If any child hardware is detected, causes module to instantiate
-       * appropriate child Device instance(s).
+       * Instantiate all available child peripheral devices.
+       *
+       * The implementation must instantiate all available child devices and
+       * register them by calling AddInstalledDevice() (currently in HubBase).
+       *
+       * Instantiated peripherals are owned by the Core, and will be destroyed
+       * by calling the usual ModuleInterface DeleteDevice() function.
+       *
+       * The result of calling this function more than once for a given hub
+       * instance is undefined.
        */
       virtual int DetectInstalledDevices() = 0;
 
       /**
-       * Removes all Device instances that were created by DetectInstalledDevices()
+       * Removes all Device instances that were created by
+       * DetectInstalledDevices(). Not used.
+       *
+       * Note: Device adapters traditionally call this function at the
+       * beginning of their DetectInstalledDevices implementation. This is not
+       * necessary but is permissible.
        */
       virtual void ClearInstalledDevices() = 0;
 
       /**
-       * Returns the number of child Devices after DetectInstalledDevices was called.
+       * Returns the number of child Devices after DetectInstalledDevices was
+       * called.
+       *
+       * Must not be called from device adapters.
        */
       virtual unsigned GetNumberOfInstalledDevices() = 0;
       
       /**
-       * Returns a pointer to the Device with index devIdx. 0 <= devIdx < GetNumberOfInstalledDevices().
+       * Returns a pointer to the Device with index devIdx. 0 <= devIdx <
+       * GetNumberOfInstalledDevices().
+       *
+       * Must not be called from device adapters.
        */
       virtual Device* GetInstalledDevice(int devIdx) = 0;
    };
@@ -1110,7 +1145,18 @@ namespace MM {
       virtual Device* GetDevice(const Device* caller, const char* label) = 0;
       virtual int GetDeviceProperty(const char* deviceName, const char* propName, char* value) = 0;
       virtual int SetDeviceProperty(const char* deviceName, const char* propName, const char* value) = 0;
+
+      /// Get the names of currently loaded devices of a given type.
+      /**
+       * If deviceIterator exceeds or is equal to the number of currently
+       * loaded devices of type devType, an empty string is returned.
+       *
+       * \param[in] devType - the device type
+       * \param[out] pDeviceName - buffer in which device name will be returned
+       * \param[in] deviceIterator - index of device (within the given type)
+       */
       virtual void GetLoadedDeviceOfType(const Device* caller, MM::DeviceType devType, char* pDeviceName, const unsigned int deviceIterator) = 0;
+
       virtual int SetSerialProperties(const char* portName,
                                       const char* answerTimeout,
                                       const char* baudRate,
@@ -1124,8 +1170,7 @@ namespace MM {
       virtual int ReadFromSerial(const Device* caller, const char* port, unsigned char* buf, unsigned long length, unsigned long& read) = 0;
       virtual int PurgeSerial(const Device* caller, const char* portName) = 0;
       virtual MM::PortType GetSerialPortType(const char* portName) const = 0;
-      virtual int OnStatusChanged(const Device* caller) = 0;
-      virtual int OnFinished(const Device* caller) = 0;
+
       virtual int OnPropertiesChanged(const Device* caller) = 0;
       /**
        * Callback to signal the UI that a property changed
@@ -1147,26 +1192,33 @@ namespace MM {
        * When the exposure time has changed, use this callback to inform the UI
        */
       virtual int OnExposureChanged(const Device* caller, double newExposure) = 0;
+      /**
+       * When the SLM exposure time has changed, use this callback to inform the UI
+       */
+      virtual int OnSLMExposureChanged(const Device* caller, double newExposure) = 0;
+      /**
+       * Magnifiers can use this to signal changes in magnification
+       */
+      virtual int OnMagnifierChanged(const Device* caller) = 0;
 
       virtual unsigned long GetClockTicksUs(const Device* caller) = 0;
       virtual MM::MMTime GetCurrentMMTime() = 0;
 
-      // continuous acquisition
-      virtual int OpenFrame(const Device* caller) = 0;
-      virtual int CloseFrame(const Device* caller) = 0;
+      // sequence acquisition
       virtual int AcqFinished(const Device* caller, int statusCode) = 0;
       virtual int PrepareForAcq(const Device* caller) = 0;
       virtual int InsertImage(const Device* caller, const ImgBuffer& buf) = 0;
       virtual int InsertImage(const Device* caller, const unsigned char* buf, unsigned width, unsigned height, unsigned byteDepth, const Metadata* md = 0, const bool doProcess = true) = 0;
+      /// \deprecated Use the other forms instead.
       virtual int InsertImage(const Device* caller, const unsigned char* buf, unsigned width, unsigned height, unsigned byteDepth, const char* serializedMetadata, const bool doProcess = true) = 0;
       virtual void ClearImageBuffer(const Device* caller) = 0;
       virtual bool InitializeImageBuffer(unsigned channels, unsigned slices, unsigned int w, unsigned int h, unsigned int pixDepth) = 0;
       virtual int InsertMultiChannel(const Device* caller, const unsigned char* buf, unsigned numChannels, unsigned width, unsigned height, unsigned byteDepth, Metadata* md = 0) = 0;
-      virtual void SetAcqStatus(const Device* caller, int statusCode) = 0;
-      virtual long getImageBufferTotalFrames() = 0;
-      virtual long getImageBufferFreeFrames() = 0;
 
       // autofocus
+      // TODO This interface needs improvement: the caller pointer should be
+      // passed, and it should be clarified whether the use of these methods is
+      // to be limited to autofocus or not. - Mark T.
       virtual const char* GetImage() = 0;
       virtual int GetImageDimensions(int& width, int& height, int& depth) = 0;
       virtual int GetFocusPosition(double& pos) = 0;
@@ -1182,24 +1234,31 @@ namespace MM {
       virtual int GetChannelConfig(char* channelConfigName, const unsigned int channelConfigIterator) = 0;
 
       // direct access to specific device types
-      virtual MM::ImageProcessor* GetImageProcessor(const MM::Device* caller) = 0;
-      virtual MM::AutoFocus* GetAutoFocus(const MM::Device* caller) = 0;
-      virtual MM::Hub* GetParentHub(const MM::Device* caller) const = 0;
-      virtual MM::Device* GetPeripheral(const MM::Device* caller, unsigned idx) const = 0;
-      virtual unsigned GetNumberOfPeripherals(const MM::Device* caller) = 0;
+      // TODO With the exception of GetParentHub(), these should be removed in
+      // favor of methods providing indirect access to the required
+      // functionality. Eventually we should completely avoid access to raw
+      // pointers to devices of other device adapters (because we loose
+      // information on errors, because direct access ignores any
+      // synchronization implemented in the Core, and because it would be bad
+      // if device adapters stored the returned pointer). - Mark T.
+      virtual MM::ImageProcessor* GetImageProcessor(const MM::Device* caller) = 0; // Use not recommended
+      virtual MM::AutoFocus* GetAutoFocus(const MM::Device* caller) = 0; // Use not recommended
 
-      virtual MM::State* GetStateDevice(const MM::Device* caller, const char* deviceName) = 0;
-      virtual MM::SignalIO* GetSignalIODevice(const MM::Device* caller, const char* deviceName) = 0;
+      virtual MM::Hub* GetParentHub(const MM::Device* caller) const = 0;
+
+      virtual MM::State* GetStateDevice(const MM::Device* caller, const char* deviceName) = 0; // Use not recommended
+      virtual MM::SignalIO* GetSignalIODevice(const MM::Device* caller, const char* deviceName) = 0; // Use not recommended
 
       // asynchronous error handling
-      virtual void NextPostedError(int& /*errorCode*/, char* /*pMessage*/, int /*maxlen*/, int& /*messageLength*/) = 0;
-      virtual void PostError(const int, const char* ) = 0;
-      virtual void ClearPostedErrors( void) = 0;
-
-      // thread locking
-      virtual MMThreadLock* getModuleLock(const MM::Device* caller) = 0;
-      virtual void removeModuleLock(const MM::Device* caller) = 0;
-   
+      // TODO We do need a framework for handling asynchronous errors, but this
+      // interface is poorly thought through. I'm working on a better design.
+      // - Mark T.
+      /// \deprecated Not sure what this was meant to do.
+      MM_DEPRECATED(virtual void NextPostedError(int& /*errorCode*/, char* /*pMessage*/, int /*maxlen*/, int& /*messageLength*/)) = 0;
+      /// \deprecated Better handling of asynchronous errors to be developed.
+      MM_DEPRECATED(virtual void PostError(const int, const char*)) = 0;
+      /// \deprecated Better handling of asynchronous errors to be developed.
+      MM_DEPRECATED(virtual void ClearPostedErrors(void)) = 0;
    };
 
 } // namespace MM

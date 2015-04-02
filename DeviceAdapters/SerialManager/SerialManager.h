@@ -18,31 +18,35 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
-//
 
-#ifndef _SERIALMANAGER_H_
-#define _SERIALMANAGER_H_
+#pragma once
 
-#include "../../MMDevice/MMDevice.h"
-#include "../../MMDevice/DeviceBase.h"
-#include <string>
+// Prevent windows.h (through DeviceBase.h) from includeing winsock.h
+// before boost/asio.h (which results in an #error).
+#define WIN32_LEAN_AND_MEAN
+
+#include "DeviceBase.h"
+
+#ifdef __APPLE__
+// OS X 10.5 kqueue does not support serial
+// See https://svn.boost.org/trac/boost/ticket/2565 and
+// http://sourceforge.net/p/asio/mailman/message/24889328/
+#define BOOST_ASIO_DISABLE_KQUEUE
+// (This must come before all boost/asio includes, including indirect ones.)
+
+#include <IOKit/serial/ioss.h>
+#endif // __APPLE__
+
+#include <boost/asio.hpp>
+#include <boost/asio/serial_port.hpp>
+#include <boost/thread.hpp>
+
 #include <iostream>
+#include <map>
+#include <string>
+#include <vector>
 
-#ifdef WIN32
-// suppress an incomprehensible warning from inside boost future.
-#pragma warning( push )
-#pragma warning( disable : 4512 )
-#endif
-
-#include <boost/bind.hpp> 
-#include <boost/asio.hpp> 
-#include <boost/asio/serial_port.hpp> 
-#include <boost/thread.hpp> 
-
-#ifdef WIN32
-#pragma warning( pop )
-#endif
+class AsioClient;
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -61,7 +65,6 @@
 #define ERR_PORT_BLACKLISTED 110
 #define ERR_PORT_NOTINITIALIZED 111
 
-class AsioClient;
 
 //////////////////////////////////////////////////////////////////////////////
 // Implementation of the MMDevice and MMStateDevice interfaces
@@ -90,19 +93,16 @@ public:
 
    std::string Name(void) const;
 
+   // This overrides a protected nonvirtual function and makes it public.
    void LogMessage(const char *const p, bool debugOnly = false)
-	{
-      if(this->IsCallbackRegistered())
+   {
+      if (this->IsCallbackRegistered())
          CSerialBase<SerialPort>::LogMessage(std::string(p), debugOnly);
       else
          std::cerr << p << std::endl;;
-	};
+   }
 
-   void LogBinaryMessage( const bool isInput, const unsigned char*const pdata, const int length, bool debugOnly = false);
-   void LogBinaryMessage( const bool isInput, const std::vector<unsigned char>& data, bool debugOnly = false);
-   void LogBinaryMessage( const bool isInput, const std::vector<char>& data, bool debugOnly = false);
 
-   
    // action interface
    // ----------------
    int OnStopBits(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -119,7 +119,7 @@ public:
    bool OKToDelete() {return refCount_ < 1;}
 
 
-   bool Initialized(void) { return initialized_;};
+   bool Initialized(void) { return initialized_; }
 
 
 private:
@@ -131,7 +131,6 @@ private:
    // thread locking for the port 
    MMThreadLock portLock_;
 
-   double portTimeoutMs_;
    double answerTimeoutMs_;
    int refCount_;
    double transmitCharWaitMs_;
@@ -147,7 +146,11 @@ private:
    boost::thread* pThread_;
    bool verbose_; // if false, turn off LogBinaryMessage even in Debug Log
 
-
+#ifdef _WIN32
+   int OpenWin32SerialPort(const std::string& portName, HANDLE& portHandle);
+#endif
+   void LogAsciiCommunication(const char* prefix, bool isInput, const std::string& content);
+   void LogBinaryCommunication(const char* prefix, bool isInput, const unsigned char* content, std::size_t length);
 };
 
 class SerialManager
@@ -170,5 +173,3 @@ class SerialPortLister
       static void ListPorts(std::vector<std::string> &availablePorts);
       static bool portAccessible(const char*  portName);                     
 };
-
-#endif //_SERIALMANAGER_H_

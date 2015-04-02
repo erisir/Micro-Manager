@@ -3,7 +3,7 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Thorlabs device adapters: BBD102 Controller
+// DESCRIPTION:   Thorlabs device adapters: BBD Controller
 //
 // COPYRIGHT:     Thorlabs, 2011
 //
@@ -190,8 +190,8 @@ void XYStage::GetName(char* name) const
 int XYStage::Initialize()
 {
    // initialize individual stages
-   xstage_ = new MotorStage(this, port_, 0, answerTimeoutMs_, moveTimeoutMs_);
-   ystage_ = new MotorStage(this, port_, 1, answerTimeoutMs_, moveTimeoutMs_);
+   xstage_ = new MotorStage(this, GetCoreCallback(), port_, 0, answerTimeoutMs_, moveTimeoutMs_);
+   ystage_ = new MotorStage(this, GetCoreCallback(), port_, 1, answerTimeoutMs_, moveTimeoutMs_);
 
    // initialize device and get hardware information
    int ret = xstage_->Initialize(&info_);
@@ -202,7 +202,8 @@ int XYStage::Initialize()
       return ret;
 
    // confirm that the device is supported
-   if (strcmp(info_.szModelNum, "BBD102") != 0)
+   if (strcmp(info_.szModelNum, "BBD102") != 0 && strcmp(info_.szModelNum, "BBD103") != 0 &&
+			strcmp(info_.szModelNum, "BBD202") != 0 && strcmp(info_.szModelNum, "BBD203") != 0)
       return ERR_UNRECOGNIZED_DEVICE;
 
    CreateProperty(g_SerialNumberProp, CDeviceUtils::ConvertToString((int)info_.dwSerialNum), MM::String, true);
@@ -312,8 +313,11 @@ int XYStage::SetPositionSteps(long x, long y)
    if (Busy())
       return ERR_BUSY;
 
-   cmdThread_->StartMove(x, y);
-   CDeviceUtils::SleepMs(10); // to make sure that there is enough time for thread to get started
+   if (x <= xAxisMaxSteps && y <= yAxisMaxSteps)
+   {
+      cmdThread_->StartMove(x, y);
+      CDeviceUtils::SleepMs(10); // to make sure that there is enough time for thread to get started
+   }
 
    return DEVICE_OK;   
 }
@@ -387,6 +391,14 @@ int XYStage::Home()
    
    ostringstream os;
    os << "Status X axis (hex): " << hex << stat.dwStatusBits;
+   LogMessage(os.str(), true);
+
+   // check status
+   ret = GetStatus(stat, Y);
+   if (ret != DEVICE_OK)
+      return ret;
+   
+   os << "Status Y axis (hex): " << hex << stat.dwStatusBits;
    LogMessage(os.str(), true);
 
    return DEVICE_OK;

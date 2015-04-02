@@ -28,36 +28,37 @@ import ij.gui.ImageWindow;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 
-import javax.swing.JOptionPane;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import mmcorej.CMMCore;
+import org.micromanager.internalinterfaces.LiveModeListener;
 import org.micromanager.utils.ReportingUtils;
 
 /**
 */
-public class ZWheelListener implements MouseWheelListener {
+public class ZWheelListener implements MouseWheelListener, LiveModeListener {
    private CMMCore core_;
-   private MMStudioMainFrame gui_;
+   private MMStudio studio_;
    private ImageCanvas canvas_;
    private static boolean isRunning_ = false;
    private static final double moveIncrement_ = 0.20;
 
-   public ZWheelListener(CMMCore core, MMStudioMainFrame gui) {
+   public ZWheelListener(CMMCore core, MMStudio gui) {
       core_ = core;
-      gui_ = gui;
+      studio_ = gui;
    }
 
    public void start () {
       // Get a handle to the AcqWindow
       if (WindowManager.getCurrentWindow() != null) {
-         start (WindowManager.getCurrentWindow());
+         start(WindowManager.getCurrentWindow());
       }
    }
    
-   public void start (ImageWindow win) {
-      if (isRunning_)
+   public void start(ImageWindow win) {
+      if (isRunning_) {
          stop(); 
+      }
 
 	  isRunning_ = true;
 	  if (win != null) {
@@ -81,17 +82,14 @@ public class ZWheelListener implements MouseWheelListener {
          return;
       canvas_ = win.getCanvas();
       canvas_.addMouseWheelListener(this);
-      // TODO:  add to ImageJ Toolbar
-      //int tool = Toolbar.getInstance().addTool("Test Tool");
-      //Toolbar.getInstance().setTool(tool); 
-      //images_.addElement(id);
    }
 
+   @Override
    public void mouseWheelMoved(MouseWheelEvent e) {
 	  synchronized(this) {
 		  // Get needed info from core
 		  String zStage = core_.getFocusDevice();
-		  if (zStage == null)
+		  if (zStage == null || zStage.equals(""))
 			  return;
  
 		  double moveIncrement = moveIncrement_;
@@ -109,10 +107,15 @@ public class ZWheelListener implements MouseWheelListener {
 			  ReportingUtils.showError(ex);
 			  return;
 		  }
-
-        gui_.updateZPosRelative(move * moveIncrement);
+        studio_.updateZPosRelative(move * moveIncrement);
 	  }
-
    } 
-
+   
+   public void liveModeEnabled(boolean enabled) {
+      if (enabled) {
+         start();
+      } else {
+         stop();
+      }
+   }
 }

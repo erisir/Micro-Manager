@@ -54,8 +54,7 @@ const char * line_feed = "\n";
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ControllerName, "CoherentCube Laser");
-   
+   RegisterDevice(g_ControllerName, MM::ShutterDevice, "CoherentCube Laser");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -84,8 +83,6 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 
 CoherentCube::CoherentCube(const char* name) :
    initialized_(false), 
-   //powerSetpoint_(0),
-	//powerReadback_(0),
    state_(0),
    name_(name), 
    busy_(false),

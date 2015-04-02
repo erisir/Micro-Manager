@@ -21,21 +21,21 @@
 //
 package org.micromanager.acquisition;
 
+import ij.gui.ImageWindow;
+
 import java.text.NumberFormat;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import javax.swing.SwingUtilities;
 import mmcorej.CMMCore;
 import mmcorej.TaggedImage;
-import org.json.JSONException;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.imagedisplay.VirtualAcquisitionDisplay;
+import org.micromanager.MMStudio;
+import org.micromanager.SnapLiveManager;
+import org.micromanager.utils.CanvasPaintPending;
 import org.micromanager.utils.MDUtils;
 import org.micromanager.utils.MMScriptException;
 import org.micromanager.utils.ReportingUtils;
@@ -47,38 +47,141 @@ import org.micromanager.utils.ReportingUtils;
  * @author Henry Pinkard
  */
 public class LiveModeTimer {
-
-   private static final String CCHANNELINDEX = "CameraChannelIndex";
-   private static final String ACQ_NAME = MMStudioMainFrame.SIMPLE_ACQ;
    private VirtualAcquisitionDisplay win_;
    private CMMCore core_;
-   private MMStudioMainFrame gui_;
+   private MMStudio studio_;
+   private SnapLiveManager snapLiveManager_;
    private int multiChannelCameraNrCh_;
-   private long fpsTimer_;
-   private long fpsCounter_;
-   private long imageNumber_;
-   private long lastImageNumber_;
-   private long oldImageNumber_;
+
+   private long fpsTimer_; // Guarded by this
+   private long fpsCounter_; // Guarded by this
+   private long imageNumber_; // Guarded by this
+   private long oldImageNumber_; // Guarded by this
+
    private long fpsInterval_ = 5000;
    private final NumberFormat format_;
    private boolean running_ = false;
-   private Timer timer_;
-   private TimerTask task_;
-   private MMStudioMainFrame.DisplayImageRoutine displayImageRoutine_;
-    private LinkedBlockingQueue<TaggedImage> imageQueue_;
+   private Runnable task_;
+   private final MMStudio.DisplayImageRoutine displayImageRoutine_;
+   private LinkedBlockingQueue<TaggedImage> imageQueue_;
+   private static int mCamImageCounter_ = 0;
+   private boolean multiCam_ = false;
+
+   // Helper class to start and stop timer task atomically.
+   private class TimerController {
+      private Timer timer_;
+      private final Object timerLock_ = new Object();
+      private boolean timerTaskShouldStop_ = true; // Guarded by timerLock_
+      private boolean timerTaskIsBusy_ = false; // Guarded by timerLock_
+      public void start(final Runnable task, long interval) {
+         synchronized (timerLock_) {
+            if (timer_ != null) {
+               return;
+            }
+            timer_ = new Timer("Live mode timer");
+            timerTaskShouldStop_ = false;
+            TimerTask timerTask = new TimerTask() {
+               @Override
+               public void run() {
+                  synchronized (timerLock_) {
+                     if (timerTaskShouldStop_) {
+                        return;
+                     }
+                     timerTaskIsBusy_ = true;
+                  }
+                  try {
+                     task.run();
+                  }
+                  finally {
+                     synchronized (timerLock_) {
+                        timerTaskIsBusy_ = false;
+                        timerLock_.notifyAll();
+                     }
+                  }
+               }
+            };
+            timer_.schedule(timerTask, 0, interval);
+         }
+      }
+
+      // Thread-safe, but will deadlock if called from within the task.
+      public void stopAndWaitForCompletion() {
+         synchronized (timerLock_) {
+            if (timer_ == null) {
+               return;
+            }
+            // Stop the timer task atomically, ensuring that any currently running
+            // cycle is finished and no further cycles will be run.
+            timerTaskShouldStop_ = true;
+            timer_.cancel();
+            while (timerTaskIsBusy_) {
+               try {
+                  timerLock_.wait();
+               }
+               catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+               }
+            }
+            timer_ = null;
+         }
+      }
+   }
+   private final TimerController timerController_ = new TimerController();
+
+   /**
+    * The LivemodeTimer constructor defines a DisplayImageRoutine that 
+    * synchronizes image display with the "paint" function (currently execute
+    * by the ImageCanvas of ImageJ).  
+    * 
+    * The multiCamLiveTask needs extra synchronization at this point.
+    * The multiCamLiveTask generates tagged images in groups of
+    * multiChannelCameraNrCh_, however, we only want to update
+    * the display (which is costly) when we have the whole group.
+    */
    
    public LiveModeTimer() {
-      gui_ = MMStudioMainFrame.getInstance();
-      core_ = gui_.getCore();
+      studio_ = MMStudio.getInstance();
+      snapLiveManager_ = studio_.getSnapLiveManager();
+      core_ = studio_.getCore();
       format_ = NumberFormat.getInstance();
       format_.setMaximumFractionDigits(0x1);
-      displayImageRoutine_ = new MMStudioMainFrame.DisplayImageRoutine() {
+      mCamImageCounter_ = 0;
+      displayImageRoutine_ = new MMStudio.DisplayImageRoutine() {
+         @Override
          public void show(final TaggedImage ti) {
+            // Ensure the image has summary metadata set properly, as
+            // AcquisitionManager relies on it (e.g. in addToAlbum(), when the
+            // "snap to album" button is clicked).
             try {
-               gui_.normalizeTags(ti);
-               gui_.addImage(ACQ_NAME, ti, true, true);
-               gui_.updateLineProfile();
-            } catch (Exception e) {
+               MDUtils.setSummary(ti.tags,
+                     MMStudio.getInstance().getAcquisitionWithName(SnapLiveManager.SIMPLE_ACQ).getSummaryMetadata());
+            }
+            catch (Exception e) {
+               ReportingUtils.logError(e, "Error setting summary metadata");
+            }
+
+            try {
+               if (multiCam_) {
+                  mCamImageCounter_++;
+                  if (mCamImageCounter_ < multiChannelCameraNrCh_) {
+                     studio_.normalizeTags(ti);
+                     studio_.addImage(SnapLiveManager.SIMPLE_ACQ, ti, false, false);
+                     return;
+                  } else { // completes the set
+                     mCamImageCounter_ = 0;
+                  }              
+               }
+               ImageWindow window = snapLiveManager_.getSnapLiveWindow();
+               if (!CanvasPaintPending.isMyPaintPending(
+                        window.getCanvas(), this) ) {
+                  CanvasPaintPending.setPaintPending(
+                        window.getCanvas(), this);
+                  studio_.normalizeTags(ti);
+                  studio_.addImage(SnapLiveManager.SIMPLE_ACQ, ti, true, true);
+                  studio_.updateLineProfile();
+                  updateFPS();
+               }
+            } catch (MMScriptException e) {
                ReportingUtils.logError(e);
             }
          }
@@ -87,10 +190,10 @@ public class LiveModeTimer {
 
    /**
     * Determines the optimum interval for the live mode timer task to happen
-    * As a side effect, also sets variable fpsInterval_
+    * Also sets variable fpsInterval_
     */
    private long getInterval() {
-      double interval = 10;
+      double interval = 20;
       try {
          interval = Math.max(core_.getExposure(), interval);
       } catch (Exception e) {
@@ -110,8 +213,10 @@ public class LiveModeTimer {
       multiChannelCameraNrCh_ = (int) core_.getNumberOfCameraChannels();
       if (multiChannelCameraNrCh_ == 1) {
          task_ = singleCameraLiveTask();
+         multiCam_ = false;
       } else {
          task_ = multiCamLiveTask();
+         multiCam_ = true;
       }
    }
 
@@ -119,75 +224,88 @@ public class LiveModeTimer {
       return running_;
    }
 
-	public void begin() throws Exception {
-		if (running_) {
-			return;
-		}
-		timer_ = new Timer("Live mode timer");
+   @SuppressWarnings("SleepWhileInLoop")
+   public void begin() throws Exception {
+      if(running_) {
+         return;
+      }
 
-		core_.clearCircularBuffer();
+      core_.clearCircularBuffer();
+      try {
+         core_.startContinuousSequenceAcquisition(0);
+      }
+      catch (Exception e) {
+         ReportingUtils.showError("Unable to start the sequence acquisition: " + e);
+         throw(e);
+      }
+      setType();
+      long period = getInterval();
 
-		core_.startContinuousSequenceAcquisition(0);
-		setType();
-		long delay = getInterval();
+      // Wait for first image to create ImageWindow, so that we can be sure about image size
+      long start = System.currentTimeMillis();
+      long now = start;
+      // Give 10s extra for the camera to transfer the image to us.
+      long timeout = period + 10000;
+      while (core_.getRemainingImageCount() == 0 && (now - start < timeout) ) {
+         now = System.currentTimeMillis();
+         Thread.sleep(5);
+      }
+      if (now - start >= timeout) {
+         throw new Exception("Camera did not send image within " + timeout + "ms");
+      }
 
-		// Wait for first image to create ImageWindow, so that we can be sure
-		// about image size
-		long start = System.currentTimeMillis();
-		long now = start;
-		long timeout = Math.min(10000, delay * 150);
-		while (core_.getRemainingImageCount() == 0 && (now - start < timeout)) {
-			now = System.currentTimeMillis();
-			Thread.sleep(5);
-		}
-		if (now - start >= timeout) {
-			throw new Exception(
-					"Camera did not send image within a reasonable time");
-		}
+      TaggedImage timg = core_.getLastTaggedImage();
 
-		TaggedImage timg = core_.getLastTaggedImage();
+      // With first image acquired, create the display
+      snapLiveManager_.validateDisplayAndAcquisition(timg);
+      win_ = snapLiveManager_.getSnapLiveDisplay();
+      long firstImageSequenceNumber = MDUtils.getSequenceNumber(timg.tags);
 
-		// With first image acquired, create the display
-		gui_.checkSimpleAcquisition();
-		win_ = MMStudioMainFrame.getSimpleDisplay();
+      synchronized (this) {
+         fpsCounter_ = 0;
+         fpsTimer_ = System.nanoTime();
+         imageNumber_ = firstImageSequenceNumber;
+         oldImageNumber_ = firstImageSequenceNumber;
+      }
 
-		fpsCounter_ = 0;
-		fpsTimer_ = System.currentTimeMillis();
-		imageNumber_ = timg.tags.getLong("ImageNumber");
-		lastImageNumber_ = imageNumber_ - 1;
-		oldImageNumber_ = imageNumber_;
+      imageQueue_ = new LinkedBlockingQueue<TaggedImage>(10);
+      // XXX The logic here is very weird. We add this first image only if we
+      // are using a single camera, because the single camera timer code checks
+      // and eliminates duplicates of the same frame. For multi camera, we do
+      // not add the image, since no checks for duplicates are performed
+      // (which is a bug that needs to be fixed).
+      if (!multiCam_) {
+         imageQueue_.put(timg);
+      }
 
-		imageQueue_ = new LinkedBlockingQueue<TaggedImage>();
-		timer_.schedule(task_, 0, delay);
-		win_.liveModeEnabled(true);
+      timerController_.start(task_, period);
 
-		win_.getImagePlus().getWindow().toFront();
-		running_ = true;
-		gui_.runDisplayThread(imageQueue_, displayImageRoutine_,
-				MMStudioMainFrame.SIMPLE_ACQ);
-	}
+      win_.getImagePlus().getWindow().toFront();
+      running_ = true;
+      studio_.runDisplayThread(imageQueue_, displayImageRoutine_);
+   }
 
-   
    public void stop() {
       stop(true);
    }
-   
+
    private void stop(boolean firstAttempt) {
-        try {
-           if (imageQueue_ != null)
-               imageQueue_.put(TaggedImageQueue.POISON);
-        } catch (InterruptedException ex) {
-           ReportingUtils.logError(ex);
-        }
-      if (timer_ != null) {
-         timer_.cancel();
-      }
-      
+      ReportingUtils.logMessage("Stop called in LivemodeTimer, " + firstAttempt);
+
+      timerController_.stopAndWaitForCompletion();
+
       try {
-         if (core_.isSequenceRunning())
+         if (imageQueue_ != null) {
+            imageQueue_.put(TaggedImageQueue.POISON);
+            imageQueue_ = null; // Prevent further attempts to send POISON
+         }
+      } catch (InterruptedException ex) {
+           Thread.currentThread().interrupt();
+      }
+
+      try {
+         if (core_.isSequenceRunning()) {
             core_.stopSequenceAcquisition();
-         if (win_ != null) {
-            win_.liveModeEnabled(false);
          }
          running_ = false;
       } catch (Exception ex) {
@@ -207,34 +325,40 @@ public class LiveModeTimer {
          }
       } 
    }
-   
+
    /**
     * Keep track of the last imagenumber, added by the circular buffer
     * that we have seen here
     * 
-    * @param imageNumber 
+    * @param imageNumber the new imagenumber
+    * @return true if imagenumber was incremented
     */
-   private synchronized void setImageNumber(long imageNumber) 
+   private synchronized boolean setImageNumber(long imageNumber)
    {
-      imageNumber_ = imageNumber;
+      if (imageNumber > imageNumber_) {
+         imageNumber_ = imageNumber;
+         return true;
+      }
+      return false;
    }
-           
 
    /**
     * Updates the fps timer (how fast does the camera pump images into the 
     * circular buffer) and display fps (how fast do we display the images)
     * It is called from tasks that are doing the actual image drawing
-    * 
     */
-   public synchronized void updateFPS() {
+   private synchronized void updateFPS() {
       if (!running_)
          return;
+      if (imageNumber_ == oldImageNumber_) {
+         return;
+      }
       try {
          fpsCounter_++;
-         long now = System.currentTimeMillis();
-         long diff = now - fpsTimer_;
-         if (diff > fpsInterval_) {
-            double d = diff/ 1000.0;
+         long now = System.nanoTime();
+         long diffMs = (now - fpsTimer_) / 1000000;
+         if (diffMs > fpsInterval_) {
+            double d = diffMs / 1000.0;
             double fps = fpsCounter_ / d;
             double dfps = (imageNumber_ - oldImageNumber_) / d;
             win_.displayStatusLine("fps: " + format_.format(dfps) +
@@ -262,19 +386,25 @@ public class LiveModeTimer {
             }
             if (win_.windowClosed()) //check is user closed window             
             {
-               gui_.enableLiveMode(false);
+               SwingUtilities.invokeLater(new Runnable() {
+                  @Override public void run() { snapLiveManager_.setLiveMode(false); }
+               });
             } else {
                try {
-
-                  
                   TaggedImage ti = core_.getLastTaggedImage();
                   // if we have already shown this image, do not do it again.
-                  setImageNumber(ti.tags.getLong("ImageNumber"));
-                  imageQueue_.put(ti);
-               } catch (Exception ex) {
+                  long imageNumber = MDUtils.getSequenceNumber(ti.tags);
+                  if (setImageNumber(imageNumber)) {
+                     imageQueue_.put(ti);
+                  }
+               } catch (final Exception ex) {
                   ReportingUtils.logMessage("Stopping live mode because of error...");
-                  gui_.enableLiveMode(false);
-                  ReportingUtils.showError(ex);
+                  SwingUtilities.invokeLater(new Runnable() {
+                     @Override public void run() {
+                        snapLiveManager_.setLiveMode(false);
+                        ReportingUtils.showError(ex);
+                     }
+                  });
                }
             }
          }
@@ -289,23 +419,32 @@ public class LiveModeTimer {
             if (core_.getRemainingImageCount() == 0) {
                return;
             }
-            if (win_.windowClosed() || !gui_.acquisitionExists(MMStudioMainFrame.SIMPLE_ACQ)) {
-               gui_.enableLiveMode(false);  //disable live if user closed window
+            if (win_.windowClosed() || !studio_.acquisitionExists(SnapLiveManager.SIMPLE_ACQ)) {
+               SwingUtilities.invokeLater(new Runnable() {
+                  @Override public void run() { snapLiveManager_.setLiveMode(false); }
+               });
             } else {
                try {
                   String camera = core_.getCameraDevice();
                   Set<String> cameraChannelsAcquired = new HashSet<String>();
                   for (int i = 0; i < 2 * multiChannelCameraNrCh_; ++i) {
                      TaggedImage ti = core_.getNBeforeLastTaggedImage(i);
-                     if (i == 0) {
-                        setImageNumber(ti.tags.getLong("ImageNumber"));
-                     }
                      String channelName;
                      if (ti.tags.has(camera + "-CameraChannelName")) {
                         channelName = ti.tags.getString(camera + "-CameraChannelName");
                         if (!cameraChannelsAcquired.contains(channelName)) {
-                           ti.tags.put("Channel", channelName);
-                           ti.tags.put("ChannelIndex", ti.tags.getInt(camera + "-CameraChannelIndex"));
+                           MDUtils.setChannelName(ti.tags, channelName);
+                           int ccIndex = ti.tags.getInt(camera + "-CameraChannelIndex");
+                           MDUtils.setChannelIndex(ti.tags, ccIndex);
+                           if (ccIndex == 0) {
+                              // XXX We do keep track of the image number, but
+                              // we are currently ignoring the check for new
+                              // images here (see the single camera version).
+                              // When fixing this, make sure to handle the
+                              // first frames correctly, even for very slow
+                              // acquisitions (see begin()).
+                              setImageNumber(MDUtils.getSequenceNumber(ti.tags));
+                           }
                            imageQueue_.put(ti);
                            cameraChannelsAcquired.add(channelName);
                         }
@@ -314,46 +453,18 @@ public class LiveModeTimer {
                         }
                      }
                   }
-               } catch (Exception exc) {
+               } catch (final Exception exc) {
                   ReportingUtils.logMessage("Stopping live mode because of error...");
-                  gui_.enableLiveMode(false);
-                  ReportingUtils.showError(exc);
-
+                  SwingUtilities.invokeLater(new Runnable() {
+                     @Override public void run() {
+                        snapLiveManager_.setLiveMode(false);
+                        ReportingUtils.showError(exc);
+                     }
+                  });
                }
             }
          }
       };
    }
 
-   private void addTags(TaggedImage ti, int channel) throws JSONException {
-      MDUtils.setChannelIndex(ti.tags, channel);
-      MDUtils.setFrameIndex(ti.tags, 0);
-      MDUtils.setPositionIndex(ti.tags, 0);
-      MDUtils.setSliceIndex(ti.tags, 0);
-      try {
-         ti.tags.put("Summary", MMStudioMainFrame.getInstance().getAcquisition(ACQ_NAME).getSummaryMetadata());
-      } catch (MMScriptException ex) {
-         ReportingUtils.logError("Error adding summary metadata to tags");
-      }
-      gui_.addStagePositionToTags(ti);
-   }
-   
-   /*
-   private TaggedImage makeTaggedImage(Object pixels) throws JSONException, MMScriptException {
-       TaggedImage ti = ImageUtils.makeTaggedImage(pixels,
-                    0, 0, 0, 0,
-                    gui_.getAcquisitionImageWidth(ACQ_NAME),
-                    gui_.getAcquisitionImageHeight(ACQ_NAME),
-                    gui_.getAcquisitionImageByteDepth(ACQ_NAME));
-      try {
-         ti.tags.put("Summary", gui_.getAcquisition(ACQ_NAME).getSummaryMetadata());
-
-      } catch (MMScriptException ex) {
-         ReportingUtils.logError("Error adding summary metadata to tags");
-      }
-      gui_.addStagePositionToTags(ti);
-      return ti;
-   }
-    * 
-    */
 }

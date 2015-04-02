@@ -14,11 +14,15 @@ if ($_FILES['file']['error'] > 0)
 }
 else
 {
-   echo 'Upload: ' . $_FILES['file']['name'] . '<br />';
-   echo 'Type: ' . $_FILES['file']['type'] . '<br />';
-   echo 'Size: ' . ($_FILES['file']['size'] / 1024) . ' Kb<br />';
-   echo 'Temp file: ' . $_FILES['file']['tmp_name'] . '<br />';
+   // echo 'Upload: ' . $_FILES['file']['name'] . '<br />';
+   // echo 'Type: ' . $_FILES['file']['type'] . '<br />';
+   // echo 'Size: ' . ($_FILES['file']['size'] / 1024) . ' Kb<br />';
+   // echo 'Temp file: ' . $_FILES['file']['tmp_name'] . '<br />';
    $ipaddress = getenv(REMOTE_ADDR);
+
+   if (strlen($_FILES['file']['name']) < 1) {
+      return;
+   }
 
    $opath = $uploadPlace_ . '/'. $_FILES['file']['name'] . '_' . $ipaddress;
 
@@ -45,19 +49,25 @@ else
       $rhandle = fopen( $opath, 'r');
       $lineCount = 0;
       if ($rhandle){
-	 while(! feof($rhandle) ){
-            $line = fgets($rhandle);
-            $mess = $mess . rtrim($line) . "\n";
-            $lineCount = $lineCount + 1;
-            if( 2000 < $lineCount)
-                break 1;
-            }
+      while(! feof($rhandle) ){
+           $line = fgets($rhandle);
+           $username_tag = "#User Name:";
+           if (strcmp(substr($line, 0, strlen($username_tag)), $username_tag) == 0)
+              $username = trim(substr($line, strlen($username_tag), 36));
+           $user_email_tag = "#User e-mail:";
+           if (strcmp(substr($line, 0, strlen($user_email_tag)), $user_email_tag) == 0)
+              $user_email = trim(substr($line, strlen($user_email_tag), 256));
+           $mess = $mess . rtrim($line) . "\n";
+           $lineCount = $lineCount + 1;
+           if( 10000 < $lineCount)
+               break 1;
+           }
        } 
        fclose($rhandle);
-
-       mail('info@micro-manager.org', 'New Problem Report!', $mess);
-       mail('karl.hoover@ucsf.edu', 'New Problem Report!', $mess);
-       //mail('mugwortmoxa@hotmail.com', 'New Problem Report!', $mess);
+       
+       $subject = "New Problem Report: " . date("Y-m-d") . " " . $username;
+       $header = "Reply-To: ".$user_email."\r\n";
+       mail('info@micro-manager.org', $subject, $mess, $header);
 
    }// uploaded .uu was found
 } // FILES was parsed

@@ -71,8 +71,6 @@ private:
    std::string port_;
    // Command exchange with MMCore
    std::string command_;
-   // Has a command been sent to which no answer has been received yet?
-   bool pendingCommand_;
 };
 
 
@@ -185,12 +183,11 @@ public:
    int OnRun(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   bool initialized_;
    bool running_;
-   std::string name_;
-   long pos_;
+
    unsigned numPos_;
-   long current_;
+   bool initialized_;
+   std::string name_;
 };
 
 class BrightField : public CStateDeviceBase<BrightField>
@@ -214,7 +211,6 @@ public:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    unsigned numPos_;
 };
@@ -240,7 +236,6 @@ public:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    unsigned numPos_;
 };
@@ -266,7 +261,6 @@ public:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    unsigned numPos_;
 };
@@ -292,7 +286,6 @@ public:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    unsigned numPos_;
 };
@@ -318,7 +311,6 @@ public:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    unsigned numPos_;
 };
@@ -346,7 +338,6 @@ public:
 private:
    bool initialized_;
    long nr_;
-   long pos_;
    std::string name_;
    unsigned numPos_;
 };

@@ -46,40 +46,6 @@
 #include <math.h>
 #include <sstream>
 
-// TODO: linux entry code
-// Note that this only works with gcc (which we should be testing for)
-#ifdef __GNUC__
-void __attribute__ ((constructor)) my_init(void)
-{
-}
-void __attribute__ ((destructor)) my_fini(void)
-{
-}
-#endif
-
-// windows dll entry code
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/,                                
-                          DWORD  ul_reason_for_call,                         
-                          LPVOID /*lpReserved*/                              
-                   )                                                         
-   {                                                                         
-      switch (ul_reason_for_call)                                            
-      {                                                                      
-      case DLL_PROCESS_ATTACH:                                               
-      break;                                                                 
-      case DLL_THREAD_ATTACH:    
-      break;                                                                 
-      case DLL_THREAD_DETACH:
-      break;
-      case DLL_PROCESS_DETACH:
-      break;
-      }
-       return TRUE;
-   }
-#endif
-
-//using namespace std;
 
 ZeissHub g_hub;
 
@@ -91,12 +57,18 @@ ZeissHub g_hub;
 const char* g_ZeissDeviceName = "ZeissScope";
 const char* g_ZeissReflector = "ZeissReflectorTurret";
 const char* g_ZeissNosePiece = "ZeissObjectiveTurret";
+const char* g_ZeissNeutralDensityWheel1RL = "ZeissNDWheel1RL";
+const char* g_ZeissNeutralDensityWheel2RL = "ZeissNDWheel2RL";
 const char* g_ZeissFieldDiaphragm = "ZeissFieldDiaphragm";
 const char* g_ZeissApertureDiaphragm = "ZeissApertureDiaphragm";
+const char* g_ZeissNeutralDensityWheel1TL = "ZeissNDWheel1TL";
+const char* g_ZeissNeutralDensityWheel2TL = "ZeissNDWheel2TL";
 const char* g_ZeissFocusAxis = "ZeissFocusAxis";
 const char* g_ZeissTubeLens = "ZeissTubeLens";
 const char* g_ZeissTubeLensShutter = "ZeissTubeLensShutter";
 const char* g_ZeissSidePort = "ZeissSidePort";
+const char* g_ZeissExcitationSwitcher = "ZeissExcitationSwitcher";
+const char* g_ZeissExternalLampMirror = "ZeissExternalLampMirror";
 const char* g_ZeissReflectedLightShutter = "ZeissReflectedLightShutter";
 const char* g_ZeissTransmittedLightShutter = "ZeissTransmittedLightShutter";
 const char* g_ZeissHalogenLightSwitch = "ZeissHalogenLightSwitch";
@@ -122,8 +94,12 @@ const char* g_ZeissHXPShutter = "ZeissHXPShutter";
 // List of Device numbers (from Zeiss documentation)
 ZeissUByte g_ReflectorChanger = 0x01;
 ZeissUByte g_NosePieceChanger = 0x02;
+ZeissUByte g_NeutralDensityWheel1RL = 0x05; // Called Filter wheel 1 in docs
+ZeissUByte g_NeutralDensityWheel2RL = 0x06; // Called Filter wheel 2 in docs
 ZeissUByte g_FieldDiaphragmServo = 0x08; // Reflected Light
 ZeissUByte g_ApertureDiaphragmServo = 0x09; // Reflected Light
+ZeissUByte g_NeutralDensityWheel1TL = 0x0B; // Called Filter wheel 1 in docs
+ZeissUByte g_NeutralDensityWheel2TL = 0x0C; // Called Filter wheel 2 in docs
 ZeissUByte g_FocusAxis = 0x0F;
 ZeissUByte g_TubeLensChanger = 0x12;
 ZeissUByte g_TubeShutter = 0x13;
@@ -138,10 +114,12 @@ ZeissUByte g_StageXAxis = 0x26;
 ZeissUByte g_StageYAxis = 0x27;
 ZeissUByte g_HBOLampServo = 0x28;
 ZeissUByte g_HalogenLampServo = 0x29; 
+ZeissUByte g_ExcitationChanger = 0x2B;
 ZeissUByte g_LSMPortChanger = 0x2B;  // RearPort, reflected light
 ZeissUByte g_2TVTubePrism = 0x2E;  
 ZeissUByte g_2TVTubeSlider = 0x2F;  
 ZeissUByte g_2TVTubeShutter = 0x30;  
+ZeissUByte g_ExternalLampMirror = 0x32;  
 ZeissUByte g_HXPShutter = 0x36;
 ZeissUByte g_BasePortChanger = 0x40;
 ZeissUByte g_UniblitzShutter = 0x41;
@@ -159,34 +137,40 @@ const char* g_focusApplyPosition = "Apply";
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ZeissDeviceName,"Zeiss AxioObserver controlled through serial interface");
-   AddAvailableDeviceName(g_ZeissReflector,"Reflector Turret (dichroics)"); 
-   AddAvailableDeviceName(g_ZeissNosePiece,"Objective Turret");
-   AddAvailableDeviceName(g_ZeissFieldDiaphragm,"Field Diaphragm (fluorescence)");
-   AddAvailableDeviceName(g_ZeissApertureDiaphragm,"Aperture Diaphragm (fluorescence)");
-   AddAvailableDeviceName(g_ZeissFocusAxis,"Z-drive");
-   AddAvailableDeviceName(g_ZeissXYStage,"XYStage");
-   AddAvailableDeviceName(g_ZeissTubeLens,"Tube Lens (optovar)");
-   AddAvailableDeviceName(g_ZeissTubeLensShutter,"Tube Lens Shutter");
-   AddAvailableDeviceName(g_ZeissSidePort,"Side Port");
-   AddAvailableDeviceName(g_ZeissReflectedLightShutter,"Reflected Light Shutter"); 
-   AddAvailableDeviceName(g_ZeissTransmittedLightShutter,"Transmitted Light Shutter"); 
-   AddAvailableDeviceName(g_ZeissRLFLAttenuator,"Reflected (fluorescence) light attenuator");
-   AddAvailableDeviceName(g_ZeissCondenserContrast,"Condenser Contrast");
-   AddAvailableDeviceName(g_ZeissCondenserAperture,"Condenser Aperture");
-   AddAvailableDeviceName(g_ZeissHBOLamp,"HBO Lamp");
-   AddAvailableDeviceName(g_ZeissHalogenLamp,"Halogen Lamp"); 
-   AddAvailableDeviceName(g_ZeissLSMPort,"LSM Port (rearPort)"); 
-   AddAvailableDeviceName(g_ZeissBasePort,"Base Port switcher"); 
-   AddAvailableDeviceName(g_ZeissUniblitz,"Uniblitz Shutter"); 
-   AddAvailableDeviceName(g_ZeissFilterWheel,"Filter Wheel"); 
-   AddAvailableDeviceName(g_ZeissDefiniteFocus,"Definite Focus"); 
-   AddAvailableDeviceName(g_ZeissDFOffset,"Definite Focus Offset-drive"); 
-   AddAvailableDeviceName(g_ZeissColibri,"Colibri"); 
-   AddAvailableDeviceName(g_Zeiss2TVTubePrism,"g_Zeiss2TVTubePrism"); 
-   AddAvailableDeviceName(g_Zeiss2TVTubeSlider,"g_Zeiss2TVTubeSlider"); 
-   AddAvailableDeviceName(g_Zeiss2TVTubeShutter,"g_Zeiss2TVTubeShutter"); 
-   AddAvailableDeviceName(g_ZeissHXPShutter,"g_ZeissHXPShutter"); 
+   RegisterDevice(g_ZeissDeviceName, MM::GenericDevice, "Zeiss AxioObserver controlled through serial interface");
+   RegisterDevice(g_ZeissReflector, MM::StateDevice, "Reflector Turret (dichroics)");
+   RegisterDevice(g_ZeissNosePiece, MM::StateDevice, "Objective Turret");
+   RegisterDevice(g_ZeissNeutralDensityWheel1RL, MM::StateDevice, "ND Filter Wheel 1 Fluorescence Light Path");
+   RegisterDevice(g_ZeissNeutralDensityWheel2RL, MM::StateDevice, "ND Filter Wheel 2 Fluorescence Light Path");
+   RegisterDevice(g_ZeissFieldDiaphragm, MM::GenericDevice, "Field Diaphragm (fluorescence)");
+   RegisterDevice(g_ZeissApertureDiaphragm, MM::GenericDevice, "Aperture Diaphragm (fluorescence)");
+   RegisterDevice(g_ZeissNeutralDensityWheel1TL, MM::StateDevice, "ND Filter Wheel 1 Transmitted Light Path");
+   RegisterDevice(g_ZeissNeutralDensityWheel2TL, MM::StateDevice, "ND Filter Wheel 2 Transmitted Light Path");
+   RegisterDevice(g_ZeissFocusAxis, MM::StageDevice, "Z-drive");
+   RegisterDevice(g_ZeissXYStage, MM::XYStageDevice, "XYStage");
+   RegisterDevice(g_ZeissTubeLens, MM::StateDevice, "Tube Lens (optovar)");
+   RegisterDevice(g_ZeissTubeLensShutter, MM::ShutterDevice, "Tube Lens Shutter");
+   RegisterDevice(g_ZeissSidePort, MM::StateDevice, "Side Port");
+   RegisterDevice(g_ZeissExcitationSwitcher, MM::StateDevice, "Excitation Switcher");
+   RegisterDevice(g_ZeissReflectedLightShutter, MM::ShutterDevice, "Reflected Light Shutter");
+   RegisterDevice(g_ZeissTransmittedLightShutter, MM::ShutterDevice, "Transmitted Light Shutter");
+   RegisterDevice(g_ZeissRLFLAttenuator, MM::StateDevice, "Reflected (fluorescence) light attenuator");
+   RegisterDevice(g_ZeissCondenserContrast, MM::StateDevice, "Condenser Contrast");
+   RegisterDevice(g_ZeissCondenserAperture, MM::GenericDevice, "Condenser Aperture");
+   RegisterDevice(g_ZeissHBOLamp, MM::GenericDevice, "HBO Lamp");
+   RegisterDevice(g_ZeissHalogenLamp, MM::GenericDevice, "Halogen Lamp");
+   RegisterDevice(g_ZeissLSMPort, MM::StateDevice, "LSM Port (rearPort)");
+   RegisterDevice(g_ZeissBasePort, MM::StateDevice, "Base Port switcher");
+   RegisterDevice(g_ZeissExternalLampMirror, MM::StateDevice, "External Lamp Mirror");
+   RegisterDevice(g_ZeissUniblitz, MM::ShutterDevice, "Uniblitz Shutter");
+   RegisterDevice(g_ZeissFilterWheel, MM::StateDevice, "Filter Wheel");
+   RegisterDevice(g_ZeissDefiniteFocus, MM::AutoFocusDevice, "Definite Focus");
+   RegisterDevice(g_ZeissDFOffset, MM::StageDevice, "Definite Focus Offset-drive");
+   RegisterDevice(g_ZeissColibri, MM::ShutterDevice, "Colibri");
+   RegisterDevice(g_Zeiss2TVTubePrism, MM::StateDevice, "g_Zeiss2TVTubePrism");
+   RegisterDevice(g_Zeiss2TVTubeSlider, MM::StateDevice, "g_Zeiss2TVTubeSlider");
+   RegisterDevice(g_Zeiss2TVTubeShutter, MM::StateDevice, "g_Zeiss2TVTubeShutter");
+   RegisterDevice(g_ZeissHXPShutter, MM::ShutterDevice, "g_ZeissHXPShutter");
 }
 
 using namespace std;
@@ -206,10 +190,18 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
         return new ReflectorTurret(g_ReflectorChanger, g_ZeissReflector, "Reflector Turret");
    else if (strcmp(deviceName, g_ZeissNosePiece) == 0)
         return new ObjectiveTurret(g_NosePieceChanger, g_ZeissNosePiece, "Objective Turret");
+   else if (strcmp(deviceName, g_ZeissNeutralDensityWheel1RL) == 0)
+        return new Turret(g_NeutralDensityWheel1RL, g_ZeissNeutralDensityWheel1RL, "ND Filter 1 Refl. Light");
+   else if (strcmp(deviceName, g_ZeissNeutralDensityWheel2RL) == 0)
+        return new Turret(g_NeutralDensityWheel2RL, g_ZeissNeutralDensityWheel2RL, "ND Filter 2 Refl. Light");
    else if (strcmp(deviceName, g_ZeissFieldDiaphragm) == 0)
         return new Servo(g_FieldDiaphragmServo, g_ZeissFieldDiaphragm, "Field Diaphragm");
    else if (strcmp(deviceName, g_ZeissApertureDiaphragm) == 0)
         return new Servo(g_ApertureDiaphragmServo, g_ZeissApertureDiaphragm, "Aperture Diaphragm");
+   else if (strcmp(deviceName, g_ZeissNeutralDensityWheel1TL) == 0)
+        return new Turret(g_NeutralDensityWheel1TL, g_ZeissNeutralDensityWheel1TL, "ND Filter 1 Trans. Light");
+   else if (strcmp(deviceName, g_ZeissNeutralDensityWheel2TL) == 0)
+        return new Turret(g_NeutralDensityWheel2TL, g_ZeissNeutralDensityWheel2TL, "ND Filter 2 Trans. Light");
    else if (strcmp(deviceName, g_ZeissFocusAxis) == 0)
         return new Axis(g_FocusAxis, g_ZeissFocusAxis, "Z-drive");
    else if (strcmp(deviceName, g_ZeissXYStage) == 0)
@@ -220,6 +212,8 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
         return new Shutter(g_TubeShutter, g_ZeissTubeLensShutter, "Tube Lens Shutter");
    else if (strcmp(deviceName, g_ZeissSidePort) == 0)
         return new SidePortTurret(g_SidePortChanger, g_ZeissSidePort, "Side Port");
+   else if (strcmp(deviceName, g_ZeissExcitationSwitcher) == 0)
+        return new Turret(g_ExcitationChanger, g_ZeissExcitationSwitcher, "Excitation Switcher");
    else if (strcmp(deviceName, g_ZeissReflectedLightShutter) == 0)
         return new  Shutter(g_ReflectedLightShutter, g_ZeissReflectedLightShutter, "Zeiss Reflected Light Shutter");
    else if (strcmp(deviceName, g_ZeissTransmittedLightShutter) == 0)
@@ -238,6 +232,8 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
         return new Turret(g_LSMPortChanger, g_ZeissLSMPort, "LSM Port (rear port)");
    else if (strcmp(deviceName, g_ZeissBasePort) == 0)
         return new Turret(g_BasePortChanger, g_ZeissBasePort, "Base Port");
+   else if (strcmp(deviceName, g_ZeissExternalLampMirror) == 0)
+        return new Turret(g_ExternalLampMirror, g_ZeissExternalLampMirror, "External Lamp Mirror");
    else if (strcmp(deviceName, g_ZeissUniblitz) == 0)
         return new Shutter(g_UniblitzShutter, g_ZeissUniblitz, "Uniblitz Shutter");
    else if (strcmp(deviceName, g_ZeissFilterWheel) == 0)
@@ -615,7 +611,7 @@ int ZeissAxis::FindHardwareStop(MM::Device& device, MM::Core& core, ZeissUByte d
 int ZeissAxis::StopMove(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissByte moveMode)
 {
    int ret;
-   const int commandLength = 11;
+   const int commandLength = 7;
    unsigned char command[commandLength];
    // Size of data block
    command[0] = 0x04;
@@ -638,14 +634,88 @@ int ZeissAxis::StopMove(MM::Device& device, MM::Core& core, ZeissUByte devId, Ze
    return DEVICE_OK;
 }
 
+/*
+ * Sets Trajectory Velocity 
+ */
+int ZeissAxis::SetTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, long velocity)
+{
+   int ret;
+   const int commandLength = 10;
+   unsigned char command[commandLength];
+   // Size of data block
+   command[0] = 0x07;
+   // Write command, do not expect answer:
+   command[1] = 0x1B;
+   command[2] = 0xA3; 
+   // ProcessID
+   command[3] = 0x11;
+   // SubID
+   command[4] = 0x2B;
+   // Device ID
+   command[5] = devId;
+   // position is a ZeissLong (4-byte) in big endian format...
+   ZeissLong tmp = htonl((ZeissLong) velocity);
+   memcpy(command+6, &tmp, ZeissLongSize); 
+   ret = g_hub.ExecuteCommand(device, core,  command, commandLength);
+   if (ret != DEVICE_OK)
+      return ret;
+   g_hub.SetModelBusy(devId, true);
+
+   return DEVICE_OK;
+}
+
+int ZeissAxis::HasTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, bool& hasTV)
+{
+   return g_hub.HasModelTrajectoryVelocity(device, core, devId, hasTV);
+}
+
+/*
+ * Sets Trajectory Acceleration
+ */
+int ZeissAxis::SetTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte devId, long acceleration)
+{
+   int ret;
+   const int commandLength = 10;
+   unsigned char command[commandLength];
+   // Size of data block
+   command[0] = 0x07;
+   // Write command, do not expect answer:
+   command[1] = 0x1B;
+   command[2] = 0xA3; 
+   // ProcessID
+   command[3] = 0x11;
+   // SubID
+   command[4] = 0x2C;
+   // Device ID
+   command[5] = devId;
+   // position is a ZeissLong (4-byte) in big endian format...
+   ZeissLong tmp = htonl((ZeissLong) acceleration);
+   memcpy(command+6, &tmp, ZeissLongSize); 
+   ret = g_hub.ExecuteCommand(device, core,  command, commandLength);
+   if (ret != DEVICE_OK)
+      return ret;
+   g_hub.SetModelBusy(devId, true);
+
+   return DEVICE_OK;
+}
+
+int ZeissAxis::GetTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& velocity)
+{
+   return g_hub.GetModelTrajectoryVelocity(device, core, devId, velocity);
+}
+
+int ZeissAxis::GetTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& velocity)
+{
+   return g_hub.GetModelTrajectoryAcceleration(device, core, devId, velocity);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 // ZeissScope
 //
 ZeissScope::ZeissScope() :
    initialized_(false),
-   port_("Undefined"),                                                       
-   answerTimeoutMs_(500)
+   port_("Undefined")
 {
    InitializeDefaultErrorMessages();
    SetErrorText(ERR_ANSWER_TIMEOUT, "The Zeiss microscope does not answer.  Is it switched on and connected to this computer?");
@@ -1387,6 +1457,7 @@ Axis::Axis (ZeissUByte devId, std::string name, std::string description):
    uni_ ("Unidirectional backlash compensation"),
    biSup_ ("Bidirectional Precision suppress small upwards"),
    biAlways_ ("Bidirectional Precision Always"),
+   default_ ("Default"),
    fast_ ("Fast"),
    smooth_ ("Smooth"),
    busyCounter_(0)
@@ -1466,6 +1537,7 @@ int Axis::Initialize()
    ret = CreateProperty("Velocity-Acceleration", fast_.c_str(), MM::String, false, pAct);
    if (ret != DEVICE_OK)
       return ret;
+   AddAllowedValue("Velocity-Acceleration", default_.c_str());
    AddAllowedValue("Velocity-Acceleration", fast_.c_str());
    AddAllowedValue("Velocity-Acceleration", smooth_.c_str());
    
@@ -1587,8 +1659,9 @@ int Axis::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)   {
       switch (velocity_) {
-         case 0: pProp->Set(fast_.c_str()); break;
+         case 0: pProp->Set(default_.c_str()); break;
          case 4: pProp->Set(smooth_.c_str()); break;
+         case 8: pProp->Set(fast_.c_str()); break;
          default: pProp->Set(fast_.c_str());
       }
    }
@@ -1596,10 +1669,12 @@ int Axis::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
    {  
       string result;                                             
       pProp->Get(result);                                        
-      if (result == fast_)
+      if (result == default_)
          velocity_ = 0;
       else if (result == smooth_)
          velocity_ = 4;
+      else if (result == fast_)
+         velocity_ = 8;
    }                                                          
                                                               
    return DEVICE_OK;                                          
@@ -1618,6 +1693,7 @@ XYStage::XYStage ():
    uni_ ("Unidirectional backlash compensation"),
    biSup_ ("Bidirectional Precision suppress small upwards"),
    biAlways_ ("Bidirectional Precision Always"),
+   default_ ("Default"),
    fast_ ("Fast"),
    smooth_ ("Smooth")
 {
@@ -1687,9 +1763,26 @@ int XYStage::Initialize()
    ret = CreateProperty("Velocity-Acceleration", fast_.c_str(), MM::String, false, pAct);
    if (ret != DEVICE_OK)
       return ret;
+   AddAllowedValue("Velocity-Acceleration", default_.c_str());
    AddAllowedValue("Velocity-Acceleration", fast_.c_str());
    AddAllowedValue("Velocity-Acceleration", smooth_.c_str());
    
+   // Trajectory Velocity and Acceleration:
+   bool hasTV = false;;
+   ret = HasTrajectoryVelocity(*this, *GetCoreCallback(), g_StageYAxis, hasTV);
+   if (ret != DEVICE_OK)
+      return ret;
+   if (hasTV) 
+   {
+      pAct = new CPropertyAction(this, &XYStage::OnTrajectoryVelocity);
+      ret = CreateProperty("Velocity (micron/s)", "0", MM::Float, false, pAct);
+      if (ret != DEVICE_OK)
+         return ret;
+      pAct = new CPropertyAction(this, &XYStage::OnTrajectoryAcceleration);
+      ret = CreateProperty("Acceleration (micron/s^2)", "0", MM::Float, false, pAct);
+      if (ret != DEVICE_OK)
+         return ret;
+   }
 
    // Update lower and upper limits.  These values are cached, so if they change during a session, the adapter will need to be re-initialized
 /*
@@ -1809,7 +1902,7 @@ int XYStage::Stop()
 
 int XYStage::SetOrigin()
 {
-   return DEVICE_OK;
+   return SetAdapterOriginUm(0.0, 0.0);
 }
 
 int XYStage::OnMoveMode(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -1844,24 +1937,72 @@ int XYStage::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)   {
       switch (velocity_) {
-         case 0: pProp->Set(fast_.c_str()); break;
+         case 0: pProp->Set(default_.c_str()); break;
          case 4: pProp->Set(smooth_.c_str()); break;
-         default: pProp->Set(fast_.c_str());
+         case 8: pProp->Set(fast_.c_str()); break;
+         default: pProp->Set(default_.c_str());
       }
    }
    else if (eAct == MM::AfterSet)                             
    {  
       string result;                                             
       pProp->Get(result);                                        
-      if (result == fast_)
+      if (result == default_)
          velocity_ = 0;
       else if (result == smooth_)
          velocity_ = 4;
+      else if (result == fast_)
+         velocity_ = 8;
    }                                                          
                                                               
    return DEVICE_OK;                                          
 }
 
+int XYStage::OnTrajectoryVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet) {
+      // we are lazy and only check the x axis
+      long velocity;
+      int ret = ZeissAxis::GetTrajectoryVelocity(*this, *GetCoreCallback(), g_StageXAxis, (ZeissLong&) velocity);
+      if (ret != DEVICE_OK)
+         return ret;
+      pProp->Set( (float) (velocity/1000.0) );
+   } else if (eAct == MM::AfterSet) {
+      double tmp;
+      pProp->Get(tmp);
+      long velocity = (long) (tmp * 1000.0);
+      int ret = ZeissAxis::SetTrajectoryVelocity(*this, *GetCoreCallback(), g_StageXAxis, (ZeissLong) velocity);
+      if (ret != DEVICE_OK)
+         return ret;
+      ret = ZeissAxis::SetTrajectoryVelocity(*this, *GetCoreCallback(), g_StageYAxis, (ZeissLong) velocity);
+      if (ret != DEVICE_OK)
+         return ret;
+   }
+   return DEVICE_OK;
+}
+
+int XYStage::OnTrajectoryAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet) {
+      // we are lazy and only check the x axis
+      long accel;
+      int ret = ZeissAxis::GetTrajectoryAcceleration(*this, *GetCoreCallback(), g_StageXAxis, (ZeissLong&) accel);
+      if (ret != DEVICE_OK)
+         return ret;
+      pProp->Set( (float) (accel / 1000.0) );
+   } else if (eAct == MM::AfterSet) {
+      double tmp;
+      pProp->Get(tmp);
+      long accel = (long) (tmp * 1000.0);
+      int ret = ZeissAxis::SetTrajectoryAcceleration(*this, *GetCoreCallback(), g_StageXAxis, (ZeissLong) accel);
+      if (ret != DEVICE_OK)
+         return ret;
+      ret = ZeissAxis::SetTrajectoryAcceleration(*this, *GetCoreCallback(), g_StageYAxis, (ZeissLong) accel);
+      if (ret != DEVICE_OK)
+         return ret;
+   }
+   return DEVICE_OK;
+}
 
 /***********************************
  * Definite Focus
@@ -2216,7 +2357,7 @@ int DefiniteFocus::GetOffset(double& offset)
       os << (int) (it -offsets_.begin());
       AddAllowedValue("Offset",os.str().c_str());
    }
-   int i = it - offsets_.begin();
+   vector<DFOffset>::iterator::difference_type i = distance(offsets_.begin(), it);
    offset = (double) i;
 
    return DEVICE_OK;
@@ -2358,9 +2499,7 @@ int DefiniteFocus::OnFocusMethod(MM::PropertyBase* pProp, MM::ActionType eAct)
  */
 
 DFOffsetStage::DFOffsetStage() :
-   initialized_ (false),
-   pos_ (0.0),
-   originPos_ (0.0)
+   initialized_(false)
 {
    InitializeDefaultErrorMessages();
 
@@ -2562,7 +2701,7 @@ int Colibri::Initialize()
 
    ZeissULong status;
    ZeissHub::colibriModel_.GetStatus(status);
-   if ((status && 1) != 1)
+   if ((status & 1) != 1)
       return ERR_MODULE_NOT_FOUND;
 
    // Name

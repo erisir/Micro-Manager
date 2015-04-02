@@ -4,9 +4,9 @@
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   An adapter for Gigbit-Ethernet cameras using an
-//				  SDK from JAI, Inc.  Users and developers will 
-//				  need to download and install the JAI SDK and control tool.
-//                
+//                SDK from JAI, Inc.  Users and developers will
+//                need to download and install the JAI SDK and control tool.
+//
 // AUTHOR:        David Marshburn, UNC-CH, marshbur@cs.unc.edu, Jan. 2011
 //
 
@@ -15,8 +15,9 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <boost/any.hpp>
-#include <Jai_Factory.h>
+#include <boost/function.hpp>
+
+#include "JAISDK.h"
 
 
 // based on GenICam Standard Features Naming Convention 1.4
@@ -77,6 +78,7 @@ enum InterestingNodeString
 	DEVICE_ID,
 
 	EXPOSURE_MODE,
+	PIXEL_COLOR_FILTER,		// IEnumeration
 
 	ACQUISITION_FRAME_RATE_STR, // this is supposed to be a float, but our camera has it as a string enum
 };
@@ -85,8 +87,9 @@ enum InterestingNodeString
 template<class T> class Node
 {
 public:
+	// camera is not stored. logger must be valid for lifetime of Node instance.
+	Node( const std::string name, CAM_HANDLE camera, boost::function<void(const std::string&)> logger = 0 );
 	Node();
-	Node( const std::string name );
 	Node( const Node& );
 	virtual ~Node() { }
 	Node<T>& operator=( const Node<T>& rhs );
@@ -98,9 +101,9 @@ public:
 	bool hasMinimum() { return hasMin; }
 	bool hasMaximum() { return hasMax; }
 	bool hasIncrement() { return hasInc; }
-	T getMinimum( CAM_HANDLE camera );
-	T getMaximum( CAM_HANDLE camera );
-	T getIncrement( CAM_HANDLE camera );
+	bool getMinimum( CAM_HANDLE camera, T& value );
+	bool getMaximum( CAM_HANDLE camera, T& value );
+	bool getIncrement( CAM_HANDLE camera, T& value );
 	J_STATUS_TYPE get( CAM_HANDLE camera, T& );
 	J_STATUS_TYPE set( CAM_HANDLE camera, const T& );
 	
@@ -108,13 +111,8 @@ public:
 	J_STATUS_TYPE getNumEnumEntries( CAM_HANDLE camera, uint32_t& i );
 	J_STATUS_TYPE getEnumEntry( CAM_HANDLE camera, uint32_t index, std::string& entry );
 	J_STATUS_TYPE getEnumDisplayName( CAM_HANDLE camera, uint32_t index, std::string& name );
-	//J_STATUS_TYPE getEnumEntryFromDisplayName( CAM_HANDLE camera, const std::string name, std::string& entry );
 
 	typedef typename T value_type;
-
-	void testAvailability( CAM_HANDLE camera );
-	void testMinMaxInc( CAM_HANDLE camera );
-	void testEnum( CAM_HANDLE camera );
 
 protected:
 	bool available;
@@ -126,11 +124,20 @@ protected:
 	bool isEnum;
 	std::string sfncName;
 	T val; 
+	boost::function<void(const std::string&)> logger;
+
+	// helpers for the constructor
+	void testAvailability( CAM_HANDLE camera );
+	void testMinMaxInc( CAM_HANDLE camera );
+	void testEnum( CAM_HANDLE camera );
 
 	// test the type of the node.  if not the type we expect,
 	// (for instance, if the camera is an older model that isn't
 	// completely GenICam-compliant) disable the node
 	void testType( NODE_HANDLE camera );
+
+	void LogMessage( const std::string& message ) const
+	{ if (logger) logger(message); }
 };
 
 
@@ -142,10 +149,6 @@ protected:
 	typedef Node<double> FloatNode;
 	typedef Node<std::string> StringNode;
 
-	typedef std::pair<int, IntNode> IntPairType;
-	typedef std::pair<int, FloatNode> FloatPairType;
-	typedef std::pair<int, StringNode> StringPairType;
-
 	typedef std::map< int, Node<int64_t> > IntMapType;
 	typedef std::map< int, Node<double> > FloatMapType;
 	typedef std::map< int, Node<std::string> > StringMapType;
@@ -154,11 +157,10 @@ protected:
 	FloatMapType floatNodes;
 	StringMapType stringNodes;
 
-	static std::map< int, std::string > sfncNames;
 	CAM_HANDLE camera;
 
 public:
-	GigENodes( CAM_HANDLE camera );
+	GigENodes( CAM_HANDLE camera, boost::function<void(const std::string&)> logger = 0 );
 	virtual ~GigENodes(void);
 
 	bool isAvailable( InterestingNodeInteger node )
@@ -194,14 +196,14 @@ public:
 	// - GenICam integer nodes always have a min, max and increment
 	// - float (double) nodes always have min and max, and may have increment
 	// - string nodes never have min, max or increment
-	int64_t getMin( InterestingNodeInteger node );
-	int64_t getMax( InterestingNodeInteger node );
-	int64_t getIncrement( InterestingNodeInteger node );
+	bool getMin( InterestingNodeInteger node, int64_t& value );
+	bool getMax( InterestingNodeInteger node, int64_t& value );
+	bool getIncrement( InterestingNodeInteger node, int64_t& value );
 
-	double getMin( InterestingNodeFloat node );
-	double getMax( InterestingNodeFloat node );
+	bool getMin( InterestingNodeFloat node, double& value );
+	bool getMax( InterestingNodeFloat node, double& value );
 	bool hasIncrement( InterestingNodeFloat node );
-	double getIncrement( InterestingNodeFloat node );
+	bool getIncrement( InterestingNodeFloat node, double& value );
 
 	// per the JAI library documentation, only integer and string nodes can be enumerated
 	bool isEnum( InterestingNodeInteger node );
@@ -212,10 +214,4 @@ public:
 	bool getEnumEntry( std::string& entry, uint32_t indes, InterestingNodeString node );
 	bool getEnumDisplayName( std::string& name, uint32_t index, InterestingNodeInteger node );
 	bool getEnumDisplayName( std::string& name, uint32_t index, InterestingNodeString node );
-	//bool getEnumEntryFromDisplayName( std::string& entry, const std::string displayName, InterestingNodeInteger node );
-	//bool getEnumEntryFromDisplayName( std::string& entry, const std::string displayName, InterestingNodeString node );
-	
 };
-
-
-

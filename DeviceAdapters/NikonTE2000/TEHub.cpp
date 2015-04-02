@@ -10,7 +10,7 @@
 // COPYRIGHT:     University of California San Francisco
 // LICENSE:       This file is distributed under the BSD license.
 //                License text is included with the source distribution.
-// CVS:           $Id$
+// CVS:           $Id: TEHub.cpp 11877 2013-10-05 06:14:11Z mark $
 //
 
 #define _CRT_SECURE_NO_DEPRECATE
@@ -57,7 +57,7 @@ void TEHub::LogError(int id, MM::Device& device, MM::Core& core, const char* fun
 ///////////////////////////////////////////////////////////////////////////////
 
 
-bool TEHub::IsComponentMounted(MM::Device& device, MM::Core& core, char* deviceCode)
+bool TEHub::IsComponentMounted(MM::Device& device, MM::Core& core, const char* deviceCode)
 {
    ExecuteCommand(device, core, "r", deviceCode);
    string value;
@@ -69,7 +69,7 @@ bool TEHub::IsComponentMounted(MM::Device& device, MM::Core& core, char* deviceC
 
 bool TEHub::DetectPerfectFocus(MM::Device& device, MM::Core& core)
 {
-   char* command = "TRN1rVEN";
+   const char* command = "TRN1rVEN";
    ExecuteCommand(device, core, "c", command);
    string value;
    return DEVICE_OK == ParseResponse(device, core, "TRN", value);
@@ -873,14 +873,9 @@ int TEHub::ExecuteCommand(MM::Device& device, MM::Core& core, const char* type, 
       return ret;
    }
   
-   // >>
-   core.LogMessage(&device, strCommand.c_str(), true);
-
    // get response
    ret = core.GetSerialAnswer(&device, port_.c_str(), RCV_BUF_LENGTH, rcvBuf_, "\r\n");
    
-   // >>
-   core.LogMessage(&device, rcvBuf_, true);
    if (ret != DEVICE_OK)
    {
       LogError(ret, device, core, "ExecuteCommand-GetSerialAnswer");
@@ -912,7 +907,6 @@ int TEHub::ExecuteCommand(MM::Device& device, MM::Core& core, const char* type, 
          os << "ExecuteCommand-GetSreialAnswer: Failed reading from serial port after trying " << counter << "times.";
 
       core.LogMessage(&device, os.str().c_str(), true);
-      core.LogMessage(&device, rcvBuf_, true);
       return ret;
    }
 
@@ -1007,9 +1001,6 @@ void TEHub::FetchSerialData(MM::Device& device, MM::Core& core)
                // proper command
                answerBuf_[4] = '\0';
                string cmdresp = (char*)(&answerBuf_[1]);
-               // >>
-               //if (read > 0)
-               //   core.LogMessage(&device, cmdresp.c_str(), true);
 
                // remove command from the wait list
                multimap<string, long>::iterator it;

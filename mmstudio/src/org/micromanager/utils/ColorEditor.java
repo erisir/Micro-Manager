@@ -19,7 +19,7 @@
 //CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 
-//CVS:          $Id$
+//CVS:          $Id: ColorEditor.java 12224 2013-11-27 07:20:28Z nico $
 
 package org.micromanager.utils;
 
@@ -76,6 +76,7 @@ ActionListener {
     * Handles events from the editor button and from
     * the dialog's OK button.
     */
+   @Override
    public void actionPerformed(ActionEvent e) {
       if (EDIT.equals(e.getActionCommand())) {
          //The user has clicked the cell, so
@@ -98,11 +99,13 @@ ActionListener {
    }
 
    //Implement the one CellEditor method that AbstractCellEditor doesn't.
+   @Override
    public Object getCellEditorValue() {
       return currentColor;
    }
 
    //Implement the one method defined by TableCellEditor.
+   @Override
    public Component getTableCellEditorComponent(JTable table,
          Object value,
          boolean isSelected,

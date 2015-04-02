@@ -13,7 +13,7 @@
 //                Karl Hoover (stuff such as programmable CCD size  & the various image processors)
 //                Arther Edelstein ( equipment error simulation)
 //
-// COPYRIGHT:     University of California, San Francisco, 2006
+// COPYRIGHT:     University of California, San Francisco, 2006-2015
 //                100X Imaging Inc, 2008
 //
 // LICENSE:       This file is distributed under the BSD license.
@@ -26,9 +26,6 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-//
-// CVS:           $Id$
-//
 
 #ifndef _DEMOCAMERA_H_
 #define _DEMOCAMERA_H_
@@ -39,7 +36,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
-using namespace std;
+
 //////////////////////////////////////////////////////////////////////////////
 // Error codes
 //
@@ -48,10 +45,33 @@ using namespace std;
 #define ERR_IN_SEQUENCE          104
 #define ERR_SEQUENCE_INACTIVE    105
 #define ERR_STAGE_MOVING         106
-#define SIMULATED_ERROR          200
 #define HUB_NOT_AVAILABLE        107
 
 const char* NoHubError = "Parent Hub not defined.";
+
+// Defines which segments in a seven-segment display are lit up for each of
+// the numbers 0-9. Segments are:
+//
+//  0       1
+// 1 2     2 4
+//  3       8
+// 4 5    16 32
+//  6      64
+const int SEVEN_SEGMENT_RULES[] = {1+2+4+16+32+64, 4+32, 1+4+8+16+64,
+      1+4+8+32+64, 2+4+8+32, 1+2+8+32+64, 2+8+16+32+64, 1+4+32,
+      1+2+4+8+16+32+64, 1+2+4+8+32+64};
+// Indicates if the segment is horizontal or vertical.
+const int SEVEN_SEGMENT_HORIZONTALITY[] = {1, 0, 0, 1, 0, 0, 1};
+// X offset for this segment.
+const int SEVEN_SEGMENT_X_OFFSET[] = {0, 0, 1, 0, 0, 1, 0};
+// Y offset for this segment.
+const int SEVEN_SEGMENT_Y_OFFSET[] = {0, 0, 0, 1, 1, 1, 2};
+
+class ImgManipulator 
+{
+   public:
+      virtual int ChangePixels(ImgBuffer& img) = 0;
+};
 
 ////////////////////////
 // DemoHub
@@ -60,8 +80,11 @@ const char* NoHubError = "Parent Hub not defined.";
 class DemoHub : public HubBase<DemoHub>
 {
 public:
-   DemoHub():initialized_(false), busy_(false), errorRate_(0.0), divideOneByMe_(1) {} ;
-   ~DemoHub() {};
+   DemoHub() :
+      initialized_(false),
+      busy_(false)
+   {}
+   ~DemoHub() {}
 
    // Device API
    // ---------
@@ -69,24 +92,16 @@ public:
    int Shutdown() {return DEVICE_OK;};
    void GetName(char* pName) const; 
    bool Busy() { return busy_;} ;
-   bool GenerateRandomError();
 
    // HUB api
    int DetectInstalledDevices();
-   MM::Device* CreatePeripheralDevice(const char* adapterName);
-
-   // action interface
-   int OnErrorRate(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnDivideOneByMe(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
    void GetPeripheralInventory();
 
-   bool busy_;
-   bool initialized_;
    std::vector<std::string> peripherals_;
-   double errorRate_;
-   long divideOneByMe_;
+   bool initialized_;
+   bool busy_;
 };
 
 
@@ -124,69 +139,35 @@ public:
    int SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize); 
    int GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize); 
    int ClearROI();
-   int PrepareSequenceAcqusition()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-      return DEVICE_OK;
-   }
+   int PrepareSequenceAcqusition() { return DEVICE_OK; }
    int StartSequenceAcquisition(double interval);
    int StartSequenceAcquisition(long numImages, double interval_ms, bool stopOnOverflow);
    int StopSequenceAcquisition();
    int InsertImage();
-   int ThreadRun(MM::MMTime startTime);
+   int RunSequenceOnThread(MM::MMTime startTime);
    bool IsCapturing();
    void OnThreadExiting() throw(); 
    double GetNominalPixelSizeUm() const {return nominalPixelSizeUm_;}
    double GetPixelSizeUm() const {return nominalPixelSizeUm_ * GetBinning();}
    int GetBinning() const;
    int SetBinning(int bS);
-   int IsExposureSequenceable(bool& isSequenceable) const 
-   {
-      isSequenceable = isSequenceable_;
-      return DEVICE_OK;
-   }
-   int GetExposureSequenceMaxLength(long& nrEvents) 
-   {
-      nrEvents = sequenceMaxLength_;
-      return DEVICE_OK;
-   }
-   int StartExposureSequence() 
-   {
-      // may need thread lock
-      sequenceRunning_ = true;
-      return DEVICE_OK;
-   }
-   int StopExposureSequence() 
-   {
-      // may need thread lock
-      sequenceRunning_ = false; 
-      sequenceIndex_ = 0;
-      return DEVICE_OK;
-   }
-   // Remove all values in the sequence                                   
+
+   int IsExposureSequenceable(bool& isSequenceable) const;
+   int GetExposureSequenceMaxLength(long& nrEvents) const;
+   int StartExposureSequence();
+   int StopExposureSequence();
    int ClearExposureSequence();
-   // Add one value to the sequence                                       
    int AddToExposureSequence(double exposureTime_ms);
-   // Signal that we are done sending sequence values so that the adapter can send the whole sequence to the device
-   int SendExposureSequence() const {
-      return DEVICE_OK;
-   }
+   int SendExposureSequence() const;
 
    unsigned  GetNumberOfComponents() const { return nComponents_;};
 
    // action interface
    // ----------------
-	// floating point read-only properties for testing
+   int OnMaxExposure(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnTestProperty(MM::PropertyBase* pProp, MM::ActionType eAct, long);
-	//int OnSwitch(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnXPosition(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnYPosition(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnNosie(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnZPosition(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnReadoutTime(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnScanMode(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -198,24 +179,31 @@ public:
    int OnFastImage(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnSaturatePixels(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnFractionOfPixelsToDropOrSaturate(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnShouldRotateImages(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnShouldDisplayImageNumber(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnStripeWidth(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnCCDTemp(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnIsSequenceable(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMode(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+   // Special public DemoCamera methods
+   void AddBackgroundAndNoise(ImgBuffer& img, double mean, double stdDev);
+   // this function replace normal_distribution in C++11
+   double GaussDistributedValue(double mean, double std);
+
+   int RegisterImgManipulatorCallBack(ImgManipulator* imgManpl);
+
 
 private:
    int SetAllowedBinning();
    void TestResourceLocking(const bool);
    void GenerateEmptyImage(ImgBuffer& img);
    void GenerateSyntheticImage(ImgBuffer& img, double exp);
-   void GetImageFromFile(double index,float* data,int dataSize);
    int ResizeImageBuffer();
 
    static const double nominalPixelSizeUm_;
-   int intensity;
-   double xPostion_;
-   double yPostion_;
-   double zPostion_;
-   double nosie_;
-   float* imageFielData_;
+
+   double exposureMaximum_;
    double dPhase_;
    ImgBuffer img_;
    bool busy_;
@@ -231,7 +219,7 @@ private:
    bool isSequenceable_;
    long sequenceMaxLength_;
    bool sequenceRunning_;
-   long sequenceIndex_;
+   unsigned long sequenceIndex_;
    double GetSequenceExposure();
    std::vector<double> exposureSequence_;
    long imageCounter_;
@@ -241,17 +229,23 @@ private:
    double ccdT_;
 	std::string triggerDevice_;
 
+   bool stopOnOverflow_;
+
 	bool dropPixels_;
    bool fastImage_;
 	bool saturatePixels_;
 	double fractionOfPixelsToDropOrSaturate_;
+   bool shouldRotateImages_;
+   bool shouldDisplayImageNumber_;
+   double stripeWidth_;
 
 	double testProperty_[10];
-   MMThreadLock* pDemoResourceLock_;
    MMThreadLock imgPixelsLock_;
-   int nComponents_;
    friend class MySequenceThread;
+   int nComponents_;
    MySequenceThread * thd_;
+   int mode_;
+   ImgManipulator* imgManpl_;
 };
 
 class MySequenceThread : public MMDeviceThreadBase
@@ -275,12 +269,12 @@ class MySequenceThread : public MMDeviceThreadBase
       MM::MMTime GetActualDuration(){return actualDuration_;}
    private:                                                                     
       int svc(void) throw();
-      CDemoCamera* camera_;                                                     
-      bool stop_;                                                               
-      bool suspend_;                                                            
+      double intervalMs_;                                                       
       long numImages_;                                                          
       long imageCounter_;                                                       
-      double intervalMs_;                                                       
+      bool stop_;                                                               
+      bool suspend_;                                                            
+      CDemoCamera* camera_;                                                     
       MM::MMTime startTime_;                                                    
       MM::MMTime actualDuration_;                                               
       MM::MMTime lastFrameTime_;                                                
@@ -314,7 +308,6 @@ public:
 
 private:
    long numPos_;
-   bool busy_;
    bool initialized_;
    MM::MMTime changedTime_;
    long position_;
@@ -380,8 +373,8 @@ private:
    bool busy_;
    bool initialized_;
    bool sequenceRunning_;
-   int sequenceMaxSize_;
-   int sequenceIndex_;
+   unsigned long sequenceMaxSize_;
+   unsigned long sequenceIndex_;
    std::vector<std::string> sequence_;
    long position_;
 };
@@ -413,7 +406,6 @@ public:
 
 private:
    long numPos_;
-   bool busy_;
    bool initialized_;
    MM::MMTime changedTime_;
    long position_;
@@ -442,35 +434,17 @@ public:
    double GetStepSize() {return stepSize_um_;}
    int SetPositionSteps(long steps) 
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       pos_um_ = steps * stepSize_um_; 
       return  OnStagePositionChanged(pos_um_);
    }
    int GetPositionSteps(long& steps)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       steps = (long)(pos_um_ / stepSize_um_);
       return DEVICE_OK;
    }
-   int SetOrigin()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-      return DEVICE_OK;
-   }
+   int SetOrigin() { return DEVICE_OK; }
    int GetLimits(double& lower, double& upper)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       lower = lowerLimit_;
       upper = upperLimit_;
       return DEVICE_OK;
@@ -482,36 +456,16 @@ public:
    // action interface
    // ----------------
    int OnPosition(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnSequence(MM::PropertyBase* pProp, MM::ActionType eAct);
 
    // Sequence functions
-   int IsStageSequenceable(bool& isSequenceable) const {
-      isSequenceable = false;
-      return DEVICE_OK;
-   }
-   int GetStageSequenceMaxLength(long& nrEvents) const 
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-      nrEvents = 0; return DEVICE_OK;
-   }
-   int StartStageSequence() const
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-      return DEVICE_OK;
-   }
-   int StopStageSequence() const
-   {  
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-      return DEVICE_OK;
-   }
-   int ClearStageSequence() {return DEVICE_OK;}
-   int AddToStageSequence(double /* position */) {return DEVICE_OK;}
-   int SendStageSequence() const {return DEVICE_OK;}
+   int IsStageSequenceable(bool& isSequenceable) const;
+   int GetStageSequenceMaxLength(long& nrEvents) const;
+   int StartStageSequence();
+   int StopStageSequence();
+   int ClearStageSequence();
+   int AddToStageSequence(double /* position */);
+   int SendStageSequence();
 
 private:
    void SetIntensityFactor(double pos);
@@ -521,6 +475,7 @@ private:
    bool initialized_;
    double lowerLimit_;
    double upperLimit_;
+   bool sequenceable_;
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -549,70 +504,11 @@ public:
 
    // This must be correct or the conversions between steps and Um will go wrong
    virtual double GetStepSize() {return stepSize_um_;}
-   virtual int SetPositionSteps(long x, long y)
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      if (timeOutTimer_ != 0)
-      {
-         if (!timeOutTimer_->expired(GetCurrentMMTime()))
-               return ERR_STAGE_MOVING;
-         delete (timeOutTimer_);
-      }
-      double newPosX = x * stepSize_um_;
-      double newPosY = y * stepSize_um_;
-      double difX = newPosX - posX_um_;
-      double difY = newPosY - posY_um_;
-      double distance = sqrt( (difX * difX) + (difY * difY) );
-      long timeOut = (long) (distance / velocity_);
-      timeOutTimer_ = new MM::TimeoutMs(GetCurrentMMTime(),  timeOut);
-      posX_um_ = x * stepSize_um_;
-      posY_um_ = y * stepSize_um_;
-      int ret = OnXYStagePositionChanged(posX_um_, posY_um_);
-      if (ret != DEVICE_OK)
-         return ret;
-
-      return DEVICE_OK;
-   }
-   virtual int GetPositionSteps(long& x, long& y)
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      x = (long)(posX_um_ / stepSize_um_);
-      y = (long)(posY_um_ / stepSize_um_);
-      return DEVICE_OK;
-   }
-   int SetRelativePositionSteps(long x, long y)                                                           
-   {                                                                                                      
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      long xSteps, ySteps;                                                                                
-      GetPositionSteps(xSteps, ySteps);                                                   
-
-      return this->SetPositionSteps(xSteps+x, ySteps+y);                                                  
-   } 
-   virtual int Home()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_OK;
-   }
-   virtual int Stop()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_OK;
-   }
+   virtual int SetPositionSteps(long x, long y);
+   virtual int GetPositionSteps(long& x, long& y);
+   virtual int SetRelativePositionSteps(long x, long y);
+   virtual int Home() { return DEVICE_OK; }
+   virtual int Stop() { return DEVICE_OK; }
 
    /* This sets the 0,0 position of the adapter to the current position.  
     * If possible, the stage controller itself should also be set to 0,0
@@ -620,59 +516,19 @@ public:
     * sets the coordinate system used by the adapter
     * to values different from the system used by the stage controller
     */
-   virtual int SetOrigin()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
+   virtual int SetOrigin() { return DEVICE_OK; }
 
-      return DEVICE_OK;
-   }
-   virtual int GetLimits(double& lower, double& upper)
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      lower = lowerLimit_;
-      upper = upperLimit_;
-      return DEVICE_OK;
-   }
    virtual int GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       xMin = lowerLimit_; xMax = upperLimit_;
       yMin = lowerLimit_; yMax = upperLimit_;
       return DEVICE_OK;
    }
 
    virtual int GetStepLimits(long& /*xMin*/, long& /*xMax*/, long& /*yMin*/, long& /*yMax*/)
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_UNSUPPORTED_COMMAND;
-   }
-   double GetStepSizeXUm()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return stepSize_um_;
-   }
-   double GetStepSizeYUm()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return stepSize_um_;
-   }
+   { return DEVICE_UNSUPPORTED_COMMAND; }
+   double GetStepSizeXUm() { return stepSize_um_; }
+   double GetStepSizeYUm() { return stepSize_um_; }
    int Move(double /*vx*/, double /*vy*/) {return DEVICE_OK;}
 
    int IsXYStageSequenceable(bool& isSequenceable) const {isSequenceable = false; return DEVICE_OK;}
@@ -719,31 +575,17 @@ public:
    // Shutter API
    int SetOpen (bool open = true)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       state_ = open;
       changedTime_ = GetCurrentMMTime();
       return DEVICE_OK;
    }
    int GetOpen(bool& open)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       open = state_;
       return DEVICE_OK;
    }
    int Fire(double /*deltaT*/)
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_UNSUPPORTED_COMMAND;
-   }
+   { return DEVICE_UNSUPPORTED_COMMAND; }
 
    // action interface
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -772,11 +614,8 @@ public:
    int GetSignal(double& volts);
    int GetLimits(double& minVolts, double& maxVolts)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      minVolts=0.0; maxVolts= 10.0; return DEVICE_OK;
+      minVolts=0.0; maxVolts= 10.0;
+      return DEVICE_OK;
    }
    bool Busy() {return false;}
    int Initialize();
@@ -784,37 +623,21 @@ public:
    // Sequence functions
    int IsDASequenceable(bool& isSequenceable) const
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       isSequenceable = true;
       return DEVICE_OK;
    }
    int GetDASequenceMaxLength(long& nrEvents) const 
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       nrEvents = 256;
       return DEVICE_OK;
    }
-   int StartDASequence() const
+   int StartDASequence()
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       (const_cast<DemoDA *>(this))->SetSequenceStateOn();
       return DEVICE_OK;
    }
-   int StopDASequence() const
+   int StopDASequence()
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-   
       (const_cast<DemoDA *>(this))->SetSequenceStateOff();
       return DEVICE_OK;
    }
@@ -830,10 +653,10 @@ private:
    double volt_;
    double gatedVolts_;
    bool open_;
-   std::vector<double> nascentSequence_;
-   std::vector<double> sentSequence_;
-   long sequenceIndex_;
    bool sequenceRunning_;
+   unsigned long sequenceIndex_;
+   std::vector<double> sentSequence_;
+   std::vector<double> nascentSequence_;
 
    void SetSequenceStateOn() { sequenceRunning_ = true; }
    void SetSequenceStateOff() { sequenceRunning_ = false; sequenceIndex_ = 0; }
@@ -853,14 +676,7 @@ public:
 
    ~DemoMagnifier () {};
 
-   int Shutdown()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_OK;
-   }
+   int Shutdown() { return DEVICE_OK; }
 
    void GetName(char* name) const;
 
@@ -904,7 +720,8 @@ public:
    bool Busy(void) { return busy_;};
 
     // really primative image transpose algorithm which will work fine for non-square images... 
-   template <typename PixelType> int TransposeRectangleOutOfPlace( PixelType* pI, unsigned int width, unsigned int height)
+   template <typename PixelType>
+   int TransposeRectangleOutOfPlace(PixelType* pI, unsigned int width, unsigned int height)
    {
       int ret = DEVICE_OK;
       unsigned long tsize = width*height*sizeof(PixelType);
@@ -939,7 +756,8 @@ public:
    }
 
    
-   template <typename PixelType> void TransposeSquareInPlace( PixelType* pI, unsigned int dim) 
+   template <typename PixelType>
+   void TransposeSquareInPlace(PixelType* pI, unsigned int dim)
    { 
       PixelType tmp;
       for( unsigned long ix = 0; ix < dim; ++ix)
@@ -987,8 +805,8 @@ public:
    int Initialize();
    bool Busy(void) { return busy_;};
 
-    // 
-   template <typename PixelType> int Flip( PixelType* pI, unsigned int width, unsigned int height)
+   template <typename PixelType>
+   int Flip(PixelType* pI, unsigned int width, unsigned int height)
    {
       PixelType tmp;
       int ret = DEVICE_OK;
@@ -1031,7 +849,8 @@ public:
    int Initialize();
    bool Busy(void) { return busy_;};
 
-   template <typename PixelType> int Flip( PixelType* pI, unsigned int width, unsigned int height)
+   template <typename PixelType>
+   int Flip(PixelType* pI, unsigned int width, unsigned int height)
    {
       PixelType tmp;
       int ret = DEVICE_OK;
@@ -1090,7 +909,8 @@ public:
    };
 
 
-   template <typename PixelType> int Filter( PixelType* pI, unsigned int width, unsigned int height)
+   template <typename PixelType>
+   int Filter(PixelType* pI, unsigned int width, unsigned int height)
    {
       int ret = DEVICE_OK;
       int x[9];
@@ -1213,74 +1033,29 @@ public:
    // AutoFocus API
    virtual int SetContinuousFocusing(bool state)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      running_ = state; return DEVICE_OK;
+      running_ = state;
+      return DEVICE_OK;
    }
    virtual int GetContinuousFocusing(bool& state)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      state = running_; return DEVICE_OK;
-   }
-   virtual bool IsContinuousFocusLocked()
-   {
-      return running_;
-   }
-   virtual int FullFocus()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
+      state = running_;
       return DEVICE_OK;
    }
-   virtual int IncrementalFocus()
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_OK;
-   }
+   virtual bool IsContinuousFocusLocked() { return running_; }
+   virtual int FullFocus() { return DEVICE_OK; }
+   virtual int IncrementalFocus() { return DEVICE_OK; }
    virtual int GetLastFocusScore(double& score)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       score = 0.0;
       return DEVICE_OK;
    }
    virtual int GetCurrentFocusScore(double& score)
    {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
       score = 1.0;
       return DEVICE_OK;
    }
-   virtual int GetOffset(double& /*offset*/)
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_OK;
-   }
-   virtual int SetOffset(double /*offset*/)
-   {
-      DemoHub* pHub = static_cast<DemoHub*>(GetParentHub());
-      if (pHub && pHub->GenerateRandomError())
-         return SIMULATED_ERROR;
-
-      return DEVICE_OK;
-   }
+   virtual int GetOffset(double& /*offset*/) { return DEVICE_OK; }
+   virtual int SetOffset(double /*offset*/) { return DEVICE_OK; }
 
 private:
    bool running_;
@@ -1288,7 +1063,84 @@ private:
    bool initialized_;
 };
 
+struct Point
+{
+   public:
+      Point(int lx, int ly) {x = lx; y = ly;};
+   int x;
+   int y;
+};
 
+struct PointD
+{
+   public:
+      PointD(double lx, double ly) {x = lx; y = ly;};
+   double x;
+   double y;
+};
+//////////////////////////////////////////////////////////////////////////////
+// DemoGalvo class
+// Simulation of Galvo device
+//////////////////////////////////////////////////////////////////////////////
+class DemoGalvo : public CGalvoBase<DemoGalvo>, ImgManipulator
+{
+public:
+   DemoGalvo();
+   ~DemoGalvo();
+      
+   // MMDevice API
+   bool Busy() {return busy_;}
+   void GetName(char* pszName) const;
+
+   int Initialize();
+   int Shutdown(){initialized_ = false; return DEVICE_OK;}
+
+   // Galvo API
+   int PointAndFire(double x, double y, double pulseTime_us); 
+   int SetSpotInterval(double pulseTime_us);
+   int SetPosition(double x, double y);
+   int GetPosition(double& x, double& y);
+   int SetIlluminationState(bool on);
+   int AddPolygonVertex(int polygonIndex, double x, double y);
+   int DeletePolygons();
+   int LoadPolygons();
+   int SetPolygonRepetitions(int repetitions);
+   int RunPolygons();
+   int RunSequence();
+   int StopSequence();
+   int GetChannel(char* channelName);                         
+
+   double GetXRange();                         
+   double GetYRange(); 
+
+   int ChangePixels(ImgBuffer& img);
+   static bool PointInTriangle(Point p, Point p0, Point p1, Point p2);
+
+private:
+
+   unsigned short gaussianMask_[10][10];
+
+   double GaussValue(double amplitude, double sigmaX, double sigmaY, int muX, int muY, int x, int y);
+   Point GalvoToCameraPoint(PointD GalvoPoint, ImgBuffer& img);
+   void GetBoundingBox(std::vector<Point>& vertex, std::vector<Point>& bBox);
+   bool InBoundingBox(std::vector<Point> boundingBox, Point testPoint);
+
+   std::map<int, std::vector<PointD> > vertices_;
+   MM::MMTime pfExpirationTime_;
+   bool initialized_;
+   bool busy_;
+   bool illuminationState_;
+   bool pointAndFire_;
+   bool runROIS_;
+   double xRange_;
+   double yRange_;
+   double currentX_;
+   double currentY_;
+   int offsetX_;
+   double vMaxX_;
+   int offsetY_;
+   double vMaxY_;
+};
 
 
 

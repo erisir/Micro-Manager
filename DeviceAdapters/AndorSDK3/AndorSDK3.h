@@ -35,17 +35,13 @@
 #include "../../MMDevice/DeviceBase.h"
 #include "../../MMDevice/ImgBuffer.h"
 #include "../../MMDevice/DeviceThreads.h"
-#include "atcore++.h"
-
+#include "atcore.h"
 
 class MySequenceThread;
 namespace andor {
    class IDevice;
    class IDeviceManager;
    class IEnum;
-   class IBool;
-   class IInteger;
-   class IFloat;
    class IBufferControl;
    class ICommand;
 };
@@ -53,14 +49,14 @@ namespace andor {
 class TEnumProperty;
 class TIntegerProperty;
 class TFloatProperty;
+class TFloatStringProperty;
 class TBooleanProperty;
 class TAOIProperty;
 class SnapShotControl;
-class TAndorFloatValueMapper;
-class TAndorFloatHolder;
 class TAndorEnumValueMapper;
 class TTriggerRemapper;
 class CEventsManager;
+class ICallBackManager;
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -74,6 +70,8 @@ public:
    CAndorSDK3Camera();
    ~CAndorSDK3Camera();
   
+   int GetNumberOfDevicesPresent() { return number_of_devices_; };
+
    // MMDevice API
    // ------------
    int Initialize();
@@ -81,7 +79,6 @@ public:
   
    void GetName(char* name) const;      
    
-   bool GetCameraPresent() { return b_cameraPresent_; };
    andor::IDevice * GetCameraDevice() { return cameraDevice; };
 
    // MMCamera API
@@ -107,24 +104,25 @@ public:
    int ThreadRun();
    bool IsCapturing();
    void OnThreadExiting() throw(); 
-   double GetNominalPixelSizeUm() const {return nominalPixelSizeUm_;}
+   //double GetNominalPixelSizeUm() const {return nominalPixelSizeUm_;}
    double GetPixelSizeUm() const {return nominalPixelSizeUm_ * GetBinning();}
    int GetBinning() const;
    int SetBinning(int bS);
    int IsExposureSequenceable(bool& isSequenceable) const {isSequenceable = false; return DEVICE_OK;}
-
-   // action interface
-   int OnTriggerMode(MM::PropertyBase* pProp, MM::ActionType eAct);
-   int OnExposureTime(MM::PropertyBase* pProp, MM::ActionType eAct);
-   MM::MMTime CurrentTime(void) { return GetCurrentMMTime(); };
+   void RestartLiveAcquisition();
 
 private:
-   void PerformReleaseVersionCheck();
+   enum CameraId { CIDNeo = 0, CIDZyla = 1 };
+   std::wstring currentSoftwareVersion_;
+   std::wstring PerformReleaseVersionCheck();
+   double CalculateDefaultExposure(std::wstring & interfaceType);
+   CameraId DetermineCameraId(std::wstring & cameraSerialCheck);
+   std::string GenerateCameraName(unsigned cameraID, std::wstring & cameraModelCheck);
    void InitialiseSDK3Defaults();
    void UnpackDataWithPadding(unsigned char* _pucSrcBuffer);
    bool InitialiseDeviceCircularBuffer(const unsigned numBuffers);
    bool CleanUpDeviceCircularBuffer();
-   int  SetupCameraForSeqAcquisition(int numImages);
+   int  SetupCameraForSeqAcquisition(long numImages);
    int  CameraStart();
    int  checkForBufferOverflow();
    bool waitForData(unsigned char *& return_buffer, int & buffer_size);
@@ -134,26 +132,28 @@ private:
 
    ImgBuffer img_;
    bool busy_;
-   bool stopOnOverFlow_;
    bool initialized_;
-   unsigned roiX_;
-   unsigned roiY_;
    AT_64 sequenceStartTime_;
    AT_64 fpgaTSclockFrequency_;
    AT_64 timeStamp_;
-   double d_frameRate_;
    int number_of_devices_;
+   int deviceInUseIndex_;
    bool keep_trying_;
    bool in_external_;
    unsigned int currentSeqExposure_;
+   bool stopOnOverflow_;
 
    unsigned char** image_buffers_;
    unsigned int numImgBuffersAllocated_;
 
    bool b_cameraPresent_;
 
-   int GetNumberOfDevicesPresent() { return number_of_devices_; };
+   bool GetCameraPresent() { return b_cameraPresent_; };
    void SetNumberOfDevicesPresent(int deviceCount) { number_of_devices_ = deviceCount; };
+
+   double defaultExposureTime_;
+   void SetDefaultExpsoure(double d) { defaultExposureTime_ = d; };
+   double GetDefaultExpsoure() { return defaultExposureTime_; };
    AT_64 GetTimeStamp(unsigned char* pBuf);
 
    MMThreadLock* pDemoResourceLock_;
@@ -169,7 +169,7 @@ private:
    TAOIProperty* aoi_property_;
    TEnumProperty* preAmpGain_property;
    TEnumProperty* electronicShutteringMode_property;
-   TEnumProperty* temperatureControl_proptery;
+   TEnumProperty* temperatureControl_property;
    TEnumProperty* pixelReadoutRate_property;
    TEnumProperty* pixelEncoding_property;
    TIntegerProperty* accumulationLength_property;
@@ -180,61 +180,69 @@ private:
    TEnumProperty* triggerMode_property;
    TEnumProperty* fanSpeed_property;
    TBooleanProperty* spuriousNoiseFilter_property;
+   TBooleanProperty* rollingShutterGlobalClear_property;
    TFloatProperty* exposureTime_property;
    TFloatProperty* frameRate_property;
+   TFloatStringProperty* frameRateLimits_property;
+   TEnumProperty* auxOutSignal_property;
+   
+   // LightScanPlus properties
+   TEnumProperty* LSPSensorReadoutMode_property;
+   TBooleanProperty* LSPSequentialPortReadoutMode_property;
+   TIntegerProperty* LSPExposedPixelHeight_property;
+   TBooleanProperty* LSPScanSpeedControlEnable_property;
+   TFloatProperty* LSPLineScanSpeed_property;
+   TFloatProperty* LSPRowReadTime_property;
+
 
    // atcore++ objects
    andor::IDeviceManager* deviceManager;
-   andor::IDevice* systemDevice;
    andor::IDevice* cameraDevice;
-   andor::IEnum* cycleMode;
    andor::IBufferControl* bufferControl;
    andor::ICommand* startAcquisitionCommand;
-   andor::ICommand* stopAcquisitionCommand;
    andor::ICommand* sendSoftwareTrigger;
-   andor::IInteger* frameCount;
-   andor::IFloat* frameRate;
 
    // Objects used by the properties
    andor::IEnum* triggerMode_Enum;
-   TAndorEnumValueMapper* triggerMode_valueMapper;
    TTriggerRemapper* triggerMode_remapper;
+   TAndorEnumValueMapper* triggerMode_valueMapper;
 
    CEventsManager* eventsManager_;
+   ICallBackManager * callbackManager_;
 };
 
 class MySequenceThread : public MMDeviceThreadBase
 {
    friend class CAndorSDK3Camera;
-   enum { default_numImages=1, default_intervalMS = 100 };
-   public:
-      MySequenceThread(CAndorSDK3Camera* pCam);
-      ~MySequenceThread();
-      void Stop();
-      void Start(long numImages, double intervalMs);
-      bool IsStopped();
-      void Suspend();
-      bool IsSuspended();
-      void Resume();
-      double GetIntervalMs(){return intervalMs_;}                               
-      void SetLength(long images) {numImages_ = images;}                        
-      long GetLength() const {return numImages_;}
-      long GetImageCounter(){return imageCounter_;}                             
-      MM::MMTime GetStartTime(){return startTime_;}                             
-      MM::MMTime GetActualDuration(){return actualDuration_;}
-   private:                                                                     
-      int svc(void) throw();
-      CAndorSDK3Camera* camera_;                                                     
-      bool stop_;                                                               
-      bool suspend_;                                                            
-      long numImages_;                                                          
-      long imageCounter_;                                                       
-      double intervalMs_;                                                       
-      MM::MMTime startTime_;                                                    
-      MM::MMTime actualDuration_;                                               
-      MM::MMTime lastFrameTime_;                                                
-      MMThreadLock stopLock_;                                                   
-      MMThreadLock suspendLock_;                                                
+   enum { default_numImages=1, default_intervalMS = 0 };
+public:
+   MySequenceThread(CAndorSDK3Camera* pCam);
+   ~MySequenceThread();
+   void Stop();
+   void Start(long numImages, double intervalMs);
+   bool IsStopped();
+   void Suspend();
+   bool IsSuspended();
+   void Resume();
+   double GetIntervalMs(){return intervalMs_;}                               
+   void SetLength(long images) {numImages_ = images;}                        
+   long GetLength() const {return numImages_;}
+   long GetImageCounter(){return imageCounter_;}                             
+   MM::MMTime GetStartTime(){return startTime_;}                             
+   MM::MMTime GetActualDuration(){return actualDuration_;}
+
+private:                                                                     
+   int svc(void) throw();
+   CAndorSDK3Camera* camera_;                                                     
+   bool stop_;                                                               
+   bool suspend_;                                                            
+   long numImages_;                                                          
+   long imageCounter_;                                                       
+   double intervalMs_;                                                       
+   MM::MMTime startTime_;                                                    
+   MM::MMTime actualDuration_;                                               
+   MMThreadLock stopLock_;                                                   
+   MMThreadLock suspendLock_;                                                
 };
 
 

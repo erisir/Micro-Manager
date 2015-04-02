@@ -17,7 +17,7 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 03/15/2006
 //
-// CVS:           $Id$
+// CVS:           $Id: DTOpenLayer.cpp 12458 2013-12-23 02:19:19Z mark $
 //
 
 #ifdef WIN32
@@ -47,25 +47,6 @@ unsigned g_shutterState = 0;
 
 using namespace std;
 
-// global constants
-
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-   	case DLL_THREAD_ATTACH:
-   	case DLL_THREAD_DETACH:
-   	case DLL_PROCESS_DETACH:
-   		break;
-   	}
-       return TRUE;
-   }
-#endif
 
 #include "../../../3rdparty/DataTranslation/SDK/include/olmem.h"
 #include "../../../3rdparty/DataTranslation/SDK/include/olerrors.h"
@@ -173,12 +154,12 @@ int InitializeTheBoard()
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceNameDTOLSwitch);
-   AddAvailableDeviceName(g_DeviceNameDTOLShutter);
-   AddAvailableDeviceName(g_DeviceNameDTOLDA0);
-   AddAvailableDeviceName(g_DeviceNameDTOLDA1);
-   AddAvailableDeviceName(g_DeviceNameDTOLDA2);
-   AddAvailableDeviceName(g_DeviceNameDTOLDA3);
+   RegisterDevice(g_DeviceNameDTOLSwitch, MM::StateDevice, "DTOL Switch");
+   RegisterDevice(g_DeviceNameDTOLShutter, MM::ShutterDevice, "DTOL Shutter");
+   RegisterDevice(g_DeviceNameDTOLDA0, MM::SignalIODevice, "DTOL DAC 0");
+   RegisterDevice(g_DeviceNameDTOLDA1, MM::SignalIODevice, "DTOL DAC 1");
+   RegisterDevice(g_DeviceNameDTOLDA2, MM::SignalIODevice, "DTOL DAC 2");
+   RegisterDevice(g_DeviceNameDTOLDA3, MM::SignalIODevice, "DTOL DAC 3");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)

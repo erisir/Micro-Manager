@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: ColorRenderer.java 12224 2013-11-27 07:20:28Z nico $
 //
 package org.micromanager.utils;
 
@@ -46,6 +46,7 @@ public class ColorRenderer extends JLabel implements TableCellRenderer {
         setOpaque(true); //MUST do this for background to show up.
     }
 
+   @Override
     public Component getTableCellRendererComponent(
                             JTable table, Object color,
                             boolean isSelected, boolean hasFocus,

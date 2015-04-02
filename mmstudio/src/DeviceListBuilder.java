@@ -19,7 +19,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: DeviceListBuilder.java 9537 2012-06-07 05:41:49Z nenad $
 
 import org.micromanager.conf2.MicroscopeModel;
 import org.micromanager.utils.ReportingUtils;

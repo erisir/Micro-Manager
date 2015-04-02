@@ -44,34 +44,13 @@ using namespace std;
 const char* g_WheelDeviceName = "Thorlabs Filter Wheel";
 
 
-// windows DLL entry code
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-  	   case DLL_THREAD_ATTACH:
-   	case DLL_THREAD_DETACH:
-   	case DLL_PROCESS_DETACH:
-   		break;
-   	}
-       return TRUE;
-   }
-#endif
-
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 
 MODULE_API void InitializeModuleData()
 {
-   
-   AddAvailableDeviceName(g_WheelDeviceName, "Thorlabs filter wheel");
-  
+   RegisterDevice(g_WheelDeviceName, MM::StateDevice, "Thorlabs filter wheel");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -104,7 +83,6 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 
 CDemoFilterWheel::CDemoFilterWheel() : 
    numPos_(6), 
-   busy_(false), 
    initialized_(false), 
    changedTime_(0.0),
    position_(0),

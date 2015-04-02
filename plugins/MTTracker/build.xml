@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="MTracker" default="build" basedir=".">
 	<description>
-		ZIndexMeasure
+		MTracker
     </description>
 
 	<property name="build.dir" value="build" />
 	<property name="src.dir" value="src" />
-	<property name="dist.dir" value="../../Install_Win32/micro-manager" />
+	<property name="dist.dir" value="../../stage/Release/Win32" />
 	<property name="bin.dir" value="../../bin_Win32" />
 	<property name="target.name" value="MTracker" />
 	
@@ -16,11 +16,11 @@
 		<pathelement location="${third.party.dir}/classext/ij.jar" />
 		<pathelement location="${third.party.dir}/classext/jfreechart-1.0.14.jar" />		
 		<pathelement location="${third.party.dir}/classext/jcommon-1.0.17.jar" />
-		<pathelement location="${third.party.dir}/classext/commons-math3-3.0.jar" />
+		<pathelement location="${third.party.dir}/classext/commons-math3-3.4.1.jar" />
 		<pathelement location="${third.party.dir}/classext/comm.jar" />
 		<pathelement location="${third.party.dir}/classext/swing-layout-1.0.4.jar" />
-		<pathelement location="../../bin_Win32/MMCoreJ.jar" />
-		<pathelement location="../../mmstudio/MMJ_.jar" />
+		<pathelement location="${third.party.dir}/classext/MMCoreJ.jar" />
+		<pathelement location="${third.party.dir}/classext/MMJ_.jar" />
 	</path>
 
 	<target description="Creates necessary directories" name="init">

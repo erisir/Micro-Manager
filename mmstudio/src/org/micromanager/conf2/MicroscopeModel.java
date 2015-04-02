@@ -75,7 +75,7 @@ public class MicroscopeModel {
          deviceListFileName.append(DEVLIST_FILE_NAME);
          CMMCore core = (null == c) ? new CMMCore() : c;
          core.enableDebugLog(true);
-         StrVector libs = getDeviceLibraries(core);
+         StrVector libs = core.getDeviceAdapterNames();
          ArrayList<Device> devs = new ArrayList<Device>();
 
          for (int i = 0; i < libs.size(); i++) {
@@ -183,15 +183,6 @@ public class MicroscopeModel {
    }
 
    /**
-    * Match the file list against currently available DLLs and add ones that are
-    * missing Find all paths on java.library.path and add an empty (current)
-    * directory Then assemble a list with DeviceLibraries on all these paths
-    */
-   public static StrVector getDeviceLibraries(CMMCore core) throws Exception {
-      return CMMCore.getDeviceLibraries();
-   }
-
-   /**
     * Inspects the Micro-manager software and gathers information about all
     * available devices.
     */
@@ -205,7 +196,7 @@ public class MicroscopeModel {
          ArrayList<Device> hubs = new ArrayList<Device>();
          badLibraries_ = new Vector<String>();
 
-         StrVector libs = getDeviceLibraries(core);
+         StrVector libs = core.getDeviceAdapterNames();
 
          for (int i = 0; i < libs.size(); i++) {
             boolean good = false;
@@ -231,7 +222,7 @@ public class MicroscopeModel {
                   }
                } catch (Exception e) {
             	   // This usually happens when vendor's drivers are not installed
-            	   ReportingUtils.logError(null, "Unable to load " + libs.get(i) + " library.");
+                  ReportingUtils.logError(null, "Unable to load " + libs.get(i) + " library: " + e.getMessage());
                }
             }
             if (!good)
@@ -1387,11 +1378,9 @@ public class MicroscopeModel {
       }
 
       // remove differently named com ports from device lists
-      for (int i = 0; i < devices_.size(); i++) {
-         Device dev = devices_.get(i);
-         if (dev.isSerialPort()) {
-            removeDevice(dev.getName());
-
+      for (Device device : new ArrayList<Device>(devices_)) {
+         if (device.isSerialPort()) {
+            removeDevice(device.getName());
          }
       }
    }
@@ -1544,7 +1533,7 @@ public class MicroscopeModel {
       }
       
       // initialize hubs first
-      for (Device d : devices_) {
+      for (Device d : new ArrayList<Device>(devices_)) {
          if (d.isHub() && !d.isInitialized()) {
             try {
                core_.initializeDevice(d.getName());
@@ -1569,7 +1558,7 @@ public class MicroscopeModel {
       }
       
       // then remaining devices
-      for (Device d : devices_) {
+      for (Device d : new ArrayList<Device>(devices_)) {
          if (!d.isInitialized() && !d.isCore()) {
             try { 
                String parentHub = d.getParentHub();

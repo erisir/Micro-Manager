@@ -51,8 +51,8 @@ SpectralLMM5Interface* g_Interface = NULL;
 ////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceNameLMM5Hub);
-   AddAvailableDeviceName(g_DeviceNameLMM5Shutter);
+   RegisterDevice(g_DeviceNameLMM5Hub, MM::GenericDevice, "LMM5 Hub");
+   RegisterDevice(g_DeviceNameLMM5Shutter, MM::ShutterDevice, "LMM5 Shutter");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -115,6 +115,15 @@ int LMM5Hub::Initialize()
    if (DEVICE_OK != ret)
       return ret;
 
+   // Firmware version
+   std::string version;
+   ret = g_Interface->GetFirmwareVersion(*this, *GetCoreCallback(), version);
+   if (ret != DEVICE_OK)
+      return ret;
+   ret = CreateStringProperty("Firmware Version", version.c_str(), true);
+   if (ret != DEVICE_OK)
+      return ret;
+
    // Power monitor
    /*
    CPropertyAction* pAct = new CPropertyAction(this, &LMM5Hub::OnPowerMonitor);
@@ -143,27 +152,30 @@ int LMM5Hub::Initialize()
    CreateProperty("ExposureConfig", "", MM::String, false, pAct);
    */
 
-   // Trigger configuration
-   CPropertyAction *pAct = new CPropertyAction(this, &LMM5Hub::OnTriggerOutConfig);
-   CreateProperty("TriggerOutConfig", "", MM::String, false, pAct);
-   std::vector<std::string> triggerConfigs;
-   triggerConfigs.push_back("Enable-State");
-   triggerConfigMap_["Enable-State"] = 256;
-   triggerConfigs.push_back("Enable-Clock");
-   triggerConfigMap_["Enable-Clock"] = 257;
-   triggerConfigs.push_back("Disable-State");
-   triggerConfigMap_["Disable-State"] = 0;
-   triggerConfigs.push_back("Disable-Clock");
-   triggerConfigMap_["Disable-Clock"] = 1;
-   SetAllowedValues("TriggerOutConfig", triggerConfigs);
-
-   // Trigger Exposure Time
-   pAct = new CPropertyAction(this, &LMM5Hub::OnTriggerOutExposureTime);
-   CreateProperty("TriggerExpTime(0.1ms)", "", MM::Integer, false, pAct);
-
+   // Some versions of the firmware, when trigger-out is unavailable, fail to
+   // respond correctly when querying the trigger-out config. Only provide the
+   // trigger-out properties when it appears to be working.
    unsigned char dummy[5];
-   if (DEVICE_OK != g_Interface->GetTriggerOutConfig(*this, *GetCoreCallback(), dummy))
-      g_Interface->setReadWriteSame(true);
+   ret = g_Interface->GetTriggerOutConfig(*this, *GetCoreCallback(), dummy);
+   if (ret == DEVICE_OK) {
+      // Trigger configuration
+      CPropertyAction *pAct = new CPropertyAction(this, &LMM5Hub::OnTriggerOutConfig);
+      CreateProperty("TriggerOutConfig", "", MM::String, false, pAct);
+      std::vector<std::string> triggerConfigs;
+      triggerConfigs.push_back("Enable-State");
+      triggerConfigMap_["Enable-State"] = 256;
+      triggerConfigs.push_back("Enable-Clock");
+      triggerConfigMap_["Enable-Clock"] = 257;
+      triggerConfigs.push_back("Disable-State");
+      triggerConfigMap_["Disable-State"] = 0;
+      triggerConfigs.push_back("Disable-Clock");
+      triggerConfigMap_["Disable-Clock"] = 1;
+      SetAllowedValues("TriggerOutConfig", triggerConfigs);
+
+      // Trigger Exposure Time
+      pAct = new CPropertyAction(this, &LMM5Hub::OnTriggerOutExposureTime);
+      CreateProperty("TriggerExpTime(0.1ms)", "", MM::Integer, false, pAct);
+   }
 
    ret = UpdateStatus();
    if (DEVICE_OK != ret)
@@ -193,7 +205,7 @@ int LMM5Hub::OnPort(MM::PropertyBase* pProp, MM::ActionType pAct)
    else if (pAct == MM::AfterSet)
    {
       pProp->Get(port_);
-      MM::PortType portType = GetPortType(port_.c_str());
+      MM::PortType portType = GetSerialPortType(port_.c_str());
       g_Interface = new SpectralLMM5Interface(port_, portType);
    }
    return DEVICE_OK;
@@ -397,6 +409,16 @@ int LMM5Shutter::Initialize()
       }
    }
 
+   for (long i=0; i < nrLines_; i++) 
+   {
+      if (lines[i].present) 
+      {
+         CPropertyActionEx *pActEx = new CPropertyActionEx(this, &LMM5Shutter::OnStateEx, i);
+         CreateProperty(lines[i].name.c_str(), "0", MM::Integer, false, pActEx);
+         SetPropertyLimits(lines[i].name.c_str(), 0, 1);
+      }
+   }
+
    changedTime_ = GetCurrentMMTime();
  
    ret = UpdateStatus();
@@ -470,7 +492,7 @@ std::string LMM5Shutter::StateToLabel(int state)
    for (int j=0; j<nrLines_; j++)
    {
       if (state & (1 << j)) 
-         label += lines[j].name + "/";
+         label += lines[j].name + "_";
    }
    printf ("StateToLabel: state %d label %s\n", state, label.c_str());
    return label.substr(0,label.length()-1);
@@ -482,8 +504,8 @@ int LMM5Shutter::LabelToState(std::string label)
    int state = 0;
    availableLines* lines = g_Interface->getAvailableLaserLines();
    // tokenize the label string on "/"
-   std::string::size_type lastPos = label.find_first_not_of("/", 0);
-   std::string::size_type pos     = label.find_first_of("/", lastPos);
+   std::string::size_type lastPos = label.find_first_not_of("_", 0);
+   std::string::size_type pos     = label.find_first_of("_", lastPos);
    while (std::string::npos != pos || std::string::npos != lastPos)
    {
       std::string wave = label.substr(lastPos, pos - lastPos);
@@ -494,8 +516,8 @@ int LMM5Shutter::LabelToState(std::string label)
          if (wave == lines[j].name)
             state |= (1 << j);
       }
-      lastPos = label.find_first_not_of("/", pos);
-      pos = label.find_first_of("/", lastPos);
+      lastPos = label.find_first_not_of("_", pos);
+      pos = label.find_first_of("_", lastPos);
    }
   
    return state;
@@ -529,6 +551,34 @@ int LMM5Shutter::OnLabel(MM::PropertyBase* pProp, MM::ActionType pAct)
       std::string label;
       pProp->Get(label);
       state_ = LabelToState(label);
+      SetOpen(open_);
+   }
+
+   return DEVICE_OK;
+}
+
+int LMM5Shutter::OnStateEx(MM::PropertyBase* pProp, MM::ActionType pAct, long line)
+{
+   if (pAct == MM::BeforeGet)
+   {
+      long stateEx = (state_ >> line) & 1;
+      pProp->Set(stateEx);
+   }
+   else if (pAct == MM::AfterSet)
+   {
+      long stateEx;
+      pProp->Get(stateEx);
+      if (stateEx == 1) 
+      {
+         stateEx <<= line;
+         state_ |= stateEx;
+      } else 
+      {
+         int invState = ~state_;
+         int mask = 1 << line;
+         invState |= mask;
+         state_ = ~invState;
+      }
       SetOpen(open_);
    }
 

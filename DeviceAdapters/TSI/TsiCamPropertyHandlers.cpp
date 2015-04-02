@@ -97,7 +97,7 @@ int TsiCam::OnTaps(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int TsiCam::OnTriggerMode(MM::PropertyBase* pProp, MM::ActionType eAct)
+int TsiCam::OnTriggerMode(MM::PropertyBase* /*pProp*/, MM::ActionType eAct)
 {
    if (eAct == MM::AfterSet)
    {
@@ -108,7 +108,7 @@ int TsiCam::OnTriggerMode(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int TsiCam::OnFps(MM::PropertyBase* pProp, MM::ActionType eAct)
+int TsiCam::OnFps(MM::PropertyBase* /*pProp*/, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -132,7 +132,29 @@ int TsiCam::OnExposure(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int TsiCam::OnTemperature(MM::PropertyBase* pProp, MM::ActionType eAct)
+int TsiCam::OnGain(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::AfterSet)
+   {
+      long gain;
+      pProp->Get(gain);
+      bool bRet = camHandle_->SetParameter(TSI_PARAM_GAIN, (uint32_t)gain);
+      if (!bRet)
+         return camHandle_->GetErrorCode();
+   }
+   else if (eAct == MM::BeforeGet)
+   {
+      uint32_t gain(0);
+      bool bRet = camHandle_->GetParameter(TSI_PARAM_GAIN, sizeof(uint32_t), &gain);
+      if (!bRet)
+         return camHandle_->GetErrorCode();
+      pProp->Set((long)gain);
+   }
+   return DEVICE_OK;
+}
+
+
+int TsiCam::OnTemperature(MM::PropertyBase* /*pProp*/, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
    {
@@ -140,7 +162,7 @@ int TsiCam::OnTemperature(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int TsiCam::OnTemperatureSetPoint(MM::PropertyBase* pProp, MM::ActionType eAct)
+int TsiCam::OnTemperatureSetPoint(MM::PropertyBase* /*pProp*/, MM::ActionType eAct)
 {
    if (eAct == MM::AfterSet)
    {

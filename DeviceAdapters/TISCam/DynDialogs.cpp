@@ -23,7 +23,7 @@ LPWORD NON_DWORD_ALIGN(LPWORD lpIn)
 //--------------------------------------------------------------------------- 
 
 LPWORD InitDialog(LPVOID lpv, LPCTSTR title, DWORD style, WORD ctrlno, LPCTSTR fontname, 
-                  WORD fontsize, short x, short y, short cx, short cy) 
+                  WORD /*fontsize*/, short x, short y, short cx, short cy) 
 { 
     LPWORD        lpw; 
     LPWSTR        lpwsz; 
@@ -140,7 +140,7 @@ int InputBox(HWND hwnd, LPCTSTR prompt, LPCTSTR title, LPTSTR buffer, INT buflen
     ret = DialogBoxIndirectParamA(NULL, (LPDLGTEMPLATE)hgbl, hwnd, 
                                  (DLGPROC)InputBoxDlgProc, (int)data); 
     GlobalFree(hgbl); 
-    return (ret > 0) ? ret : 0; 
+    return static_cast<int>((ret > 0) ? ret : 0); 
 } 
 //--------------------------------------------------------------------------- 
 

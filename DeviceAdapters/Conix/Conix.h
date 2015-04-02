@@ -61,8 +61,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int GetPosition(int& position);
-   int SetPosition(int position);
+   int GetDevicePosition(int& position);
+   int SetDevicePosition(int position);
 
    bool initialized_;
    unsigned numPos_;
@@ -70,8 +70,6 @@ private:
    std::string port_;
    // Command exchange with MMCore
    std::string command_;
-   // Has a command been sent to which no answer has been received yet?
-   bool pendingCommand_;
 };
 
 
@@ -103,8 +101,8 @@ public:
    int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int GetPosition(int& position);
-   int SetPosition(int position);
+   int GetDevicePosition(int& position);
+   int SetDevicePosition(int position);
 
    bool initialized_;
    unsigned numPos_;
@@ -112,8 +110,6 @@ private:
    std::string port_;
    // Command exchange with MMCore
    std::string command_;
-   // Has a command been sent to which no answer has been received yet?
-   bool pendingCommand_;
    std::string baseCommand_;
    MM::MMTime changedTime_;
 };
@@ -190,7 +186,6 @@ private:
 	double stepSize_um_;
 	double posX_um_;
 	double posY_um_;
-	bool busy_;
 	bool initialized_;
 	double lowerLimit_;
 	double upperLimit_;
@@ -225,11 +220,11 @@ public:
 	int Stop();
 	int SetOrigin();
 	int SetAdapterOriginUm(double z) {posZ_um_ = z; return DEVICE_OK;}
-	int GetLimits(double& lower, double& upper)
+	int GetLimits(double& /*lower*/, double& /*upper*/)
 	{
 		return DEVICE_UNSUPPORTED_COMMAND;
 	}
-	int GetLimitsUm(double& zMin, double& zMax)
+	int GetLimitsUm(double& /*zMin*/, double& /*zMax*/)
 	{
 		return DEVICE_UNSUPPORTED_COMMAND;
 	}
@@ -257,12 +252,10 @@ private:
 
 	double stepSize_um_;
 	double posZ_um_;
-	long curSteps_;
-	double lowerLimit_;
-	double upperLimit_;
-	ConixControllerType m_ControllerType;
-	bool busy_;
 	bool initialized_;
+
+	long curSteps_;
+	ConixControllerType m_ControllerType;
 };
 
 #endif //_CONIX_H_

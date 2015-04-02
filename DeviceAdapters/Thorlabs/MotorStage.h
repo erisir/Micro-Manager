@@ -3,7 +3,7 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Thorlabs device adapters: BBD102 Controller
+// DESCRIPTION:   Thorlabs device adapters: BBD Controller
 //
 // COPYRIGHT:     Thorlabs Inc, 2011
 //
@@ -65,12 +65,10 @@ typedef enum {
   MOTORSTAGE_UNDEFINED
 } MOTTYPE;
 
-class ThorlabsDeviceBase;
-
 class MotorStage
 {
 public:
-   MotorStage(MM::Device *parent, std::string port, int axis, double answerTimeoutMs, double moveTimeoutMs);
+   MotorStage(MM::Device *parent, MM::Core *core, std::string port, int axis, double answerTimeoutMs, double moveTimeoutMs);
    ~MotorStage() { }
 
    int Stop();
@@ -89,25 +87,19 @@ private:
    int SendCommand(const ThorlabsCommand cmd);
    int SetCommand(const unsigned char* command, unsigned length);
    int ParseStatus(const unsigned char* buf, int bufLen, DCMOTSTATUS& stat);
-   int GetCommandAnswer(unsigned char *reply, int reply_size, double timeout = -1);
+   int ProcessEndOfMove(const unsigned char* buf, int bufLen);
+   int GetCommandAnswer(unsigned char *reply, int reply_size, double timeout = -1, bool yieldToPolling = false);
 
-   int axis_;                    // which axis to control (0 = x, 1 = y, etc.)
-   HWINFO info_;                 // device information
    std::string port_;            // communications port
-   MOTTYPE type_;                // type of stage (servo, stepper)
+   int axis_;                    // which axis to control (0 = x, 1 = y, etc.)
    double moveTimeoutMs_;        //
-   double answerTimeoutMs_;      // max wait for the device to answer
-   ThorlabsDeviceBase *parent_;  // parent device (XYStage, MotorXStage)
-};
-
-
-class ThorlabsDeviceBase : public CDeviceBase<MM::Device, ThorlabsDeviceBase>
-{
-public:
-   ThorlabsDeviceBase() { }
-   ~ThorlabsDeviceBase() { }
-
-   friend class MotorStage;
+   HWINFO info_;                 // device information
+   MOTTYPE type_;                // type of stage (servo, stepper)
+   MM::Device *parent_;  // parent device (XYStage, MotorXStage)
+   MM::Core *core_;
+   long currentPos_; 
+   bool pollingPositionStep_;
+   bool blockPolling_;   
 };
 
 #endif //_MOTORSTAGE_H_

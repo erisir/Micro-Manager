@@ -100,7 +100,6 @@
 #include <string>
 #include <math.h>
 #include "../../MMDevice/ModuleInterface.h"
-#include "../../MMCore/Error.h"
 #include <sstream>
 #include <FreeImagePlus.h>
 
@@ -125,31 +124,11 @@ const char* g_CameraName_NotConnected = "Camera not connected";
 const char* g_ShutterSpeed_NotSet = "Shutter speed not set";
 const char* g_ISO_NotSet = "ISO not set";
 
-// TODO: linux entry code
-
-// windows DLL entry code
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                      DWORD  ul_reason_for_call, 
-                      LPVOID /*lpReserved*/
-                      )
-{
-   switch (ul_reason_for_call)
-   {
-   case DLL_PROCESS_ATTACH:
-   case DLL_THREAD_ATTACH:
-   case DLL_THREAD_DETACH:
-   case DLL_PROCESS_DETACH:
-      break;
-   }
-   return TRUE;
-}
-#endif
 
 #ifdef _SIMPLECAM_GPHOTO_
 
 // define gphoto callback for logging
-static void gphoto2_logger(GPLogLevel level, const char *domain, const char *format, va_list args, void *data);
+static void gphoto2_logger(GPLogLevel level, const char *domain, const char *str, void *data);
 static int gphoto2_log_id = 0;
 
 #endif
@@ -158,15 +137,9 @@ static int gphoto2_log_id = 0;
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 
-/**
- * List all supperted hardware devices here
- * Do not discover devices at runtime.  To avoid warnings about missing DLLs, Micro-Manager
- * maintains a list of supported device (MMDeviceList.txt).  This list is generated using 
- * information supplied by this function, so runtime discovery will create problems.
- */
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_CameraDeviceName, g_CameraDeviceDescription);
+   RegisterDevice(g_CameraDeviceName, MM::CameraDevice, g_CameraDeviceDescription);
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -206,11 +179,11 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 */
 CCameraFrontend::CCameraFrontend() :
    CCameraBase<CCameraFrontend> (),
+   cameraSupportsLiveView_(false),
    initialized_(false),
    grayScale_(true),
    bitDepth_(8),
    keepOriginals_(false),
-   cameraSupportsLiveView_(false),
    imgBinning_(1),
    imgGrayScale_(false),
    imgBitDepth_(8),
@@ -751,8 +724,17 @@ int CCameraFrontend::OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct)
          // either ask the 'hardware' or let the system return the value
          // cached in the property.
          ret=DEVICE_OK;
-      }break;
+      } break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
+
    return ret; 
 }
 
@@ -799,6 +781,14 @@ int CCameraFrontend::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
             pProp->Set(g_PixelType_Color);
          ret=DEVICE_OK;
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -844,6 +834,14 @@ int CCameraFrontend::OnKeepOriginals(MM::PropertyBase* pProp, MM::ActionType eAc
             pProp->Set("0");
          ret=DEVICE_OK;
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -888,6 +886,14 @@ int CCameraFrontend::OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct)
             pProp->Set("8");
          ret=DEVICE_OK;
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -988,6 +994,14 @@ int CCameraFrontend::OnShutterSpeed(MM::PropertyBase* pProp, MM::ActionType eAct
          pProp->Set(shutterSpeed.c_str());
          ret = DEVICE_OK;
       }
+      break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
    return ret; 
@@ -1090,6 +1104,14 @@ int CCameraFrontend::OnISO(MM::PropertyBase* pProp, MM::ActionType eAct)
          ret = DEVICE_OK;
       }
       break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -1152,6 +1174,14 @@ int CCameraFrontend::OnCameraName(MM::PropertyBase* pProp, MM::ActionType eAct)
          ret = DEVICE_OK;
       }
       break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -1194,7 +1224,7 @@ int CCameraFrontend::SetAllowedCameraNames(string& defaultCameraName)
 
    // Log list of cameras
    ostringstream msg;
-   for (int i = 0; i < GetNumberOfPropertyValues(MM::g_Keyword_CameraName); i++)
+   for (unsigned int i = 0; i < GetNumberOfPropertyValues(MM::g_Keyword_CameraName); i++)
    {
       char value[MM::MaxStrLength];
       if (GetPropertyValueAt(MM::g_Keyword_CameraName, i, value))
@@ -1237,7 +1267,7 @@ int CCameraFrontend::SetAllowedISOs()
 
    // Log list of ISOs
    ostringstream msg;
-   for (int i = 0; i < GetNumberOfPropertyValues(g_Keyword_ISO); i++)
+   for (unsigned int i = 0; i < GetNumberOfPropertyValues(g_Keyword_ISO); i++)
    {
       char value[MM::MaxStrLength];
       if (GetPropertyValueAt(g_Keyword_ISO, i, value))
@@ -1285,7 +1315,7 @@ int CCameraFrontend::SetAllowedShutterSpeeds()
 
    // Log list of shutter speeds
    ostringstream msg;
-   for (int i = 0; i < GetNumberOfPropertyValues(g_Keyword_ShutterSpeed); i++)
+   for (unsigned int i = 0; i < GetNumberOfPropertyValues(g_Keyword_ShutterSpeed); i++)
    {
       char value[MM::MaxStrLength];
       if (GetPropertyValueAt(g_Keyword_ShutterSpeed, i, value))
@@ -1308,7 +1338,7 @@ int CCameraFrontend::SetShutterSpeed(double exposure_ms)
    string bestShutterSpeed = g_ShutterSpeed_NotSet;
    double bestError = 2.0 * exposure_ms;
    /* Loop over all shutter speeds, and choose closest approximation. */
-   for (int i = 0; i < GetNumberOfPropertyValues(g_Keyword_ShutterSpeed); i++)
+   for (unsigned int i = 0; i < GetNumberOfPropertyValues(g_Keyword_ShutterSpeed); i++)
    {
       char currShutterSpeedChar[MM::MaxStrLength];
       if (!GetPropertyValueAt(g_Keyword_ShutterSpeed, i, currShutterSpeedChar))
@@ -1400,7 +1430,7 @@ bool CCameraFrontend::InLiveMode()
     * See whether we're in live view mode by checking acquisition is running (IsCapturing() == true) and 
     * StartSequenceAcquisition parameters are numImages == LONG_MAX, interval_ms == 0.0, stopOnOverflow == false.
     */
-   bool inLiveMode = IsCapturing() && (thd_->GetLength() == LONG_MAX) && (thd_->GetIntervalMs() == 0.0) && (stopOnOverflow_ == false);
+   bool inLiveMode = IsCapturing() && (GetNumberOfImages() == LONG_MAX) && (GetIntervalMs() == 0.0) && (isStopOnOverflow() == false);
 
    return inLiveMode;
 }
@@ -1416,7 +1446,7 @@ bool CCameraFrontend::UseCameraLiveView()
 {
    /* Use live view if the camera supports live view and micro-manager is in "Live View" mode. */
    bool useCameraLiveView =  cameraSupportsLiveView_ && InLiveMode();
-//   useCameraLiveView = true;
+//   useCameraLiveView = true; // XXX Force Live View for testing
    return useCameraLiveView;
 }
 
@@ -1429,7 +1459,7 @@ bool CCameraFrontend::UseCameraLiveView()
 
 void CCameraFrontend::EscapeValues(vector<string>& valueList)
 {
-   for(int i = 0; i < valueList.size(); i++)
+   for(unsigned int i = 0; i < valueList.size(); i++)
    {
       string newValue = "";
       string value = valueList[i];
@@ -1759,7 +1789,7 @@ void FreeImageErrorHandler(FREE_IMAGE_FORMAT fif, const char *message)
  * Gphoto2 logging callback
  * log gphoto 2 debug and error messages to micro-manager CoreLog
  */
-static void gphoto2_logger(GPLogLevel level, const char *domain, const char *format, va_list args, void *data) 
+static void gphoto2_logger(GPLogLevel level, const char *domain, const char *str, void *data) 
 {
    ostringstream msg;
    msg.str("");
@@ -1770,14 +1800,7 @@ static void gphoto2_logger(GPLogLevel level, const char *domain, const char *for
    if (domain)
       msg << domain << ": ";
 
-   char *ret;
-   int len = vasprintf(&ret, format, args);
-   assert(len >= 0);
-   if (ret)
-   {
-      msg << ret;
-      free(ret);
-   }
+   msg << str;
 
    if (thisCam)
    {

@@ -15,21 +15,21 @@ runnable = new Runnable() {
 		channel = channels.get(count);
 		// deal with useChannel_ flag
 	   round = 0;
-		while (!channel.useChannel_ && round < 2) {
+		while (!channel.useChannel && round < channels.size()) {
 			count++;
-			if (count == channels.size) {
+			if (count == channels.size()) {
 				count = 0;
 				round++;
 			}
 			channel = channels.get(count);
 		}
-		// show message and wzit for response
+		// show message and wait for response
 		GenericDialog dlg = new GenericDialog("Manual Acquisition", null);
-      dlg.addMessage("Move filters for channel " + channel.config_ + " in place");
+      dlg.addMessage("Move filters for channel " + channel.config + " in place");
       dlg.showDialog();
-      print("Move channel " + channel.config_ + " in place");
+      print("Move channel " + channel.config + " in place");
       ++count;
-		if (count >= channels.size)
+		if (count >= channels.size())
 			count = 0;
    }
 };
@@ -38,4 +38,4 @@ runnable = new Runnable() {
 // but only when slize and position  are 0.
 // -1 --> attach to all planes along given dimension
 
-acq.attachRunnable(-1,0,0,-1,runnable); // f, p, s, c 
+acq.attachRunnable(-1,0,-1,0,runnable); // f, p, c, s 

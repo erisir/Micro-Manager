@@ -3,11 +3,9 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     MMCore
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Loading/unloading of plugins(module libraries) and creation
-//                of devices.
+// DESCRIPTION:   Loading/unloading of device adapter modules
 //              
-// COPYRIGHT:     University of California, San Francisco, 2006,
-//                All Rights reserved
+// COPYRIGHT:     University of California, San Francisco, 2006-2014
 //
 // LICENSE:       This file is distributed under the "Lesser GPL" (LGPL) license.
 //                License text is included with the source distribution.
@@ -21,90 +19,61 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 08/10/2005
-// 
-// REVISIONS:     
-//
-// CVS:           $Id$
-//
 
 #ifndef _PLUGIN_MANAGER_H_
 #define _PLUGIN_MANAGER_H_
 
-#ifdef WIN32
-// disable exception scpecification warnings in MSVC
-#pragma warning( disable : 4290 )
-#endif
 
-#include <string>
-#include <cstring>
-#include <vector>
-#include <map>
-#include <set>
-#include "../MMDevice/MMDeviceConstants.h"
-#include "../MMDevice/MMDevice.h"
 #include "../MMDevice/DeviceThreads.h"
-#include "ErrorCodes.h"
-#include "Error.h"
 
-/**
- * Manages the device collection. Responsible for handling plugin libraries
- * and device construction and destruction
- */
-class CPluginManager
+#include <boost/shared_ptr.hpp>
+#include <boost/weak_ptr.hpp>
+
+#include <map>
+#include <string>
+#include <vector>
+
+class LoadedDeviceAdapter;
+
+
+class CPluginManager /* final */
 {
 public:
+   CPluginManager();
+   ~CPluginManager();
 
-	CPluginManager();
-	virtual ~CPluginManager();
-   
-   MM::Device* LoadDevice(const char* label, const char* moduleName, const char* deviceName);
-   void UnloadDevice(MM::Device* device);
-   void UnloadAllDevices();
-   MM::Device* GetDevice(const char* label) const throw (CMMError);
-   std::string GetDeviceLabel(const MM::Device& device) const;
-   std::vector<std::string> GetDeviceList(MM::DeviceType t = MM::AnyType) const;
-   std::vector<std::string> GetLoadedPeripherals(const char* hubLabel) const;
-   MM::Hub* GetParentDevice(const MM::Device& dev) const;
    void UnloadPluginLibrary(const char* moduleName);
 
-   // device browsing support
-   static void AddSearchPath(std::string path);
-   static std::vector<std::string> GetModules();
-   static std::vector<std::string> GetAvailableDevices(const char* moduleName) throw (CMMError);
-   static std::vector<std::string> GetAvailableDeviceDescriptions(const char* moduleName) throw (CMMError);
-   static std::vector<long> GetAvailableDeviceTypes(const char* moduleName) throw (CMMError);
+   // Device adapter search paths (there are two sets of search paths; see
+   // CMMCore method documentation)
+   template <typename TStringIter>
+   void SetSearchPaths(TStringIter begin, TStringIter end)
+   { preferredSearchPaths_.assign(begin, end); }
+   std::vector<std::string> GetSearchPaths() const { return preferredSearchPaths_; }
+   std::vector<std::string> GetAvailableDeviceAdapters();
 
-   // persistence
-   static void SetPersistentData(HDEVMODULE hLib, const char* moduleName);
-   std::string Serialize();
-   void Restore(const std::string& data);
+   // Legacy search path support
+   static void AddLegacyFallbackSearchPath(const std::string& path);
+   static std::vector<std::string> GetModulesInLegacyFallbackSearchPaths();
 
-   // module level thread locking
-   static void CreateModuleLock(const char* moduleName);
-   void DeleteModuleLocks();
-   MMThreadLock* getModuleLock(const MM::Device* pDev);
-   bool removeModuleLock(const char* moduleName);
- 
-
+   /**
+    * Return a device adapter module, loading it if necessary
+    */
+   boost::shared_ptr<LoadedDeviceAdapter>
+   GetDeviceAdapter(const std::string& moduleName);
+   boost::shared_ptr<LoadedDeviceAdapter>
+   GetDeviceAdapter(const char* moduleName);
 
 private:
+   static std::vector<std::string> GetDefaultSearchPaths();
+   std::vector<std::string> GetActualSearchPaths() const;
    static void GetModules(std::vector<std::string> &modules, const char *path);
-   static void GetSystemError(std::string& errorText);
-   static void ReleasePluginLibrary(HDEVMODULE libHandle);
-   static HDEVMODULE LoadPluginLibrary(const char* libName);
-   static void* GetModuleFunction(HDEVMODULE hLib, const char* funcName);
-   static void CheckVersion(HDEVMODULE libHandle);
-   static std::string FindInSearchPath(std::string filename);
-   typedef std::map<std::string, MMThreadLock*> CModuleLockMap;
-   typedef std::map<std::string, MM::Device*> CDeviceMap;
-   typedef std::vector<MM::Device*> DeviceVector;
+   std::string FindInSearchPath(std::string filename);
 
-   // some fields are static so that the static methods can use them
-   static std::vector<std::string> searchPaths_;
-   CDeviceMap devices_;
-   DeviceVector devVector_;
-   static std::map<std::string, MMThreadLock*> moduleLocks_;
-   static std::map<std::string, HDEVMODULE> moduleMap_;
+   std::vector<std::string> preferredSearchPaths_;
+   static std::vector<std::string> fallbackSearchPaths_;
+
+   std::map< std::string, boost::shared_ptr<LoadedDeviceAdapter> > moduleMap_;
 };
 
 #endif //_PLUGIN_MANAGER_H_

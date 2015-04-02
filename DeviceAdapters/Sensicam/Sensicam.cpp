@@ -18,7 +18,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: Sensicam.cpp 12458 2013-12-23 02:19:19Z mark $
 //
 // Modified May 14th 2007 by Liisa Hirvonen, King's College London
 
@@ -52,24 +52,7 @@ const char* g_PixelType_8bit = "8bit";
 const char* g_PixelType_16bit = "16bit";
 
 #ifdef WIN32
-// Windows dll entry routine
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                       DWORD  ul_reason_for_call, 
-                       LPVOID /*lpReserved*/
-					 )
-{
-	switch (ul_reason_for_call)
-	{
-	case DLL_PROCESS_ATTACH:
-	case DLL_THREAD_ATTACH:
-	case DLL_THREAD_DETACH:
-	case DLL_PROCESS_DETACH:
-		break;
-	}
-    return TRUE;
-
    #define snprintf _snprintf
-}
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -77,7 +60,7 @@ BOOL APIENTRY DllMain( HANDLE /*hModule*/,
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName("Sensicam", "PCO Sensicam camera adapter");
+   RegisterDevice("Sensicam", MM::CameraDevice, "PCO Sensicam camera adapter");
 }
 
 MODULE_API void DeleteDevice(MM::Device* pDevice)

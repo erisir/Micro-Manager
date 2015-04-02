@@ -24,7 +24,7 @@
     <ClCompile Include="BooleanProperty.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\MMDevice\DeviceUtils.cpp">
+    <ClCompile Include="CallBackManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="EnumProperty.cpp">
@@ -36,19 +36,7 @@
     <ClCompile Include="FloatProperty.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\MMDevice\ImgBuffer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="IntegerProperty.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="lineparser.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\MMDevice\ModuleInterface.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\MMDevice\Property.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SnapShotControl.cpp">
@@ -65,16 +53,13 @@
     <ClInclude Include="AOIProperty.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="atunpacker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="BooleanProperty.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="datapacking.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\MMDevice\DeviceBase.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\MMDevice\DeviceUtils.h">
+    <ClInclude Include="CallBackManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="EnumProperty.h">
@@ -86,28 +71,16 @@
     <ClInclude Include="FloatProperty.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\MMDevice\ImgBuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="IntegerProperty.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="lineparser.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\MMDevice\MMDevice.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\MMDevice\ModuleInterface.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\MMDevice\Property.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SnapShotControl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="triggerremapper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AOIStrings.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

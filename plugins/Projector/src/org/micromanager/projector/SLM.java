@@ -1,184 +1,243 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
+///////////////////////////////////////////////////////////////////////////////
+//FILE:          SLM.java
+//PROJECT:       Micro-Manager
+//SUBSYSTEM:     Projector plugin
+//-----------------------------------------------------------------------------
+//AUTHOR:        Arthur Edelstein
+//COPYRIGHT:     University of California, San Francisco, 2010-2014
+//LICENSE:       This file is distributed under the BSD license.
+//               License text is included with the source distribution.
+//               This file is distributed in the hope that it will be useful,
+//               but WITHOUT ANY WARRANTY; without even the implied warranty
+//               of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+//               IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+//               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+//               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 
 package org.micromanager.projector;
 
-import ij.ImagePlus;
+import ij.gui.PolygonRoi;
+import ij.gui.Roi;
 import ij.process.ByteProcessor;
+import ij.process.FloatPolygon;
 import ij.process.ImageProcessor;
 import java.awt.Color;
 import java.awt.Polygon;
-import java.awt.geom.AffineTransform;
+import java.util.HashSet;
+import java.util.List;
 import mmcorej.CMMCore;
 import org.micromanager.utils.ReportingUtils;
 
-/**
- *
- * @author arthur
- */
 public class SLM implements ProjectionDevice {
+
    String slm_;
    CMMCore mmc_;
-   int slmWidth_;
-   int slmHeight_;
-   private double diameter_;
-   private boolean imageOn_ = false;   
+   final int slmWidth_;
+   final int slmHeight_;
+   private final double spotDiameter_;
+   private boolean imageOn_ = false;
+   HashSet<OnStateListener> onStateListeners_ = new HashSet<OnStateListener>();
 
-   public SLM(CMMCore mmc, double diameter) {
+   // The constructor.
+   public SLM(CMMCore mmc, double spotDiameter) {
       mmc_ = mmc;
       slm_ = mmc_.getSLMDevice();
+      spotDiameter_ = spotDiameter;
       slmWidth_ = (int) mmc.getSLMWidth(slm_);
       slmHeight_ = (int) mmc.getSLMHeight(slm_);
    }
 
+   // Adds a state listener that lets a third party know if we are on or off.
+   @Override
+   public void addOnStateListener(OnStateListener listener) {
+      onStateListeners_.add(listener);
+   }
+
+   // Removes a state listener.
+   public void removeOnStateListener(OnStateListener listener) {
+      onStateListeners_.remove(listener);
+   }
+
+   // Returns the name of the SLM.
+   @Override
    public String getName() {
-       return slm_;
+      return slm_;
+   }
+
+   // Returns the SLM's width in pixels.
+   @Override
+   public double getWidth() {
+      return this.slmWidth_;
+   }
+
+   // Returns the SLM's height in pixels.
+   @Override
+   public double getHeight() {
+      return this.slmHeight_;
+   }
+
+   // TODO: Looks like a stub. Do we need to implement this method?
+   @Override
+   public String getChannel() {
+      return "Default";
+   }
+
+   @Override
+   public void waitForDevice() {
+      try {
+         mmc_.waitForDevice(slm_);
+      } catch (Exception ex) {
+         ReportingUtils.logError(ex);
+      }
+   }
+
+   // Sets how long the SLM will be illuminated when we display an
+   // image.
+   @Override
+   public void setExposure(long interval_us) {
+      try {
+         mmc_.setSLMExposure(slm_, interval_us / 1000.);
+      } catch (Exception ex) {
+         ReportingUtils.showError(ex);
+      }
    }
    
+   // Reads the exposure time in microseconds.
+   @Override
+   public long getExposure() {
+      try {
+         return (long) (mmc_.getSLMExposure(slm_) * 1000.);
+      } catch (Exception ex) {
+         ReportingUtils.showError(ex);
+      }
+      return 0;
+   }
+
+   // Makes sure all pixels are illuminated at maximum intensity (white).
+   @Override
+   public void activateAllPixels() {
+      try {
+         mmc_.setSLMPixelsTo(slm_, (short) 255);
+         if (imageOn_ == true) {
+            mmc_.displaySLMImage(slm_);
+         }
+      } catch (Exception ex) {
+         ReportingUtils.showError(ex);
+      }
+   }
+
+   // Fills a circular spot in an ImageJ ImageProcessor with diatemer dia.
+   private static void fillSpot(ImageProcessor proc, int x, int y, double dia) {
+      proc.fillOval((int) (x - dia / 2), (int) (y - dia / 2), (int) dia, (int) dia);
+   }
+
+   // Displays the location of a spot at x, y, with diameter this.spotDiameter_
    private void displaySpot(int x, int y) {
       ImageProcessor proc = new ByteProcessor(slmWidth_, slmHeight_);
       proc.setColor(Color.black);
       proc.fill();
       proc.setColor(Color.white);
-      addSpot(proc,x,y, diameter_);
-      ImagePlus img = new ImagePlus("",proc);
-      //img.show();
+      fillSpot(proc, x, y, spotDiameter_);
       try {
-         mmc_.setSLMImage(slm_, (byte []) proc.getPixels());
+         mmc_.setSLMImage(slm_, (byte[]) proc.getPixels());
          mmc_.displaySLMImage(slm_);
       } catch (Throwable e) {
          ReportingUtils.showError("SLM not connecting properly.");
       }
    }
 
-   private void addSpot(ImageProcessor proc, int x, int y, double dia) {
-      proc.fillOval((int) (x-dia/2), (int) (y-dia/2), (int) dia, (int) dia);
-   }
-
+   // Display a spot at location x,y for the given duration.
+   @Override
    public void displaySpot(double x, double y) {
       displaySpot((int) x, (int) y);
    }
 
-   public double getWidth() {
-      return this.slmWidth_;
-   }
-
-   public double getHeight() {
-      return this.slmHeight_;
-   }
-
-
+   // Set all pixels to off.
+   @Override
    public void turnOff() {
       try {
          mmc_.setSLMPixelsTo(slm_, (byte) 0);
          imageOn_ = false;
+         for (OnStateListener listener : onStateListeners_) {
+            listener.stateChanged(false);
+         }
       } catch (Exception ex) {
          ReportingUtils.showError(ex);
       }
    }
 
+   // Turn the SLM device on (illuminate whatever image has already been
+   // uploaded).
+   @Override
    public void turnOn() {
       try {
          if (imageOn_ == false) {
             mmc_.displaySLMImage(slm_);
             imageOn_ = true;
          }
+         for (OnStateListener listener : onStateListeners_) {
+            listener.stateChanged(true);
+         }
       } catch (Exception ex) {
          ReportingUtils.showError(ex);
       }
    }
 
-   public void setRois(Polygon[] roi) {
-      throw new UnsupportedOperationException("Not supported yet.");
-/*
-      AffineTransformOp cmo = new AffineTransformOp(trans, AffineTransformOp.TYPE_BILINEAR);
-      ImagePlus imgpCamera = null;
-
-      if (gui_.getImageWin() != null) {
-         imgpCamera = gui_.getImageWin().getImagePlus();
-      } else {
-         return;
-      }
-
-      int imgWidth = (int) mmc_.getImageWidth();
-      int imgHeight = (int) mmc_.getImageHeight();
-
-
-      if (imgpCamera != null) {
-         ImageProcessor procCamera = imgpCamera.getProcessor();
-         ImageCanvas cvsCamera = imgpCamera.getCanvas();
-         Roi roiCamera = imgpCamera.getRoi();
-
-         if (roiCamera != null) {
-            ByteProcessor procMask = new ByteProcessor(imgWidth, imgHeight);
-            procMask.setColor(Color.black);
-            procMask.fill();
-            procMask.setColor(Color.white);
-            procMask.fill(roiCamera);
-            //imgpMask = new ImagePlus("", procMask);
-            //imgpMask.show();
-
-            BufferedImage imgMask = procMask.getBufferedImage();
-            BufferedImage imgSLM = new BufferedImage(
-                    dev.getWidth(),
-                    dev.getHeight(),
-                    BufferedImage.TYPE_BYTE_GRAY);
-            cmo.filter(imgMask,imgSLM);
-            ByteProcessor procSLM = new ByteProcessor(imgSLM);
-            try {
-               mmc_.setSLMImage(slm_, (byte[]) procSLM.getPixels());
-               if (imageOn_)
-                  mmc_.displaySLMImage(slm_);
-            } catch (Exception ex) {
-               ReportingUtils.showError(ex);
-            }
-            //gui.snapSingleImage();
-         } else {
-            ReportingUtils.showMessage("Please draw an ROI for bleaching.");
+   // Convert an array of polygonal ROIs to a single pixel image. If 
+   // polygonIntensities is null, then all polygons are set to white
+   public byte[] roisToPixels(int width, int height, List<Polygon>roiPolygons, List<Integer> polygonIntensities) {
+      ByteProcessor processor = new ByteProcessor(width, height);
+      processor.setColor(Color.black);
+      processor.fill();
+      processor.setColor(Color.white);
+      for (int i = 0; i < roiPolygons.size(); ++i) {
+         Polygon roiPolygon = roiPolygons.get(i);
+         if (polygonIntensities != null) {
+            int intensity = polygonIntensities.get(i);
+            processor.setColor(new Color(intensity, intensity, intensity));
          }
-      } else {
-         ReportingUtils.showMessage("Please snap an image first.");
+         // TODO: Fix overlapping ROIs so we choose the maximum intensity,
+         // rather than simply overwriting earlier ROIs.
+         if (roiPolygon.npoints == 1) {
+            fillSpot(processor, roiPolygon.xpoints[0], roiPolygon.ypoints[0], spotDiameter_);
+         } else {
+            Roi roi = new PolygonRoi(roiPolygon, Roi.POLYGON);
+            processor.fill(roi);
+         }
       }
-
- */
+      return (byte[]) processor.getPixels();
    }
 
-   public void displaySpot(double x, double y, double intervalMs) {
-      throw new UnsupportedOperationException("Not supported yet.");
+   // Convert an array of polygonal ROIs to a single pixel image.
+   // All polygons are assumed to have maximum intensity (white)
+   public byte[] roisToPixels(int width, int height, List<Polygon>roiPolygons) {
+      return roisToPixels(width, height, roiPolygons, null);
    }
 
-   public void runPolygons(int reptitions) {
-      
-   }
-
-   public void addOnStateListener(OnStateListener listener) {
-      throw new UnsupportedOperationException("Not supported yet.");
-   }
-
-   public void setPolygonRepetitions(int reps) {
-      throw new UnsupportedOperationException("Not supported yet.");
-   }
-
-   public void runPolygons() {
-      throw new UnsupportedOperationException("Not supported yet.");
-   }
-
-   public String getChannel() {
-       return "Default";
-   }
-   
-   public void waitForDevice() {
-        try {
-            mmc_.waitForDevice(slm_);
-        } catch (Exception ex) {
-            ReportingUtils.logError(ex);
-        }
-   }
-
+   // Convert roiPolygons to an image, and upload that image to the SLM.
    @Override
-   public void setSpotInterval(long interval_us) {
-      throw new UnsupportedOperationException("Not supported yet.");
+   public void loadRois(List<FloatPolygon> roiFloatPolygons) {
+      try {
+         List<Polygon> roiPolygons = Utils.FloatToNormalPolygon(roiFloatPolygons);
+         mmc_.setSLMImage(slm_, roisToPixels(slmWidth_, slmHeight_, roiPolygons));
+      } catch (Exception ex) {
+         ReportingUtils.showError(ex);
+      }
+   }
+
+   // This only applies to galvo devices. Don't use.
+   @Override
+   public void setPolygonRepetitions(int reps) {
+      // Ignore!
+   }
+
+   // Assumes we have an image of polygons, and now we want to show them.
+   @Override
+   public void runPolygons() {
+      try {
+         mmc_.displaySLMImage(slm_);
+      } catch (Exception ex) {
+         ReportingUtils.showError(ex);
+      }
    }
 }

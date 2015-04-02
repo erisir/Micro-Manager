@@ -59,16 +59,14 @@ private:
    int GoToPosition(long pos);
    int RetrieveCurrentPosition(long& pos);
 
-   bool initialized_;
-   bool busy_;
-   bool home_;
    long numberOfPositions_;
+   bool home_;
+   bool initialized_;
    long position_;
    std::string port_;
    double answerTimeoutMs_;      // max wait for the device to answer
 
    static const unsigned int stepsTurn_ = 1774933; // steps in one wheel turn
-   double offset_;   // offset in steps for the "0" position
 };
 
 #endif //_INTEGRATEDFILTERWHEEL_H_

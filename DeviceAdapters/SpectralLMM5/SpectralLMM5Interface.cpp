@@ -22,6 +22,9 @@
 #include "SpectralLMM5Interface.h"
 #include "SpectralLMM5.h"
 
+#include <sstream>
+#include <iomanip>
+
 #ifdef WIN32
 #include <winsock.h>
 #else
@@ -30,8 +33,7 @@
 
 SpectralLMM5Interface::SpectralLMM5Interface(std::string port, MM::PortType portType) :
    laserLinesDetected_ (false),
-   nrLines_ (5),
-   readWriteSame_(false)
+   nrLines_ (5)
 {
    port_ = port;
    portType_ = portType;
@@ -41,8 +43,16 @@ SpectralLMM5Interface::SpectralLMM5Interface(std::string port, MM::PortType port
 SpectralLMM5Interface::~SpectralLMM5Interface(){};
 
 /*
- * The Spectral LMM5 has a silly difference between USB and serial communication:
- * Commands can be sent straight to USB.  Commands to the serial port need to converted in some kind of weird ASCI:  The command "0x1A0xFF0x000x12<CR>" becomes "1AFF0012<CR>".  Presumably, the same weird conversion takes place on the way back.  We handle this translation in this function
+ * The LMM5 USB HID commands are a sequence of binary bytes with no terminator.
+ * The serial commands are the same bytes formatted as an ASCII hex string, two
+ * characters per byte, and terminated with a CR; e.g.:
+ *   USB:    "\x1a\xff\x00\x12" (4 bytes)
+ *   RS-232: "1AFF0012\r" (9 bytes)
+ * The opposite transformation takes place for the reply.
+ *
+ * This function abstracts these differences. Note that the exact answerLen is
+ * important for USB HID: reading excess bytes can result in garbage being
+ * appended to the reply (at least on Windows).
  */
 int SpectralLMM5Interface::ExecuteCommand(MM::Device& device, MM::Core& core, unsigned char* buf, unsigned long bufLen, unsigned char* answer, unsigned long answerLen, unsigned long& read) 
 {
@@ -59,11 +69,7 @@ int SpectralLMM5Interface::ExecuteCommand(MM::Device& device, MM::Core& core, un
       ret = core.SetSerialCommand(&device, port_.c_str(), serialCommand.c_str(), "\r");
    } else  // check for USB port
    {
-      unsigned char c[2];
-      c[0]=0x01;
-      c[1]=0x02;
-      ret = core.WriteToSerial(&device, port_.c_str(), c, 2);
-      //ret = core.WriteToSerial(&device, port_.c_str(), buf, bufLen);
+      ret = core.WriteToSerial(&device, port_.c_str(), buf, bufLen);
    }
 
    if (ret != DEVICE_OK)  
@@ -76,30 +82,21 @@ int SpectralLMM5Interface::ExecuteCommand(MM::Device& device, MM::Core& core, un
       ret = core.GetSerialAnswer(&device, port_.c_str(), 128, strAnswer, "\r");
       if (ret != DEVICE_OK)
          return ret;
-      std::ostringstream os;
-      os << "LMM5 answered: " << strAnswer << " Port status: " << ret;
-      core.LogMessage(&device, os.str().c_str(), true);
+      
       // 'translate' back into numbers:
       std::string tmp = strAnswer;
       for (unsigned int i=0; i < tmp.length()/2; i++) {
          char * end;
          long j = strtol(tmp.substr(i*2,2).c_str(), &end, 16);
          answer[i] = (unsigned char) j;
-         // printf("c:%x i:%u j:%ld\n", answer[i], i, j);
          read++;
       }
-   } else // TODO: check that we have a USB port
+   } else if (portType_ == MM::HIDPort) 
    {
       // The USB port will attempt to read up to answerLen characters
       ret = core.ReadFromSerial(&device, port_.c_str(), answer, answerLen, read);
       if (ret != DEVICE_OK)
          return ret;
-      std::ostringstream os;
-      os << "LMM5 answered: ";
-      for (unsigned int i=0; i < read; i++)
-         os << std::hex << answer[i];
-      os << std::endl;
-      core.LogMessage(&device, os.str().c_str(), true);
    }
    return DEVICE_OK;
 }
@@ -124,6 +121,7 @@ int SpectralLMM5Interface::DetectLaserLines(MM::Device& device, MM::Core& core) 
    uint16_t* lineP = (uint16_t*) (answer + 1);
    nrLines_ = (read-1)/2;
    printf("NrLines: %d\n", nrLines_);
+   char outputPort = 'A';
    for (int i=0; i<nrLines_; i++) 
    {
       laserLines_[i].lineNr = i;
@@ -133,11 +131,18 @@ int SpectralLMM5Interface::DetectLaserLines(MM::Device& device, MM::Core& core) 
       } else {
          laserLines_[i].present = true;
          std::ostringstream os;
-         os << laserLines_[i].waveLength << "nm-" << i + 1;
+         if (laserLines_[i].waveLength > 100)
+         {
+            os << laserLines_[i].waveLength << "nm-" << i + 1;
+         } else
+         {
+            outputPort++;
+            os << "output-port " << outputPort;
+         }
          laserLines_[i].name = os.str();
       }
-      // printf ("Line: %d %f %d %s\n", i, laserLines_[i].waveLength, laserLines_[i].present, laserLines_[i].name.c_str());
    }
+
    laserLinesDetected_ = true;
    return DEVICE_OK;
 }
@@ -274,10 +279,7 @@ int SpectralLMM5Interface::GetExposureConfig(MM::Device& device, MM::Core& core,
 {
    const unsigned long bufLen = 1;
    unsigned char buf[bufLen];
-   if (readWriteSame_)
-      buf[0]=0x021;
-   else
-      buf[0]=0x027;
+   buf[0]=0x027;
    const unsigned long answerLen = 70;
    unsigned char answer[answerLen];
    unsigned long read;
@@ -306,7 +308,7 @@ int SpectralLMM5Interface::SetTriggerOutConfig(MM::Device& device, MM::Core& cor
    buf[0]=0x23;
    memcpy(buf + 1, config, 4);
 
-   const unsigned long answerLen = 10;//1; Why does 1 cause a runtime exception? 'Stack around the variable "answer" was corrupted.'
+   const unsigned long answerLen = 10;
    unsigned char answer[answerLen];
    printf ("Set Trigger Out \n");
    int ret = ExecuteCommand(device, core, buf, bufLen, answer, answerLen, read);
@@ -324,11 +326,8 @@ int SpectralLMM5Interface::GetTriggerOutConfig(MM::Device& device, MM::Core& cor
 {
    const unsigned long bufLen = 1;
    unsigned char buf[bufLen];
-   if (readWriteSame_)
-      buf[0]=0x023;
-   else
-      buf[0]=0x026;
-   const unsigned long answerLen = 10;//6;
+   buf[0] = 0x26;
+   const unsigned long answerLen = 10;
    unsigned char answer[answerLen];
    unsigned long read;
    printf ("Detecting Trigger out Config: \n");
@@ -337,7 +336,7 @@ int SpectralLMM5Interface::GetTriggerOutConfig(MM::Device& device, MM::Core& cor
       return ret;
  
    // See if the controller acknowledged our command
-   if (answer[0] != 0x23)
+   if (answer[0] != 0x26)
       return ERR_UNEXPECTED_ANSWER;
 
    memcpy(config, answer + 1, 4);
@@ -346,3 +345,31 @@ int SpectralLMM5Interface::GetTriggerOutConfig(MM::Device& device, MM::Core& cor
 }
 
 
+int SpectralLMM5Interface::GetFirmwareVersion(MM::Device& device, MM::Core& core, std::string& version)
+{
+   version.clear();
+
+   const unsigned long bufLen = 1;
+   unsigned char buf[bufLen];
+   buf[0] = 0x14;
+   const unsigned long answerLen = 3;
+   unsigned char answer[answerLen];
+   unsigned long read;
+   int ret = ExecuteCommand(device, core, buf, bufLen, answer, answerLen, read);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   if (answer[0] != 0x14 || read < answerLen)
+      return ERR_UNEXPECTED_ANSWER;
+
+   // The firmware version is a two-byte word.
+   std::ostringstream hex_oss;
+   hex_oss << "0x";
+   for (unsigned long i = 1; i < read; i++) {
+      unsigned char byte = answer[i];
+      hex_oss << std::setfill('0') << std::setw(2) << std::hex << static_cast<unsigned int>(byte);
+   }
+   version = hex_oss.str();
+
+   return DEVICE_OK;
+}

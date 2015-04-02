@@ -38,16 +38,24 @@ std::string PvUniversalParam::ToString()
         os << mValue.rs_bool_val;
         return os.str();
     case TYPE_ENUM:
-        return mEnumStrings[mValue.enum_val];
+        for ( unsigned i = 0; i < mEnumValues.size(); ++i )
+        {
+            if ( mEnumValues[i] == mValue.enum_val )
+                return mEnumStrings[i];
+        }
+        mCamera->LogCamError(__LINE__, "PvUniversalParam::ToString() Enum string not found" );
+        return "VALUE NAME NOT FOUND";
     case TYPE_UNS32:
         os << mValue.uns32_val;
         return os.str();
     case TYPE_FLT64:
         os << mValue.flt64_val;
         return os.str();
+#ifdef TYPE_INT64
     case TYPE_INT64:
         os << mValue.long64_val;
         return os.str();
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::ToString() Type not supported" );
         return "VALUE TYPE NOT SUPPORTED";
@@ -76,8 +84,10 @@ long PvUniversalParam::ToLong()
         return (long)mValue.uns32_val;
     case TYPE_FLT64:
         return (long)mValue.flt64_val;
+#ifdef TYPE_INT64
     case TYPE_INT64:
         return (long)mValue.long64_val;
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::ToLong() Type not supported" );
         return 0;
@@ -106,8 +116,10 @@ double PvUniversalParam::ToDouble()
         return (double)mValue.uns32_val;
     case TYPE_FLT64:
         return (double)mValue.flt64_val;
+#ifdef TYPE_INT64
     case TYPE_INT64:
         return (double)mValue.long64_val;
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::ToDouble() Type not supported" );
         return 0;
@@ -128,7 +140,7 @@ int PvUniversalParam::Set(std::string aValue)
         {
             if ( mEnumStrings[i].compare( aValue ) == 0 )
             {
-                mValue.enum_val = i;
+                mValue.enum_val = mEnumValues[i];
                 return DEVICE_OK;
             }
         }
@@ -142,7 +154,9 @@ int PvUniversalParam::Set(std::string aValue)
     case TYPE_BOOLEAN:
     case TYPE_UNS32:
     case TYPE_FLT64:
+#ifdef TYPE_INT64
     case TYPE_INT64:
+#endif
         // Other supported types are value-types. We try to convert the string to a double value which is 
         // the larges type supported in universal params, validate it and then set.
         ss >> dValue;
@@ -202,9 +216,11 @@ int PvUniversalParam::Set(double aValue)
     case TYPE_FLT64:
         mValue.flt64_val = (flt64)aValue;
         return DEVICE_OK;
+#ifdef TYPE_INT64
     case TYPE_INT64:
         mValue.long64_val = (long64)aValue;
         return DEVICE_OK;
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::Set(double) Type not supported" );
         return DEVICE_CAN_NOT_SET_PROPERTY;
@@ -244,8 +260,10 @@ double PvUniversalParam::GetMax()
         return (double)mValueMax.uns32_val;
     case TYPE_FLT64:
         return (double)mValueMax.flt64_val;
+#ifdef TYPE_INT64
     case TYPE_INT64:
         return (double)mValueMax.long64_val;
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::GetMax() Type not supported" );
         return 0;
@@ -274,8 +292,10 @@ double PvUniversalParam::GetMin()
         return (double)mValueMin.uns32_val;
     case TYPE_FLT64:
         return (double)mValueMin.flt64_val;
+#ifdef TYPE_INT64
     case TYPE_INT64:
         return (double)mValueMin.long64_val;
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::GetMin() Type not supported" );
         return 0;
@@ -291,9 +311,9 @@ int PvUniversalParam::initialize()
    if ( mType == TYPE_ENUM )
    {
        mEnumStrings.clear();
+       mEnumValues.clear();
        
        uns32 count;
-       char enumStr[MAX_ENUM_STR_LEN];
        int32 enumValue;
        if (pl_get_param( mCamera->Handle(), mId, ATTR_COUNT, (void_ptr)&count) != PV_OK)
        {
@@ -302,12 +322,22 @@ int PvUniversalParam::initialize()
        }
        for ( uns32 i = 0; i < count; i++ )
        {
-           if (pl_get_enum_param( mCamera->Handle(), mId, i, &enumValue, enumStr, MAX_ENUM_STR_LEN) != PV_OK )
+           uns32 enumStrLen;
+           if ( pl_enum_str_length( mCamera->Handle(), mId, i, &enumStrLen ) != PV_OK )
+           {
+               mCamera->LogCamError(__LINE__, "PvUniversalParam::initialize() pl_enum_str_length");
+               return DEVICE_ERR;
+           }
+           char* enumStrBuf = new char[enumStrLen+1];
+           enumStrBuf[enumStrLen] = '\0';
+           if (pl_get_enum_param( mCamera->Handle(), mId, i, &enumValue, enumStrBuf, enumStrLen) != PV_OK )
            {
                mCamera->LogCamError(__LINE__, "PvUniversalParam::initialize() pl_get_enum_param");
                return DEVICE_ERR;
            }
-           mEnumStrings.push_back(std::string( enumStr ));
+           mEnumStrings.push_back(std::string( enumStrBuf ));
+           mEnumValues.push_back(enumValue);
+           delete[] enumStrBuf;
        }
    }
    else
@@ -353,9 +383,11 @@ int PvUniversalParam::plGetParam( int16 aAttr, PvUniversalParamValue& aValueOut 
     case TYPE_FLT64:
         pvRet = pl_get_param( mCamera->Handle(), mId, aAttr, &aValueOut.flt64_val );
         break;
+#ifdef TYPE_INT64
     case TYPE_INT64:
         pvRet = pl_get_param( mCamera->Handle(), mId, aAttr, &aValueOut.long64_val );
         break;
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::plGetParam() type not supported");
         pvRet = PV_FAIL;
@@ -399,9 +431,11 @@ int PvUniversalParam::plSetParam( PvUniversalParamValue& aValueOut )
     case TYPE_FLT64:
         pvRet = pl_set_param( mCamera->Handle(), mId, &aValueOut.flt64_val );
         break;
+#ifdef TYPE_INT64
     case TYPE_INT64:
         pvRet = pl_set_param( mCamera->Handle(), mId, &aValueOut.long64_val );
         break;
+#endif
     default:
         mCamera->LogCamError(__LINE__, "PvUniversalParam::plSetParam() type not supported");
         pvRet = PV_FAIL;

@@ -16,8 +16,8 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
-//
+// CVS:           $Id: DeviceUtils.cpp 14952 2015-01-21 18:31:38Z mark $
+
 #include "DeviceUtils.h"
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +28,6 @@
    #define WIN32_LEAN_AND_MEAN
    #include <windows.h>
    #define snprintf _snprintf 
-#pragma warning(disable : 4996)
 #else
    #include <unistd.h>
 #endif
@@ -60,16 +59,21 @@ unsigned CDeviceUtils::GetMaxStringLength()
 
 /**
  * Convert long value to string.
+ *
+ * This function is not thread-safe, and the return value is only valid until
+ * the next call to ConvertToString().
  */
 const char* CDeviceUtils::ConvertToString(long lnVal)
 {
-   // return ltoa(lnVal, m_pszBuffer, 10);
    snprintf(m_pszBuffer, MM::MaxStrLength-1, "%ld", lnVal); 
    return m_pszBuffer;
 }
 
 /**
  * Convert int value to string.
+ *
+ * This function is not thread-safe, and the return value is only valid until
+ * the next call to ConvertToString().
  */
 const char* CDeviceUtils::ConvertToString(int intVal)
 {
@@ -78,16 +82,21 @@ const char* CDeviceUtils::ConvertToString(int intVal)
 
 /**
  * Convert double value to string.
+ *
+ * This function is not thread-safe, and the return value is only valid until
+ * the next call to ConvertToString().
  */
 const char* CDeviceUtils::ConvertToString(double dVal)
 {
-   //return _gcvt(dVal, 12, m_pszBuffer);
    snprintf(m_pszBuffer, MM::MaxStrLength-1, "%.2f", dVal); 
    return m_pszBuffer;
 }
 
 /**
  * Convert boolean value to string.
+ *
+ * This function is not thread-safe, and the return value is only valid until
+ * the next call to ConvertToString().
  */
 const char* CDeviceUtils::ConvertToString(bool val)
 {
@@ -112,18 +121,7 @@ std::string CDeviceUtils::HexRep(std::vector<unsigned char>  values)
 
 }
 
-std::string CDeviceUtils::trim(const std::string str) {
-	// trim
-	std::string::size_type pos = str.find_first_not_of(' ');
-	std::string::size_type pos2 = str.find_last_not_of(' ');
-	if (pos == std::string::npos) {
-		return str;
-	}
-	if (pos2 != std::string::npos) {
-		return str.substr(pos, pos2 - pos + 1);
-	}
-	return str.substr(pos);
-}
+
 
 /**
  * Parse the string and return an array of tokens.
@@ -141,7 +139,7 @@ void CDeviceUtils::Tokenize(const std::string& str, std::vector<std::string>& to
    while (std::string::npos != pos || std::string::npos != lastPos)
     {
         // Found a token, add it to the vector.
-        tokens.push_back(CDeviceUtils::trim(str.substr(lastPos, pos - lastPos)));
+        tokens.push_back(str.substr(lastPos, pos - lastPos));
         // Skip delimiters.  Note the "not_of"
         lastPos = str.find_first_not_of(delimiters, pos);
         // Find next "non-delimiter"

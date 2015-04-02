@@ -3,7 +3,7 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Implements capture from DirectShow and WDM class drivers on Windows, V4L2 on Linux
+// DESCRIPTION:   Implements capture_ from DirectShow and WDM class drivers on Windows, V4L2 on Linux
 //                Based heavily on the demo camera project.
 //                
 // AUTHOR:        Ed Simmons ed@esimaging.co.uk
@@ -30,26 +30,17 @@
 #include <string>
 #include <math.h>
 #include "../../MMDevice/ModuleInterface.h"
-#include "../../MMCore/Error.h"
 #include <sstream>
 #include <algorithm>
 
 #include <iostream>
 
 
-// opencv includes
-
-
-#include "opencv/cv.h"
-#include "opencv/highgui.h"
-
 using namespace cv;
 using namespace std;
 
-
-CvCapture* capture;
-IplImage* frame; // do not modify, do not release!
-
+CvCapture* capture_;
+IplImage* frame_; // do not modify, do not release!
 
 const double COpenCVgrabber::nominalPixelSizeUm_ = 1.0;
 
@@ -100,40 +91,14 @@ const char* g_Res31 = "2560x1600";//wqxga
 const char* g_Res32 = "2560x2048";//sqxga
 const char* g_Res33 = "2592x1944";
 
-// TODO: linux entry code
-
-// windows DLL entry code
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                      DWORD  ul_reason_for_call, 
-                      LPVOID /*lpReserved*/
-                      )
-{
-   switch (ul_reason_for_call)
-   {
-   case DLL_PROCESS_ATTACH:
-   case DLL_THREAD_ATTACH:
-   case DLL_THREAD_DETACH:
-   case DLL_PROCESS_DETACH:
-      break;
-   }
-   return TRUE;
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 
-/**
- * List all suppoerted hardware devices here
- * Do not discover devices at runtime.  To avoid warnings about missing DLLs, Micro-Manager
- * maintains a list of supported device (MMDeviceList.txt).  This list is generated using 
- * information supplied by this function, so runtime discovery will create problems.
- */
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_CameraDeviceName, "OpenCVgrabber video input");
+   RegisterDevice(g_CameraDeviceName, MM::CameraDevice, "OpenCVgrabber video input");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -173,6 +138,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 */
 COpenCVgrabber::COpenCVgrabber() :
    CCameraBase<COpenCVgrabber> (),
+   cameraID_(0),
    initialized_(false),
    readoutUs_(0.0),
    scanMode_(1),
@@ -186,10 +152,22 @@ COpenCVgrabber::COpenCVgrabber() :
    nComponents_(4),
    xFlip_(false),
    yFlip_(false),
-   triggerDevice_("")
+   triggerDevice_(""),
+   stopOnOverFlow_(false)
 {
    // call the base class method to set-up default error codes/messages
    InitializeDefaultErrorMessages();
+   SetErrorText(FAILED_TO_GET_IMAGE, "Could not get an image from this camera");
+   SetErrorText(CAMERA_NOT_INITIALIZED, "Camera was not initialized");
+
+   CPropertyAction* pAct = new CPropertyAction(this, &COpenCVgrabber::OnCameraID);
+   String cIDName = "Camera Number";
+   CreateProperty(cIDName.c_str(), "0", MM::Integer, false, pAct, true);
+   AddAllowedValue(cIDName.c_str(), "0");
+   AddAllowedValue(cIDName.c_str(), "1");
+   AddAllowedValue(cIDName.c_str(), "2");
+   AddAllowedValue(cIDName.c_str(), "3");
+
    readoutStartTime_ = GetCurrentMMTime();
    thd_ = new MySequenceThread(this);
 }
@@ -203,8 +181,9 @@ COpenCVgrabber::COpenCVgrabber() :
 */
 COpenCVgrabber::~COpenCVgrabber()
 {
-   if(capture){
-	   cvReleaseCapture(&capture);
+   if(capture_)
+   {
+	   cvReleaseCapture(&capture_);
 	}
    delete thd_;
 }
@@ -237,24 +216,25 @@ int COpenCVgrabber::Initialize()
 
    // init the hardware
 
-   // start opencv capture from first device, we need to initialise hardware early on to discover properties
-   capture = cvCaptureFromCAM(CV_CAP_ANY);
-   if (!capture) // do we have a capture device?
+   // start opencv capture_ from first device, 
+   // we need to initialise hardware early on to discover properties
+   capture_ = cvCaptureFromCAM(CV_CAP_ANY);
+   if (!capture_) // do we have a capture_ device?
    {
      return DEVICE_NOT_CONNECTED;
    }
-   frame = cvQueryFrame(capture);
-   if (!frame)
+   frame_ = cvQueryFrame(capture_);
+   if (!frame_)
    {
-      printf("Cannot retrieve frame from camera!");
-      return DEVICE_NOT_CONNECTED;
+      return FAILED_TO_GET_IMAGE;
    }
+
 #ifdef __APPLE__
-   long w = frame->width;
-   long h = frame->height;
+   long w = frame_->width;
+   long h = frame_->height;
 #else
-   long w = (long) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH);
-   long h = (long) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT);
+   long w = (long) cvGetCaptureProperty(capture_, CV_CAP_PROP_FRAME_WIDTH);
+   long h = (long) cvGetCaptureProperty(capture_, CV_CAP_PROP_FRAME_HEIGHT);
 #endif
 
 
@@ -323,7 +303,7 @@ int COpenCVgrabber::Initialize()
    // Resolution
 
 
-    pAct = new CPropertyAction (this, &COpenCVgrabber::OnResolution);
+   pAct = new CPropertyAction (this, &COpenCVgrabber::OnResolution);
    nRet = CreateProperty(g_Keyword_Resolution, g_Res0, MM::String, false, pAct);
    assert(nRet == DEVICE_OK);
 
@@ -368,7 +348,6 @@ int COpenCVgrabber::Initialize()
       return nRet;
 
    // exposure
-   
    nRet = CreateProperty(MM::g_Keyword_Exposure,  "10"/*CDeviceUtils::ConvertToString(GetExposure())*/, MM::Float, false);
    assert(nRet == DEVICE_OK);
    SetPropertyLimits(MM::g_Keyword_Exposure, 0, 10000);
@@ -428,8 +407,8 @@ int COpenCVgrabber::Initialize()
 */
 int COpenCVgrabber::Shutdown()
 {
-	if(capture){
-	   cvReleaseCapture(&capture);
+	if(capture_){
+	   cvReleaseCapture(&capture_);
 	}
 
    initialized_ = false;
@@ -444,11 +423,14 @@ int COpenCVgrabber::Shutdown()
 */
 int COpenCVgrabber::SnapImage()
 {
+   if (!initialized_)
+      return CAMERA_NOT_INITIALIZED;
+
    MM::MMTime startTime = GetCurrentMMTime();
    double exp = GetExposure();
    double expUs = exp * 1000.0;
 
-   cvGrabFrame(capture);
+   cvGrabFrame(capture_);
    
    MM::MMTime s0(0,0);
    MM::MMTime t2 = GetCurrentMMTime();
@@ -486,6 +468,9 @@ int COpenCVgrabber::SnapImage()
 */
 const unsigned char* COpenCVgrabber::GetImageBuffer()
 {
+   if (!initialized_)
+      return NULL;
+
    IplImage* temp; // used during conversion
    MMThreadGuard g(imgPixelsLock_);
    MM::MMTime readoutTime(readoutUs_);
@@ -494,8 +479,8 @@ const unsigned char* COpenCVgrabber::GetImageBuffer()
       CDeviceUtils::SleepMs(1);
    }
 
-   cvRetrieveFrame(capture); // throw away old image
-   temp = cvRetrieveFrame(capture);
+   cvRetrieveFrame(capture_); // throw away old image
+   temp = cvRetrieveFrame(capture_);
    if(!temp) return 0;
    //Mat temp_mat (temp);
 
@@ -630,7 +615,7 @@ long COpenCVgrabber::GetImageBufferSize() const
 * Depending on the hardware capabilities the camera may not be able to configure the
 * exact dimensions requested - but should try do as close as possible.
 * If the hardware does not have this capability the software should simulate the ROI by
-* appropriately cropping each frame.
+* appropriately cropping each frame_.
 * This demo implementation ignores the position coordinates and just crops the buffer.
 * @param x - top-left corner coordinate
 * @param y - top-left corner coordinate
@@ -675,7 +660,7 @@ int COpenCVgrabber::GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& 
 }
 
 /**
-* Resets the Region of Interest to full frame.
+* Resets the Region of Interest to full frame_.
 * Required by the MM::Camera API.
 */
 int COpenCVgrabber::ClearROI()
@@ -693,7 +678,7 @@ int COpenCVgrabber::ClearROI()
 */
 double COpenCVgrabber::GetExposure() const
 {
-	double exp = cvGetCaptureProperty(capture,CV_CAP_PROP_EXPOSURE); // try to get the exposure from OpenCV - not all drivers allow this
+	double exp = cvGetCaptureProperty(capture_,CV_CAP_PROP_EXPOSURE); // try to get the exposure from OpenCV - not all drivers allow this
 	if(exp >= 1)
       return exp; // if it works, great, return it, otherwise...
 
@@ -713,7 +698,9 @@ double COpenCVgrabber::GetExposure() const
 void COpenCVgrabber::SetExposure(double exp)
 {
    SetProperty(MM::g_Keyword_Exposure, CDeviceUtils::ConvertToString(exp));
-   cvSetCaptureProperty(capture,CV_CAP_PROP_EXPOSURE,(long)exp); // there is no benefit from checking if this works (many capture drivers via opencv just don't allow this) - just carry on regardless.
+   cvSetCaptureProperty(capture_,CV_CAP_PROP_EXPOSURE,(long)exp); 
+   // there is no benefit from checking if this works (many capture_ drivers via opencv 
+   // just don't allow this) - just carry on regardless.
 }
 
 /**
@@ -787,9 +774,9 @@ int COpenCVgrabber::StartSequenceAcquisition(long numImages, double interval_ms,
    if (ret != DEVICE_OK)
       return ret;
    sequenceStartTime_ = GetCurrentMMTime();
+   stopOnOverFlow_ = stopOnOverflow;
    imageCounter_ = 0;
    thd_->Start(numImages,interval_ms);
-   stopOnOverflow_ = stopOnOverflow;
    return DEVICE_OK;
 }
 
@@ -826,7 +813,7 @@ int COpenCVgrabber::InsertImage()
    unsigned int b = GetImageBytesPerPixel();
 
    int ret = GetCoreCallback()->InsertImage(this, pI, w, h, b, md.Serialize().c_str());
-   if (!stopOnOverflow_ && ret == DEVICE_BUFFER_OVERFLOW)
+   if (!stopOnOverFlow_ && ret == DEVICE_BUFFER_OVERFLOW)
    {
       // do not stop on overflow - just reset the buffer
       GetCoreCallback()->ClearImageBuffer(this);
@@ -878,12 +865,6 @@ void COpenCVgrabber::OnThreadExiting() throw()
    {
       LogMessage(g_Msg_SEQUENCE_ACQUISITION_THREAD_EXITING);
       GetCoreCallback()?GetCoreCallback()->AcqFinished(this,0):DEVICE_OK;
-   }
-
-   catch( CMMError& e){
-      std::ostringstream oss;
-      oss << g_Msg_EXCEPTION_IN_ON_THREAD_EXITING << " " << e.getMsg() << " " << e.getCode();
-      LogMessage(oss.str().c_str(), false);
    }
    catch(...)
    {
@@ -957,10 +938,6 @@ int MySequenceThread::svc(void) throw()
       } while (DEVICE_OK == ret && !IsStopped() && imageCounter_++ < numImages_-1);
       if (IsStopped())
          camera_->LogMessage("SeqAcquisition interrupted by the user\n");
-
-   }catch( CMMError& e){
-      camera_->LogMessage(e.getMsg(), false);
-      ret = e.getCode();
    }catch(...){
       camera_->LogMessage(g_Msg_EXCEPTION_IN_THREAD, false);
    }
@@ -1025,7 +1002,15 @@ int COpenCVgrabber::OnFlipX(MM::PropertyBase* pProp, MM::ActionType eAct)
          
 			pProp->Set((long)xFlip_);
          ret=DEVICE_OK;
-      }break;
+      } break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -1050,8 +1035,29 @@ int COpenCVgrabber::OnFlipY(MM::PropertyBase* pProp, MM::ActionType eAct)
 			pProp->Set((long)yFlip_);
          ret=DEVICE_OK;
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
+}
+
+int COpenCVgrabber::OnCameraID(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::AfterSet)
+   {
+      pProp->Get(cameraID_);
+   } else if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(cameraID_);
+   }
+
+   return DEVICE_OK;
 }
 
 // handles gain property
@@ -1067,18 +1073,26 @@ int COpenCVgrabber::OnGain(MM::PropertyBase* pProp, MM::ActionType eAct)
 
          long gain;
          pProp->Get(gain);
-		 cvSetCaptureProperty(capture,CV_CAP_PROP_GAIN,gain);
+		 cvSetCaptureProperty(capture_,CV_CAP_PROP_GAIN,gain);
 		 ret=DEVICE_OK;
       }break;
    case MM::BeforeGet:
       {
          
 		 double gain;
-		 gain = cvGetCaptureProperty(capture,CV_CAP_PROP_GAIN);
+		 gain = cvGetCaptureProperty(capture_,CV_CAP_PROP_GAIN);
 		 if(!gain) return DEVICE_ERR;
 		 ret=DEVICE_OK;
 			pProp->Set((double)gain);
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -1146,6 +1160,14 @@ int COpenCVgrabber::OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct)
          ret=DEVICE_OK;
 			pProp->Set(binSize_);
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -1172,14 +1194,14 @@ int COpenCVgrabber::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
             nComponents_ = 1;
             img_.Resize(img_.Width(), img_.Height(), 1);
             bitDepth_ = 8;
-            //cvSetCaptureProperty(capture, CV_CAP_PROP_MONOCROME,1);
+            //cvSetCaptureProperty(capture_, CV_CAP_PROP_MONOCROME,1);
             ret=DEVICE_OK;
          }
          else if ( pixelType.compare(g_PixelType_32bitRGB) == 0)
 		{
             nComponents_ = 4;
             img_.Resize(img_.Width(), img_.Height(), 4);
-            //cvSetCaptureProperty(capture, CV_CAP_PROP_MONOCROME,0);
+            //cvSetCaptureProperty(capture_, CV_CAP_PROP_MONOCROME,0);
             ret=DEVICE_OK;
 		}
 		else
@@ -1197,6 +1219,14 @@ int COpenCVgrabber::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
          ret=DEVICE_OK;
 		 
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -1283,6 +1313,14 @@ int COpenCVgrabber::OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct)
          pProp->Set((long)bitDepth_);
          ret=DEVICE_OK;
       }break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }
@@ -1311,11 +1349,11 @@ int COpenCVgrabber::OnResolution(MM::PropertyBase* pProp, MM::ActionType eAct)
 		 long w = atoi(width.c_str());
 		 long h = atoi(height.c_str());
 
-		 cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH, (double) w);
-		 cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT, (double) h);
+		 cvSetCaptureProperty(capture_, CV_CAP_PROP_FRAME_WIDTH, (double) w);
+		 cvSetCaptureProperty(capture_, CV_CAP_PROP_FRAME_HEIGHT, (double) h);
 
-		 cameraCCDXSize_ = (long) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH);
-		 cameraCCDYSize_ = (long) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT);
+		 cameraCCDXSize_ = (long) cvGetCaptureProperty(capture_, CV_CAP_PROP_FRAME_WIDTH);
+		 cameraCCDYSize_ = (long) cvGetCaptureProperty(capture_, CV_CAP_PROP_FRAME_HEIGHT);
 		 if(!(cameraCCDXSize_ > 0) || !(cameraCCDYSize_ > 0))
 			 return DEVICE_ERR;
 		 ret = ResizeImageBuffer();
@@ -1331,6 +1369,14 @@ int COpenCVgrabber::OnResolution(MM::PropertyBase* pProp, MM::ActionType eAct)
 		  
          ret=DEVICE_OK;
       } break;
+   case MM::NoAction:
+      break;
+   case MM::IsSequenceable:
+   case MM::AfterLoadSequence:
+   case MM::StartSequence:
+   case MM::StopSequence:
+      return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
+      break;
    }
    return ret; 
 }

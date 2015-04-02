@@ -39,7 +39,6 @@
 #include <iostream>
 #include <sstream>
 #include <math.h>
-#include "../../MMCore/MMCore.h"
 #include "../../MMDevice/ModuleInterface.h"
 #include "../../MMDevice/DeviceUtils.h"
 #include "MP285Error.h"
@@ -729,7 +728,7 @@ int XYStage::OnSpeed(MM::PropertyBase* /*pProp*/, MM::ActionType /*eAct*/)
     return DEVICE_OK;
 }
 
-int XYStage::OnGetPositionX(MM::PropertyBase* pProp, MM::ActionType eAct)
+int XYStage::OnGetPositionX(MM::PropertyBase* pProp, MM::ActionType /*eAct*/)
 {
     std::ostringstream osMessage;
     int ret = DEVICE_OK;
@@ -777,7 +776,7 @@ int XYStage::OnGetPositionX(MM::PropertyBase* pProp, MM::ActionType eAct)
     return DEVICE_OK;
 }
 
-int XYStage::OnGetPositionY(MM::PropertyBase* pProp, MM::ActionType eAct)
+int XYStage::OnGetPositionY(MM::PropertyBase* pProp, MM::ActionType /*eAct*/)
 {
     std::ostringstream osMessage;
     int ret = DEVICE_OK;
@@ -933,7 +932,7 @@ int XYStage::WriteCommand(unsigned char* sCommand, int nLength)
 	{
 		osMessage.str("");
 		osMessage << "<XYStage::WriteCommand> (Command=";
-		char sHex[4] = { NULL, NULL, NULL, NULL };
+		char sHex[4] = { '\0', '\0', '\0', '\0' };
 		for (int n=0; n < nLength; n++)
 		{
 			MP285::Instance()->Byte2Hex((const unsigned char)sCommand[n], sHex);
@@ -968,7 +967,7 @@ int XYStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 
     ostringstream osMessage;
 
-    char sHex[4] = { NULL, NULL, NULL, NULL };
+    char sHex[4] = { '\0', '\0', '\0', '\0' };
     int ret = DEVICE_OK;
     bool yRead = false;
     bool yTimeout = false;

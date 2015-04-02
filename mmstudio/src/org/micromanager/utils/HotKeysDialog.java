@@ -33,7 +33,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.prefs.Preferences;
 import javax.swing.AbstractCellEditor;
@@ -51,16 +50,16 @@ import org.micromanager.utils.FileDialogs.FileType;
  * @author nico
  */
 public final class HotKeysDialog extends MMDialog {
-   private ShortCutTableModel sctModel_ = new ShortCutTableModel();
-   private JComboBox combo_ = new JComboBox();
+   private final ShortCutTableModel sctModel_ = new ShortCutTableModel();
+   private final JComboBox combo_ = new JComboBox();
    private Integer lastTypedKey_ = 0;
-   private KeyEvtHandler keh_;
-   private ArrayList<Integer> keys_ = new ArrayList<Integer>();
-   private ArrayList<HotKeyAction> actions_ = new ArrayList<HotKeyAction>();
-   private ArrayList<HotKeyAction> possibleActions_ = new ArrayList<HotKeyAction>();
+   private final KeyEvtHandler keh_;
+   private final ArrayList<Integer> keys_ = new ArrayList<Integer>();
+   private final ArrayList<HotKeyAction> actions_ = new ArrayList<HotKeyAction>();
+   private final ArrayList<HotKeyAction> possibleActions_ = new ArrayList<HotKeyAction>();
    private String[] possibleActionsAsString_;
-   private Font ourFont_ = new Font("Lucida Grande", java.awt.Font.PLAIN, 10);
-   private Preferences prefs_;
+   private final Font ourFont_ = new Font("Lucida Grande", java.awt.Font.PLAIN, 10);
+   private final Preferences prefs_;
 
    public static FileType MM_HOTKEYS
            = new FileType("MM_HOTKEYS",
@@ -72,12 +71,14 @@ public final class HotKeysDialog extends MMDialog {
 
       private static final int columnCount_ = 2;
 
+      @Override
       public int getRowCount() {
          if (keys_ != null)
             return keys_.size();
          return 0;
       }
 
+      @Override
       public int getColumnCount() {
          return columnCount_;
       }
@@ -89,6 +90,7 @@ public final class HotKeysDialog extends MMDialog {
          return "HotKey";
       }
 
+      @Override
       public Object getValueAt(int row, int column) {
          if (column == 0) {
             if (row > actions_.size())
@@ -137,16 +139,13 @@ public final class HotKeysDialog extends MMDialog {
    }
 
 
-    /** Creates new form HotKeys */
-    public  HotKeysDialog(Color backgroundColor) {
+    /** Creates new form HotKeys
+    */
+    public  HotKeysDialog() {
         initComponents();
 
-        this.setBackground(backgroundColor);
-
-        Preferences root = Preferences.userNodeForPackage(this.getClass());
-        prefs_ = root.node(root.absolutePath() + "/HotKeyFrame");
-        setPrefsNode(prefs_);
-        loadPosition(0, 0, 377, 378);
+        prefs_ = getPrefsNode();
+        loadAndRestorePosition(100, 100, 377, 378);
 
         readKeys();
 
@@ -160,7 +159,6 @@ public final class HotKeysDialog extends MMDialog {
               generateKeys();
 
               HotKeys.active_ = true;
-              savePosition();
             }
 
         });
@@ -201,18 +199,16 @@ public final class HotKeysDialog extends MMDialog {
     private void readKeys() {
        keys_.clear();
        actions_.clear();
-       Iterator it = HotKeys.keys_.entrySet().iterator();
-       while (it.hasNext()) {
-           Map.Entry pairs = (Map.Entry)it.next();
-           keys_.add((Integer)pairs.getKey());
-           actions_.add((HotKeyAction) pairs.getValue());
-       }
+      for (Map.Entry pairs : HotKeys.keys_.entrySet()) {
+         keys_.add((Integer)pairs.getKey());
+         actions_.add((HotKeyAction) pairs.getValue());
+      }
     }
 
     public void updateComboBox() {
        // Add Beanshell scripts
        int nrScripts = 0;
-       ArrayList<File> scriptList = org.micromanager.ScriptPanel.getScriptList();
+       ArrayList<File> scriptList = org.micromanager.script.ScriptPanel.getScriptList();
        if (scriptList != null) {
           nrScripts = scriptList.size();
        }
@@ -223,9 +219,11 @@ public final class HotKeysDialog extends MMDialog {
          possibleActions_.add(i, new HotKeyAction(i));
        }
 
-       for (int i = 0; i < scriptList.size(); i++) {
+       if (scriptList != null) {
+          for (int i = 0; i < scriptList.size(); i++) {
              possibleActions_.add(i + HotKeyAction.NRGUICOMMANDS, new HotKeyAction(scriptList.get(i)));
              possibleActionsAsString_[i + HotKeyAction.NRGUICOMMANDS] = scriptList.get(i).getName();
+          }
        }
 
        DefaultComboBoxModel model = new DefaultComboBoxModel(possibleActionsAsString_);
@@ -264,19 +262,23 @@ public final class HotKeysDialog extends MMDialog {
           label_ = label;
        }
 
+       @Override
        public void keyTyped(KeyEvent ke) {
        }
 
+       @Override
        public void keyPressed(KeyEvent ke) {
           Integer value = ke.getKeyCode();
 
-          if (!keys_.contains(value) || value == keys_.get(hotKeyTable_.getSelectedRow())) {
+          if (!keys_.contains(value) || 
+                  value.intValue() == keys_.get(hotKeyTable_.getSelectedRow())) {
              lastTypedKey_ = value;
              if (label_ != null)
                label_.setText(KeyEvent.getKeyText(lastTypedKey_));
           }
        }
 
+       @Override
        public void keyReleased(KeyEvent ke) {      
        }
     }
@@ -285,6 +287,7 @@ public final class HotKeysDialog extends MMDialog {
        JLabel keyLabel = new JLabel();
 
        // This method is called when a cell value is edited by the user.
+       @Override
        public Component getTableCellEditorComponent(javax.swing.JTable table, Object value,
                boolean isSelected, int rowIndex, int colIndex) {
            // 'value' is value contained in the cell located at (rowIndex, colIndex)
@@ -304,8 +307,9 @@ public final class HotKeysDialog extends MMDialog {
 
        // This method is called when editing is completed.
        // It must return the new value to be stored in the cell.
+       @Override
        public Object getCellEditorValue() {
-           return (Integer) lastTypedKey_;
+           return lastTypedKey_;
        }
    }
 
@@ -327,16 +331,16 @@ public final class HotKeysDialog extends MMDialog {
       saveButton_ = new javax.swing.JButton();
 
       setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
-      //setModalExclusionType(java.awt.Dialog.ModalExclusionType.APPLICATION_EXCLUDE);
+      setModalExclusionType(java.awt.Dialog.ModalExclusionType.APPLICATION_EXCLUDE);
 
       jScrollPane1_.setMinimumSize(new java.awt.Dimension(23, 15));
       jScrollPane1_.setPreferredSize(new java.awt.Dimension(32767, 32767));
 
-      hotKeyTable_.setFont(new java.awt.Font("Lucida Grande", 0, 10));
+      hotKeyTable_.setFont(new java.awt.Font("Lucida Grande", 0, 10)); // NOI18N
       hotKeyTable_.setModel(sctModel_);
       jScrollPane1_.setViewportView(hotKeyTable_);
 
-      addButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10));
+      addButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10)); // NOI18N
       addButton_.setText("Add");
       addButton_.setMinimumSize(new java.awt.Dimension(75, 20));
       addButton_.setPreferredSize(new java.awt.Dimension(75, 20));
@@ -346,7 +350,7 @@ public final class HotKeysDialog extends MMDialog {
          }
       });
 
-      removeButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10));
+      removeButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10)); // NOI18N
       removeButton_.setText("Remove");
       removeButton_.setMinimumSize(new java.awt.Dimension(75, 20));
       removeButton_.setPreferredSize(new java.awt.Dimension(75, 20));
@@ -356,7 +360,7 @@ public final class HotKeysDialog extends MMDialog {
          }
       });
 
-      loadButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10));
+      loadButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10)); // NOI18N
       loadButton_.setText("Load");
       loadButton_.setMinimumSize(new java.awt.Dimension(75, 20));
       loadButton_.setPreferredSize(new java.awt.Dimension(75, 20));
@@ -366,7 +370,7 @@ public final class HotKeysDialog extends MMDialog {
          }
       });
 
-      saveButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10));
+      saveButton_.setFont(new java.awt.Font("Lucida Grande", 0, 10)); // NOI18N
       saveButton_.setText("Save");
       saveButton_.setMinimumSize(new java.awt.Dimension(75, 20));
       saveButton_.setPreferredSize(new java.awt.Dimension(75, 20));
@@ -376,31 +380,31 @@ public final class HotKeysDialog extends MMDialog {
          }
       });
 
-      org.jdesktop.layout.GroupLayout layout = new org.jdesktop.layout.GroupLayout(getContentPane());
+      javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
       getContentPane().setLayout(layout);
       layout.setHorizontalGroup(
-         layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-         .add(layout.createSequentialGroup()
-            .add(addButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-            .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED)
-            .add(removeButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-            .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED, 69, Short.MAX_VALUE)
-            .add(loadButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-            .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED)
-            .add(saveButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE))
-         .add(jScrollPane1_, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 377, Short.MAX_VALUE)
+         layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+         .addGroup(layout.createSequentialGroup()
+            .addComponent(addButton_, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+            .addComponent(removeButton_, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 69, Short.MAX_VALUE)
+            .addComponent(loadButton_, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+            .addComponent(saveButton_, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+         .addComponent(jScrollPane1_, javax.swing.GroupLayout.DEFAULT_SIZE, 377, Short.MAX_VALUE)
       );
       layout.setVerticalGroup(
-         layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-         .add(layout.createSequentialGroup()
-            .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
-               .add(addButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 20, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-               .add(removeButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 20, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-               .add(saveButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 20, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-               .add(loadButton_, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 20, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE))
-            .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED)
-            .add(jScrollPane1_, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-            .add(0, 0, Short.MAX_VALUE))
+         layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+         .addGroup(layout.createSequentialGroup()
+            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+               .addComponent(addButton_, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+               .addComponent(removeButton_, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+               .addComponent(saveButton_, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+               .addComponent(loadButton_, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+            .addComponent(jScrollPane1_, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+            .addGap(0, 0, Short.MAX_VALUE))
       );
 
       pack();

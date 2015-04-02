@@ -1,0 +1,16 @@
+<project name="pgFocus" default="jar">
+	<property name="plugin.path" value="Device_Control"/>
+
+	<import file="../javapluginbuild.xml"/>
+
+	<path id="plugin.classpath">
+		<pathelement location="${mm.java.lib.jcommon}"/>
+		<pathelement location="${mm.java.lib.jfreechart}"/>
+	</path>
+
+	<target name="copy-files" depends="mm.javabuild.copy-files">
+		<copy todir="${intdir}">
+			<fileset dir="${srcdir}" includes="**/*.png"/>
+		</copy>
+	</target>
+</project>

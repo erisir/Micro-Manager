@@ -1,9 +1,6 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 
-package edu.valelab.GaussianFit;
+
+package edu.valelab.gaussianfit;
 
 /**
  *

@@ -175,7 +175,7 @@ void SpotDevice::InitializeCamera()
 
 	// first call to SpotInit after abnormal shutdown always fails, so always do a retry
 
-	while( 1)
+	for (;;)
 	{
 		succ = ProcessSpotCode(SpotAPI(SpotInit)(), message);
 		++retry;
@@ -410,7 +410,6 @@ Specifies the number of image data buffers bytes per image row.  (MacOS only)
 void SpotDevice::SetupImageSequence( const int nimages , const int interval )
 {
 	//MMThreadGuard libGuard(libraryLock_s);
-	BOOL bDoAutoExposure = AutoExposure();
 	std::string message;
 	std::ostringstream timingInfo;
 
@@ -510,14 +509,11 @@ void SpotDevice::SetupImageSequence( const int nimages , const int interval )
 		nImageBitDepth_ = 48;
 		break;
 	default:
-		do
 		{
 			std::ostringstream messs;
 			messs << "unsupported ADC bit depth: " << bitDepthOfADC_;		
 			throw SpotBad(messs.str());
-		
-		}while(false);
-	
+		}
 	}
 
 #ifdef __APPLE__
@@ -1010,7 +1006,6 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
    int nRowBytes = 0;//, nPaletteSize;
 
 
-	int nloops;
 	int bytesToTransfer = sizeofbuf_;
 	if( bytesToTransfer < 1)
 		bytesToTransfer = 17000000;
@@ -1021,7 +1016,7 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 
 
 #ifdef USE_SPOTWAITFORSTATUSCHANGE
-		nloops = 0;
+   int nloops = 0;
 
 	while( !WaitForStatusChanged(SPOT_STATUSSEQIMAGEREADY ))
 	{
@@ -1034,25 +1029,22 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 	}
 #else
 
-	do{ // just a scope to delete this lock
+	{
 		MMThreadGuard guard(imageReadyFlagLock_s);
-		nloops = 0;
-      // rough estimate of milliseconds to wait for the image
-		int maxdelayloop = (int)(.5+ExposureTime()) + approxTransferTime + 200;
-		maxdelayloop /= 8;
-		if( maxdelayloop < 1) maxdelayloop = 1;
 
-		while(!imageReady_s)
-		{
-			if ( maxdelayloop < nloops++)
-			{
-            std::ostringstream stringStreamMessage;
-      		double elapsed = pMMCamera_->GetCurrentMMTime().getMsec() - time0;
-            stringStreamMessage << " invalid acquistion sequence - waited " << (float)elapsed << " ms for image ready";
-            throw SpotBad(stringStreamMessage.str().c_str());
-			}
+      // rough estimate of milliseconds to wait for the image (extra 10 s)
+      double maxWait = ExposureTime() + approxTransferTime + 10000.0;
+      while (pMMCamera_->GetCurrentMMTime().getMsec() < time0 + maxWait && !imageReady_s)
+      {
 			CDeviceUtils::SleepMs(10);
 		}
+      if (!imageReady_s)
+      {
+         std::ostringstream stringStreamMessage;
+         double elapsed = pMMCamera_->GetCurrentMMTime().getMsec() - time0;
+         stringStreamMessage << " invalid acquistion sequence - waited " << (float)elapsed << " ms for image ready";
+         throw SpotBad(stringStreamMessage.str().c_str());
+      }
 
 		double elapsed = pMMCamera_->GetCurrentMMTime().getMsec() - time0;
 		std::ostringstream  mezzz;
@@ -1092,14 +1084,11 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 		nImageBitDepth_ = 48;
 		break;
 	default:
-		do
 		{
 			std::ostringstream messs;
 			messs << "unsupported ADC bit depth: " << bitDepthOfADC_;		
 			throw SpotBad(messs.str());
-		
-		}while(false);
-	
+		};
 	}
 
 	char colorOrder[4]; memset(colorOrder,0, 4*sizeof(colorOrder[0]));
@@ -1168,7 +1157,7 @@ char* SpotDevice::GetNextSequentialImage(unsigned int& imheight, unsigned int& i
 	imageReady_s = false;
 
 
-	}while(false);
+	}
 #endif
 
 	suc = ProcessSpotCode(spotcode, message);

@@ -21,7 +21,7 @@
 //
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 06/07/2005
 // 
-// CVS:           $Id$
+// CVS:           $Id: MMCoreJ.i 15106 2015-03-09 19:56:22Z cweisiger $
 //
 
 %module (directors="1") MMCoreJ
@@ -33,6 +33,249 @@
 %include std_pair.i
 %include "typemaps.i"
 
+
+//
+// Native library loading
+//
+
+%pragma(java) jniclassimports=%{
+   import java.io.File;
+   import java.util.ArrayList;
+   import java.util.List;
+   import java.net.URL;
+   import java.net.URLDecoder;
+%}
+
+// Pull in the compile-time hard-coded paths (determined by Unix configure script)
+%javaconst(1) LIBRARY_PATH;
+%constant char *LIBRARY_PATH = MMCOREJ_LIBRARY_PATH;
+
+%pragma(java) jniclasscode=%{
+   private static class FijiPaths {
+      private static String URLtoFilePath(URL url) throws Exception {
+         // We need to get rid of multiple protocols (jar: and file:)
+         // and end up with an file path correct on every platform.
+         // The following lines seem to work, though it's ugly:
+         String url1 = URLDecoder.decode(url.getPath(), "UTF-8");
+         String url2 = URLDecoder.decode(new URL(url1).getPath(), "UTF-8");
+         return new File(url2).getAbsolutePath();
+      }
+
+      private static String getJarPath() {
+         String classFile = "/mmcorej/CMMCore.class";
+         try {
+            String path = URLtoFilePath(CMMCore.class.getResource(classFile));
+            int bang = path.indexOf('!');
+            if (bang >= 0)
+               path = path.substring(0, bang);
+            return path;
+         } catch (Exception e) {
+            return "";
+         }
+      }
+
+      private static String getPlatformString() {
+         String osName = System.getProperty("os.name");
+         String osArch = System.getProperty("os.arch");
+         return osName.startsWith("Mac") ? "macosx" :
+            (osName.startsWith("Win") ? "win" : osName.toLowerCase()) +
+            (osArch.indexOf("64") < 0 ? "32" : "64");
+      }
+
+      public static List<File> getPaths() {
+         // Return these dirs:
+         // $MMCOREJ_JAR_DIR
+         // $MMCOREJ_JAR_DIR/..
+         // $MMCOREJ_JAR_DIR/../mm/$PLATFORM
+         // $MMCOREJ_JAR_DIR/../..               # Was used by classic Micro-Manager
+         // $MMCOREJ_JAR_DIR/../../mm/$PLATFORM
+         // XXX: Which one is used by OpenSPIM?
+
+         final File jarDir = new File(getJarPath()).getParentFile();
+         final File jarDirParent = jarDir.getParentFile();
+         final File jarDirGrandParent = jarDirParent.getParentFile();
+
+         final String fijiPlatform = getPlatformString();
+         final File jarDirParentFiji = new File(new File(jarDirParent, "mm"), fijiPlatform);
+         final File jarDirGrandParentFiji = new File(new File(jarDirGrandParent, "mm"), fijiPlatform);
+
+         final List<File> searchPaths = new ArrayList<File>();
+         searchPaths.add(jarDir);
+         searchPaths.add(jarDirParent);
+         searchPaths.add(jarDirParentFiji);
+         searchPaths.add(jarDirGrandParent);
+         searchPaths.add(jarDirGrandParentFiji);
+         return searchPaths;
+      }
+   }
+
+   private final static String MM_PROPERTY_MMCOREJ_LIB_PATH = "mmcorej.library.path";
+   private final static String MM_PROPERTY_MMCOREJ_LIB_STDERR_LOG = "mmcorej.library.loading.stderr.log";
+   private final static String NATIVE_LIBRARY_NAME = "MMCoreJ_wrap";
+
+   private static void logLibraryLoading(String message) {
+      boolean useStdErr = true;
+
+      final String useStdErrProp = System.getProperty(MM_PROPERTY_MMCOREJ_LIB_STDERR_LOG, "0");
+      if (useStdErrProp.equals("0") ||
+            useStdErrProp.equalsIgnoreCase("false") ||
+            useStdErrProp.equalsIgnoreCase("no")) {
+         useStdErr = false;
+      }
+
+      if (useStdErr) {
+         System.err.println("Load " + NATIVE_LIBRARY_NAME + ": " + message);
+      }
+   }
+
+   private static File getPreferredLibraryPath() {
+      final String path = System.getProperty(MM_PROPERTY_MMCOREJ_LIB_PATH);
+      if (path != null && path.length() > 0)
+         return new File(path);
+      return null;
+   }
+
+   private static File getHardCodedLibraryPath() {
+      final String path = MMCoreJConstants.LIBRARY_PATH;
+      if (path != null && path.length() > 0)
+         return new File(path);
+      return null;
+   }
+
+   private static boolean isLinux() {
+      return System.getProperty("os.name").toLowerCase().startsWith("linux");
+   }
+
+   // Return false if search should be continued
+   private static boolean loadNamedNativeLibrary(File dirPath, String libraryName) {
+      final String libraryPath = new File(dirPath, libraryName).getAbsolutePath();
+      if (new File(libraryPath).exists()) {
+         logLibraryLoading("Try loading: " + libraryPath);
+         System.load(libraryPath);
+         // We let exceptions (usually UnsatisfiedLinkError) propagate, because
+         // it is a fatal error to have a library that exists but cannot be
+         // loaded.
+         logLibraryLoading("Successfully loaded: " + libraryPath);
+         return true;
+      }
+      logLibraryLoading("Skipping nonexistent candidate: " + libraryPath);
+      return false;
+   }
+
+   // Return false if search should be continued
+   private static boolean loadNativeLibrary(File dirPath) {
+      final String libraryName = System.mapLibraryName(NATIVE_LIBRARY_NAME);
+
+      // On OS X, System.mapLibraryName() can return a name with a .dylib
+      // suffix (since Java 7?). But our native library is expected to have a
+      // .jnilib suffix (traditional on OS X). Try both to be safe.
+      if (libraryName.endsWith(".dylib")) {
+         final String altLibraryName = "lib" + NATIVE_LIBRARY_NAME + ".jnilib";
+         boolean ret = loadNamedNativeLibrary(dirPath, altLibraryName);
+         if (ret) {
+            return true;
+         }
+      }
+
+      return loadNamedNativeLibrary(dirPath, libraryName);
+   }
+      
+   // Return false if search should be continued
+   private static boolean checkIfAlreadyLoaded() {
+      boolean loaded = true;
+      try {
+         CMMCore.noop();
+      }
+      catch (UnsatisfiedLinkError e) {
+         loaded = false;
+      }
+
+      if (loaded) {
+         // TODO If the library is already loaded, we still want to make sure
+         // that it was loaded from the right copy. The Core now has this
+         // information, so we should check it.
+         logLibraryLoading("Already loaded");
+         return true;
+      }
+      return false;
+   }
+
+   // Return false if search should be continued
+   private static boolean loadFromPathSetBySystemProperty() {
+      final File preferredPath = getPreferredLibraryPath();
+      if (preferredPath != null) {
+         logLibraryLoading("Try path given by " + MM_PROPERTY_MMCOREJ_LIB_PATH);
+         loadNativeLibrary(preferredPath);
+         return true;
+      }
+      return false;
+   }
+
+   // Return false if search should be continued
+   private static boolean loadFromHardCodedPaths() {
+      final List<File> searchPaths = new ArrayList<File>();
+
+      // Some relative paths were hard-coded for running Micro-Manager in Fiji
+      // and in the classic distribution (in which the native library is
+      // located in the grand-parent directory of the directory containing the
+      // MMCoreJ JAR). This also allows finding the native library in the same
+      // directory as the JAR.
+      searchPaths.addAll(FijiPaths.getPaths());
+
+      // On Linux, also search a compile-time hard-coded path (TODO It is odd
+      // that this is done only in the case of Linux. The build system should
+      // be modified so that it can be enabled or disabled on any Unix.)
+      if (isLinux()) {
+         final File hardCodedPath = getHardCodedLibraryPath();
+         if (hardCodedPath != null)
+            searchPaths.add(hardCodedPath);
+      }
+
+      logLibraryLoading("Will search in hard-coded paths:");
+      for (File path : searchPaths) {
+         logLibraryLoading("  " + path.getPath());
+      }
+
+      for (File path : searchPaths) {
+         if (loadNativeLibrary(path)) {
+            return true;
+         }
+      }
+      return false;
+   }
+
+   // Load the MMCoreJ_wrap native library.
+   static {
+      logLibraryLoading("Start loading...");
+      if (!checkIfAlreadyLoaded()) {
+         // The most reliable method for locating (the correct copy of)
+         // MMCoreJ_wrap is to look in the single path given as a Java system
+         // property. The launcher will typically set this property. If this
+         // property is set, other paths will not be considered.
+         if (!loadFromPathSetBySystemProperty()) {
+            // However, if the system property is not set, we search in some
+            // candidate directories in order.
+            if (!loadFromHardCodedPaths()) {
+               // Finally, if all else fails, try the system default mechanism,
+               // which will use java.library.path. This is necessary for
+               // backward compatibility, and it is also what people will
+               // generally expect.
+               logLibraryLoading("Falling back to loading using system default method");
+               try {
+                  System.loadLibrary(NATIVE_LIBRARY_NAME);
+               }
+               catch (UnsatisfiedLinkError e) {
+                  logLibraryLoading("System default loading method failed");
+               }
+            }
+         }
+      }
+   }
+
+%} // jniclasscode (native library loading)
+
+
+
 // output arguments
 %apply double &OUTPUT { double &x_stage };
 %apply double &OUTPUT { double &y_stage };
@@ -43,7 +286,7 @@
 
 
 // Java typemap
-// change deafult SWIG mapping of unsigned char* return values
+// change default SWIG mapping of unsigned char* return values
 // to byte[]
 //
 // Assumes that class has the following method defined:
@@ -99,17 +342,56 @@
 %typemap(javain) unsigned char* "$javainput" 
 
 
+
  
+// Map input argument: java List<byte[]> -> C++ std::vector<unsigned char*>
+%typemap(jni) std::vector<unsigned char*>        "jobject"
+%typemap(jtype) std::vector<unsigned char*>      "java.util.List<byte[]>"
+%typemap(jstype) std::vector<unsigned char*>     "java.util.List<byte[]>"
+%typemap(in) std::vector<unsigned char*>
+{
+   // Assume that we are sending an image to an SLM device, one byte per pixel (monochrome grayscale).
+   
+   long expectedLength = (arg1)->getSLMWidth(arg2) * (arg1)->getSLMHeight(arg2);
+   std::vector<unsigned char*> inputVector;
+   jclass clazz = jenv->FindClass("java/util/List");
+   jmethodID sizeMethodID = jenv->GetMethodID(clazz, "size", "()I");
+   // get JNI ID for java.util.List.get(int i) method.
+   // Because of type erasure we specify an "Object" return value,
+   // but we expect a byte[] to be returned.
+   jmethodID getMethodID = jenv->GetMethodID(clazz, "get", "(I)Ljava/lang/Object;");
+   int listSize = jenv->CallIntMethod($input, sizeMethodID);
+   
+   for (int i = 0; i < listSize; ++i) {
+     jbyteArray pixels = (jbyteArray) jenv->CallObjectMethod($input, getMethodID, i);
+     long receivedLength = jenv->GetArrayLength(pixels);
+   	 if (receivedLength != expectedLength && receivedLength != expectedLength*4)
+	 {
+	    jclass excep = jenv->FindClass("java/lang/Exception");
+	     if (excep)
+	        jenv->ThrowNew(excep, "Image dimensions are wrong for this SLM.");
+	      return;
+	  }
+	  inputVector.push_back((unsigned char *) JCALL2(GetByteArrayElements, jenv, pixels, 0));
+   }
+   $1 = inputVector;
+}
+
+%typemap(freearg) std::vector<unsigned char*> {
+   // Allow the Java List to be garbage collected.
+   // Not sure how to do that here -- may not be necessary.
+   //JCALL3(ReleaseByteArrayElements, jenv, $input, (jbyte *) $1, JNI_ABORT); // JNI_ABORT = Don't alter the original array.
+}
+
+%typemap(javain) std::vector<unsigned char*> "$javainput" 
+
 // Java typemap
-// change deafult SWIG mapping of void* return values
+// change default SWIG mapping of void* return values
 // to return CObject containing array of pixel values
 //
 // Assumes that class has the following methods defined:
 // unsigned GetImageWidth()
 // unsigned GetImageHeight()
-// unsigned GetImageDepth()
-// unsigned GetNumberOfComponents
-
 
 %typemap(jni) void*        "jobject"
 %typemap(jtype) void*      "Object"
@@ -205,7 +487,7 @@
 }
 
 // Java typemap
-// change deafult SWIG mapping of void* return values
+// change default SWIG mapping of void* return values
 // to return CObject containing array of pixel values
 //
 // Assumes that class has the following methods defined:
@@ -300,7 +582,7 @@
 %typemap(throws, throws="java.lang.Exception") CMMError {
    jclass excep = jenv->FindClass("java/lang/Exception");
    if (excep)
-     jenv->ThrowNew(excep, $1.getMsg().c_str());
+     jenv->ThrowNew(excep, $1.getFullMsg().c_str());
    return $null;
 }
 
@@ -320,9 +602,12 @@
    return $null;
 }
 
-%typemap(javabase) CMMError "java.lang.Exception"
-//%typemap(javabase) MetadataKeyError "java.lang.Exception"
-//%typemap(javabase) MetadataIndexError "java.lang.Exception"
+// We've translated exceptions to java.lang.Exception, so don't wrap the unused
+// C++ exception classes.
+%ignore CMMError;
+%ignore MetadataKeyError;
+%ignore MetadataIndexError;
+
 
 %typemap(javaimports) CMMCore %{
    import org.json.JSONObject;
@@ -368,30 +653,38 @@
    }
 
    private String getMultiCameraChannel(JSONObject tags, int cameraChannelIndex) {
-      try {
-      String camera = tags.getString("Core-Camera");
-      String physCamKey = camera + "-Physical Camera " + (1 + cameraChannelIndex);
-      if (tags.has(physCamKey)) {
-         try {
-            return tags.getString(physCamKey);
-         } catch (Exception e2) {
-            return null;
-         }
-      } else {
-         return null;
-      }
-     } catch (Exception e) {
-       return null;
-     }
+	  try {
+	  String camera = tags.getString("Core-Camera");
+	  String physCamKey = camera + "-Physical Camera " + (1 + cameraChannelIndex);
+	  if (tags.has(physCamKey)) {
+		 try {
+			return tags.getString(physCamKey);
+		 } catch (Exception e2) {
+			return null;
+		 }
+	  } else {
+		 return null;
+	  }
+	 } catch (Exception e) {
+	   return null;
+	 }
 
    }
 
    private TaggedImage createTaggedImage(Object pixels, Metadata md, int cameraChannelIndex) throws java.lang.Exception {
       TaggedImage image = createTaggedImage(pixels, md);
-      image.tags.put("CameraChannelIndex", cameraChannelIndex);
-      String physicalCamera = getMultiCameraChannel(image.tags, cameraChannelIndex);
-      if (physicalCamera != null) {
-         image.tags.put("Camera", physicalCamera);
+      JSONObject tags = image.tags;
+      
+      if (!tags.has("CameraChannelIndex")) {
+         tags.put("CameraChannelIndex", cameraChannelIndex);
+         tags.put("ChannelIndex", cameraChannelIndex);
+      }
+      if (!tags.has("Camera")) {
+         String physicalCamera = getMultiCameraChannel(tags, cameraChannelIndex);
+         if (physicalCamera != null) {
+            tags.put("Camera", physicalCamera);
+            tags.put("Channel",physicalCamera);
+         }
       }
       return image;
    }
@@ -412,6 +705,20 @@
       tags.put("Width", getImageWidth());
       tags.put("Height", getImageHeight());
       tags.put("PixelType", getPixelType());
+      tags.put("Frame", 0);
+      tags.put("FrameIndex", 0);
+      tags.put("Position", "Default");
+      tags.put("PositionIndex", 0);
+      tags.put("Slice", 0);
+      tags.put("SliceIndex", 0);
+      String channel = getCurrentConfigFromCache(getPropertyFromCache("Core","ChannelGroup"));
+      if ((channel == null) || (channel.length() == 0)) {
+         channel = "Default";
+      }
+      tags.put("Channel", channel);
+      tags.put("ChannelIndex", 0);
+
+
       try {
          tags.put("Binning", getProperty(getCameraDevice(), "Binning"));
       } catch (Exception ex) {}
@@ -466,6 +773,16 @@
       getROI(a[0], a[1], a[2], a[3]);
       return new Rectangle(a[0][0], a[1][0], a[2][0], a[3][0]);
    }
+   
+    /*
+    * Convenience function. Returns the ROI of specified camera in a java.awt.Rectangle.
+    */
+   public Rectangle getROI(String label) throws java.lang.Exception {
+      // ROI values are given as x,y,w,h in individual one-member arrays (pointers in C++):
+      int[][] a = new int[4][1];
+      getROI(label, a[0], a[1], a[2], a[3]);
+      return new Rectangle(a[0][0], a[1][0], a[2][0], a[3][0]);
+   }
 
    /* 
     * Convenience function. Returns the current x,y position of the stage in a Point2D.Double.
@@ -475,6 +792,17 @@
       double p[][] = new double[2][1];
       getXYPosition(stage, p[0], p[1]);
       return new Point2D.Double(p[0][0], p[1][0]);
+   }
+
+   /**
+    * Convenience function: returns the current XY position of the current
+    * XY stage device as a Point2D.Double.
+    */
+   public Point2D.Double getXYStagePosition() throws java.lang.Exception {
+      double x[] = new double[1];
+      double y[] = new double[1];
+      getXYPosition(x, y);
+      return new Point2D.Double(x[0], y[0]);
    }
    
    /* 
@@ -489,115 +817,8 @@
 %}
 
 
-%typemap(javacode) CMMError %{
-   public String getMessage() {
-      return getMsg();
-   }
-%}
-
-%typemap(javacode) MetadataKeyError %{
-   public String getMessage() {
-      return getMsg();
-   }
-%}
-
-%typemap(javacode) MetadataIndexError %{
-   public String getMessage() {
-      return getMsg();
-   }
-%}
-
-%pragma(java) jniclassimports=%{
-   import java.io.File;
-
-   import java.util.ArrayList;
-   import java.util.List;
-   import java.net.URL;
-   import java.net.URLDecoder;
-%}
-
-// Pull in the device adapter path that micro-manager has been compiled against
-%javaconst(1) DEVICEADAPTERPATH;
-%constant char *DEVICEADAPTERPATH = SWIG_DEVICEADAPTERPATH;
-
-%pragma(java) jniclasscode=%{
-
-  private static String URLtoFilePath(URL url) throws Exception {
-    // We need to get rid of multiple protocols (jar: and file:)
-    // and end up with an file path correct on every platform.
-    // The following lines seem to work, though it's ugly:
-	String url1 = URLDecoder.decode(url.getPath(), "UTF-8");
-	String url2 = URLDecoder.decode(new URL(url1).getPath(), "UTF-8");
-	return new File(url2).getAbsolutePath();
-  }
-
-  private static String getJarPath() {
-    String classFile = "/mmcorej/CMMCore.class";
-    try {
-		String path = URLtoFilePath(CMMCore.class.getResource(classFile));
-		int bang = path.indexOf('!');
-		if (bang > 0)
-			path = path.substring(0, bang);
-		System.out.println("MMCoreJ.jar path = " + path);
-		return path;
-	} catch (Exception e) {
-		return "";
-	}
-  }
-
-  private static String getPlatformString() {
-    String osName = System.getProperty("os.name");
-    String osArch = System.getProperty("os.arch");
-    return osName.startsWith("Mac") ? "macosx" :
-      (osName.startsWith("Win") ? "win" : osName.toLowerCase()) +
-      (osArch.indexOf("64") < 0 ? "32" : "64");
-  }
-
-  public static void loadLibrary(List<File> searchPaths, String name) {
-    String libraryName = System.mapLibraryName(name);
-    for (File path : searchPaths)
-        if (new File(path, libraryName).exists()) {
-            System.load(new File(path, libraryName).getAbsolutePath());
-            return;
-        }
-    System.loadLibrary(name);
-  }
-
-  static {
-    List<File> searchPaths = new ArrayList<File>();
-    File directory = new File(getJarPath()).getParentFile();
-    searchPaths.add(directory);
-    directory = directory.getParentFile();
-    searchPaths.add(directory);
-    String platform = getPlatformString();
-    File directoryMM = new File(new File(directory, "mm"), platform);
-    searchPaths.add(directoryMM);
-    directory = directory.getParentFile();
-    searchPaths.add(directory);
-    directoryMM = new File(new File(directory, "mm"), platform);
-    searchPaths.add(directoryMM);
-    // on Linux use the LSB-defined library path (set in configure.common)
-    if (platform.startsWith("linux"))
-        searchPaths.add(new File(MMCoreJConstants.DEVICEADAPTERPATH));
-    
-	try {
-	    loadLibrary(searchPaths, "MMCoreJ_wrap");
-        for (File path : searchPaths) {
-          System.out.println(path.getAbsolutePath());
-          CMMCore.addSearchPath(path.getAbsolutePath());
-          }
-    } catch (UnsatisfiedLinkError e) {
-        System.err.println("Native code library failed to load. \n" + e);
-        // do not exit here, loadLibrary does not work on all platforms in the same way,
-        // perhaps the library is already loaded.
-        //System.exit(1);
-    }
-  }
-%}
-
 %{
 #include "../MMDevice/MMDeviceConstants.h"
-#include "../MMCore/Error.h"
 #include "../MMCore/Configuration.h"
 #include "../MMDevice/ImageMetadata.h"
 #include "../MMCore/MMEventCallback.h"
@@ -723,12 +944,10 @@ namespace std {
 
 
 
-
 }
 
 
 %include "../MMDevice/MMDeviceConstants.h"
-%include "../MMCore/Error.h"
 %include "../MMCore/Configuration.h"
 %include "../MMCore/MMCore.h"
 %include "../MMDevice/ImageMetadata.h"

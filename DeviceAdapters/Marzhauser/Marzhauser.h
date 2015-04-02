@@ -34,7 +34,6 @@
 #include "../../MMDevice/MMDevice.h"
 #include "../../MMDevice/DeviceBase.h"
 #include <string>
-#include <map>
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -44,35 +43,25 @@
 #define ERR_PORT_CHANGE_FORBIDDEN    10004
 
 
-class TangoBase;
-
-class TangoDeviceBase : public CDeviceBase<MM::Device, TangoDeviceBase>
-{
-public:
-   TangoDeviceBase() { }
-   ~TangoDeviceBase() { }
-
-   friend class TangoBase;
-};
-
+// N.B. Concrete device classes deriving TangoBase must set core_ in
+// Initialize().
 class TangoBase
 {
 public:
    TangoBase(MM::Device *device);
-   ~TangoBase();
+   virtual ~TangoBase();
 
    int ClearPort(void);
    int CheckDeviceStatus(void);
    int SendCommand(const char *command) const;
-   int QueryCommandACK(const char *command);
    int QueryCommand(const char *command, std::string &answer) const;
 
 protected:
-   MM::Core *core_;
    bool initialized_;
    int  Configuration_;
    std::string port_;
-   TangoDeviceBase *device_;
+   MM::Device *device_;
+   MM::Core *core_;
 };
 
 
@@ -127,7 +116,6 @@ int Move(double vx, double vy);
 
 private:
    bool range_measured_;
-   double answerTimeoutMs_;
    double stepSizeXUm_;
    double stepSizeYUm_;
    double speedX_;
@@ -190,7 +178,6 @@ public:
 
 private:
    bool range_measured_;
-   double answerTimeoutMs_;
    double stepSizeUm_;
    double speedZ_;
    double accelZ_;
@@ -198,7 +185,6 @@ private:
 
    bool sequenceable_;
    long nrEvents_;
-   long curSteps_;
    std::vector<double> sequence_;
 };
 
@@ -244,11 +230,10 @@ public:
 
 private:
    bool range_measured_;
-   double answerTimeoutMs_;
-   double stepSizeUm_;
    double speed_;
    double accel_;
    double origin_;
+   double stepSizeUm_;
 };
 
 
@@ -277,7 +262,6 @@ private:
    int SetShutterPosition(bool state);
    int GetShutterPosition(bool& state);
    std::string name_;
-   double answerTimeoutMs_;
 };
 
 
@@ -305,14 +289,12 @@ public:
    int OnFire      (MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   double intensity_;
-   double fireT_;
-   int usec_;
    int GetIntensity(double& intensity);
    int SetIntensity(double  intensity);
-   const int id_;
    std::string name_;  
-   double answerTimeoutMs_;
+   const int id_;
+   double intensity_;
+   double fireT_;
    LED100& operator=(LED100&) {assert(false); return *this;} 
 };
 
@@ -346,10 +328,9 @@ public:
 
 private:
    int  DACPort_;
+   std::string name_;  
    bool open_;
    double volts_;
-   std::string name_;  
-   double answerTimeoutMs_;
 };
 
 
@@ -381,10 +362,9 @@ public:
    int OnADCPort (MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   int ADCPort_;
-   double volts_;
    std::string name_;  
-   double answerTimeoutMs_;
+   double volts_;
+   int ADCPort_;
 };
 
 

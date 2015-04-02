@@ -44,24 +44,6 @@ using namespace std;
 const char* g_XYStageDeviceName = "NI_Motion_XYStage";
 const char* g_ZStageDeviceName = "NI_Motion_ZStage";
 
-// windows DLL entry code
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-  	   case DLL_THREAD_ATTACH:
-   	case DLL_THREAD_DETACH:
-   	case DLL_PROCESS_DETACH:
-   		break;
-   	}
-       return TRUE;
-   }
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
@@ -69,8 +51,8 @@ const char* g_ZStageDeviceName = "NI_Motion_ZStage";
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_XYStageDeviceName, "NI Motion XY stage");
-   AddAvailableDeviceName(g_ZStageDeviceName,"NI Motion Z or single axis stage");
+   RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "NI Motion XY stage");
+   RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "NI Motion Z or single axis stage");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)

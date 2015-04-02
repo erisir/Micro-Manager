@@ -49,17 +49,23 @@ BFCamera::BFCamera(bool dual) :
 {
 }
 
+   int BFCamera::GetTimeout() 
+   {
+	   return timeoutMs_;
+   }
+
 BFCamera::~BFCamera()
 {
    Shutdown();
    delete[] buf_;
 }
 
-int BFCamera::Initialize()
+int BFCamera::Initialize(MM::Device* caller, MM::Core* core)
 {
+	caller_ = caller;
+	core_ = core;
    // close existing boards
    Shutdown();
-
    // find the number of available boards
    BFU32 num = 0;
    BFRC ret = CiSysBrdEnum(CISYS_TYPE_R64, &num);
@@ -69,18 +75,13 @@ int BFCamera::Initialize()
    // open all of them
    if (!dual_ && num > 4)
       num = 4;
-   
-   // NOTE: setting number of boards to 7 (instead of 8) is a hack in order to
-   // skip board 4 which is not working properly
 
-   num = min(num, 8); 
+   num = min(num, 6); 
 
    for (unsigned i=0; i<num; i++)
    {
-	  // skip board 4
-      if (i == 4)
-	     continue;
-
+    	
+	   
       CiENTRY entry;
       ret = CiSysBrdFind(CISYS_TYPE_R64, i, &entry);
       if (ret != BF_OK)
@@ -218,12 +219,22 @@ bool BFCamera::WaitForImage()
 
 const unsigned char* BFCamera::GetImageCont()
 {
-   if (!initialized_ || boards_.empty())
-      return 0;
+	if (!initialized_ || boards_.empty())
+		return 0;
 
-   BFRC ret = CiSignalNextWait(boards_[0], &eofSignal_, timeoutMs_);
-   if (ret != BF_OK)
-      return 0;
+	BFRC ret = CiSignalNextWait(boards_[0], &eofSignal_, timeoutMs_);
+	if (ret != BF_OK) {
+		if (ret == BF_BAD_SIGNAL) {
+			core_->LogMessage(caller_,"BF Get image error: Bad signal--invalid board handle passed to function ",true);
+		} else if (ret == BF_SIGNAL_TIMEOUT) {
+			core_->LogMessage(caller_,"BF Get image error: Timeout ",true);
+		} else if (ret == BF_SIGNAL_CANCEL) { 
+			core_->LogMessage(caller_,"BF Get image error: Signal canceled by another thread ",true);
+		} else if (ret == BF_WAIT_FAILED) {
+			core_->LogMessage(caller_,"BF Get image error: Operating system killed the signal ",true);
+		}
+		return 0;
+	}
 
    // wait for transfer to complete
    //Sleep(5);
@@ -307,7 +318,7 @@ int BFCamera::StartSequence()
    for (unsigned i=0; i<boards_.size(); i++)
    {
       BFRC ret = CiAqCommand(boards_[i], CiConGrab, CiConWait, CiQTabBank0, AqEngJ);
-      if (ret != BF_OK)
+	  if (ret != BF_OK)
       {
          CiSignalFree(boards_[0], &eofSignal_);
          return ret;
@@ -321,13 +332,13 @@ int BFCamera::StopSequence()
 {
    for (unsigned i=0; i<boards_.size(); i++)
    {
+      core_->LogMessage(caller_,CDeviceUtils::ConvertToString((int)i),true);
       BFRC ret = CiAqCommand(boards_[i], CiConFreeze, CiConWait, CiQTabBank0, AqEngJ);
       if (ret != BF_OK)
       {
          return ret; // returning immediately, but what about remaining boards?
       }
    }
-
    CiSignalFree(boards_[0], &eofSignal_);
    return DEVICE_OK;
 }

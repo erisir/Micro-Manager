@@ -54,8 +54,7 @@ const char * line_feed = "\n";
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ControllerName, "Sapphire Laser");
-   
+   RegisterDevice(g_ControllerName, MM::ShutterDevice, "Sapphire Laser");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -83,13 +82,11 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // ~~~~~~~~~~~~~~~~~~~~
 
 Sapphire::Sapphire(const char* name) :
-   initialized_(false), 
-   //powerSetpoint_(0),
-	//powerReadback_(0),
    state_(0),
+   error_(0),
+   initialized_(false), 
    name_(name), 
    busy_(false),
-   error_(0),
    changedTime_(0.0),
 	queryToken_("?"),
 	powerSetpointToken_("P"),

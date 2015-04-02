@@ -2,6 +2,7 @@ package org.micromanager.acquisition;
 
 import ij.CompositeImage;
 import ij.gui.ImageWindow;
+
 import java.awt.Point;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -9,15 +10,15 @@ import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.Set;
 import java.util.prefs.Preferences;
+
 import mmcorej.TaggedImage;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.micromanager.api.AcquisitionEngine;
 import org.micromanager.api.ImageCache;
 import org.micromanager.utils.GUIUtils;
 import org.micromanager.utils.MDUtils;
-
 import org.micromanager.utils.MMScriptException;
 import org.micromanager.utils.ReportingUtils;
 
@@ -66,9 +67,9 @@ public class AcquisitionManager {
       try {
          GUIUtils.invokeAndWait(new Runnable() {
             public void run() {
-               
                if (!acqs_.containsKey(name)) {
-                 ex[0] = new MMScriptException("The name does not exist");
+                 ex[0] = new MMScriptException(
+                    "The acquisition named \"" + name + "\" does not exist");
                } else {
                   acqs_.get(name).close();
                   acqs_.remove(name);
@@ -82,11 +83,34 @@ public class AcquisitionManager {
       }
    }
    
-   public void closeImageWindow(String name) throws MMScriptException {
+   /**
+    * Closes display window associated with an acquisition
+    * @param name of acquisition
+    * @return false if canceled by user, true otherwise
+    * @throws MMScriptException 
+    */
+   public boolean closeImageWindow(String name) throws MMScriptException {
       if (!acquisitionExists(name))
          throw new MMScriptException("The name does not exist");
-      else
-         acqs_.get(name).closeImageWindow();
+      
+      return acqs_.get(name).closeImageWindow();
+   }
+   
+   /**
+    * Closes all windows associated with acquisitions
+    * Can be interrupted by the user (by pressing cancel)
+    * 
+    * @return false is saving was canceled, true otherwise
+    * @throws MMScriptException 
+    */
+   public boolean closeAllImageWindows() throws MMScriptException {
+      String[] acqNames = getAcquisitionNames();
+      for (String acqName : acqNames) {
+         if (!closeImageWindow(acqName)) {
+            return false;
+         }
+      }       
+      return true;
    }
    
    public boolean acquisitionExists(String name) {
@@ -111,9 +135,9 @@ public class AcquisitionManager {
    }
 
    public void closeAll() {
-      for (Enumeration<MMAcquisition> e=acqs_.elements(); e.hasMoreElements(); )
+      for (Enumeration<MMAcquisition> e=acqs_.elements(); e.hasMoreElements(); ) {
          e.nextElement().close();
-      
+      }
       acqs_.clear();
    }
 
@@ -124,9 +148,16 @@ public class AcquisitionManager {
          if (lastSeparator == -1)
             name += separator + "1";
          else {
-            Integer i = Integer.parseInt(name.substring(lastSeparator + 1));
-            i++;
-            name = name.substring(0, lastSeparator) + separator + i;
+            try {
+               Integer i = Integer.parseInt(name.substring(lastSeparator + 1));
+               i++;
+               name = name.substring(0, lastSeparator) + separator + i;
+            }
+            catch (NumberFormatException e) {
+               // Some part of the name has an underscore and then a
+               // non-number; we can't just increment that.
+               name += separator + "1";
+            }
          }
       }
       return name;
@@ -159,8 +190,7 @@ public class AcquisitionManager {
          imageBitDepth = MDUtils.getBitDepth(tags);
          // need to check number of channels so that multi cam and single cam
          // acquistions of same size and depth are differentiated
-         numChannels = MDUtils.getNumChannels(tags);  
-         
+         numChannels = MDUtils.getNumChannels(tags);
       } catch (Exception e) {
          throw new MMScriptException("Something wrong with image tags.");
       }
@@ -175,6 +205,7 @@ public class AcquisitionManager {
                 ! acq.getImageCache().isFinished() )
              newNeeded = false;
          } catch (Exception e) {
+            ReportingUtils.logError(e, "Couldn't check if we need a new album");
          }
       }
 
@@ -182,12 +213,26 @@ public class AcquisitionManager {
          album = createNewAlbum();
          openAcquisition(album, "", true, false);
          acq = getAcquisition(album);
-         acq.setDimensions(2, numChannels, 1, 1);   
+         // HACK: adjust number of frames based on number of
+         // channels/components.  If we don't do this, then multi-channel
+         // images don't display properly (we just get repeat images), because
+         // the ImageJ object refuses to change which frame it displays. I have
+         // *no idea* why this happens, but instead of debugging and patching
+         // ImageJ itself, we're resorting to this workaround.
+         boolean mustHackDims = false;
+         try {
+            mustHackDims = (numChannels > 1 ||
+                  MDUtils.getNumberOfComponents(image.tags) > 1);
+         }
+         catch (JSONException ex) {
+            ReportingUtils.logError(ex, "Unable to determine number of components of image");
+         }
+         acq.setDimensions(mustHackDims ? 2 : 1, numChannels, 1, 1);
          acq.setImagePhysicalDimensions(imageWidth, imageHeight, imageDepth, imageBitDepth, numChannels);
 
          try {
             JSONObject summary = new JSONObject();
-            summary.put("PixelType", tags.get("PixelType"));
+            MDUtils.setPixelTypeFromString(summary, MDUtils.getPixelType(tags));
             acq.setSummaryProperties(summary);
          } catch (JSONException ex) {
             ReportingUtils.logError(ex);
@@ -211,36 +256,40 @@ public class AcquisitionManager {
          win.setLocation(prefs.getInt(ALBUM_WIN_X, 0), prefs.getInt(ALBUM_WIN_Y, 0));
       }
 
-      int f = 1 + acq.getLastAcquiredFrame();
-      try {
-         //update summary metadata
-         acq.getSummaryMetadata().put("Frames", f+1);
-      } catch (JSONException ex) {
-         ReportingUtils.logError("Couldn't update number of frames in album summary metadata");
-      }
-      
-      //This makes sure that the second multicamera image has the correct frame index
+      // This image goes, by default, into the next frame.
+      int newImageFrame = acq.getLastAcquiredFrame() + 1;
+
+      // This makes sure that the second multicamera image has the correct
+      // frame index.
+      // Assumes that multi channel additions add channel 0 first.
       if (numChannels > 1) {
-         try {    // assumes that multi channel additions add channel 0 first
+         try {
             JSONObject lastTags = acq.getImageCache().getLastImageTags();
             int lastCh = -1;
-            if (lastTags != null)
+            if (lastTags != null) {
                lastCh = MDUtils.getChannelIndex(lastTags);
-            if (lastCh == 0)
-               f = acq.getLastAcquiredFrame();
+            }
+            if (lastCh == 0) {
+               newImageFrame = acq.getLastAcquiredFrame();
+            }
          } catch (JSONException ex) {
            ReportingUtils.logError(ex);
          }
       }
       try {
-         MDUtils.setFrameIndex(tags, f);
+         MDUtils.setFrameIndex(tags, newImageFrame);
       } catch (JSONException ex) {
          ReportingUtils.showError(ex);
       }
+      try {
+         // update summary metadata
+         acq.getSummaryMetadata().put("Frames", newImageFrame + 1);
+      } catch (JSONException ex) {
+         ReportingUtils.logError("Couldn't update number of frames in album summary metadata");
+      }
       acq.insertImage(image);
-      
 
-      //Apply appropriate contrast            
+      //Apply appropriate contrast
       if (numChannels == 1) { //monochrome
          try {
            if (MDUtils.getFrameIndex(tags) == 0) {
@@ -270,7 +319,7 @@ public class AcquisitionManager {
       if (displaySettings == null) 
          return;
       ImageCache ic = acq.getImageCache();
-      for (int i = 0; i < ic.getNumChannels(); i++) {
+      for (int i = 0; i < ic.getNumDisplayChannels(); i++) {
          try {
             JSONObject channelSetting = (JSONObject) ((JSONArray) displaySettings.get("Channels")).get(i);
             int color = channelSetting.getInt("Color");
@@ -279,13 +328,16 @@ public class AcquisitionManager {
             double gamma = channelSetting.getDouble("Gamma");
             String name = channelSetting.getString("Name");
             int histMax;
-            if (channelSetting.has("HistogramMax"))      
+            if (channelSetting.has("HistogramMax")) {
                histMax = channelSetting.getInt("HistogramMax");
-            else
+            }
+            else {
                histMax = -1;
+            }
             int displayMode = CompositeImage.COMPOSITE;
-            if (channelSetting.has("DisplayMode"))
+            if (channelSetting.has("DisplayMode")) {
                displayMode = channelSetting.getInt("DisplayMode");
+            }
             
             ic.storeChannelDisplaySettings(i, min, max, gamma, histMax, displayMode);
             acq.getAcquisitionWindow().setChannelHistogramDisplayMax(i,histMax);
@@ -301,9 +353,8 @@ public class AcquisitionManager {
          }
       }
    }
-
-   
-   public String[] getAcqusitionNames() {
+ 
+   public String[] getAcquisitionNames() {
       Set<String> keySet = acqs_.keySet();
       String keys[] = new String[keySet.size()];
       return keySet.toArray(keys);

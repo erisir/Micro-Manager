@@ -21,11 +21,11 @@
 
 package org.micromanager.utils;
 
+import java.awt.Component;
 import java.awt.event.ActionEvent;
 
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-
 
 import java.util.Calendar;
 
@@ -34,8 +34,10 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.SwingUtilities;
 
 import mmcorej.CMMCore;
+import org.micromanager.MMStudio;
 
 /**
  *
@@ -47,6 +49,7 @@ public class ReportingUtils {
    private static JFrame owningFrame_;
    private static boolean show_ = true;
 
+   // Intended for setting to the main frame.
    public static void SetContainingFrame(JFrame f) {
       owningFrame_ = f;
    }
@@ -67,8 +70,20 @@ public class ReportingUtils {
       }
    }
 
-   public static void showMessage(String msg) {
+   public static void logDebugMessage(String msg) {
+      if (core_ == null) {
+         System.out.println(msg);
+      } else {
+         core_.logMessage(msg, true);
+      }
+   }
+
+   public static void showMessage(final String msg) {
       JOptionPane.showMessageDialog(null, msg);
+   }
+   
+   public static void showMessage(final String msg, Component parent) {
+      JOptionPane.showMessageDialog(parent, msg);
    }
 
    public static void logError(Throwable e, String msg) {
@@ -89,7 +104,7 @@ public class ReportingUtils {
       logError(null, msg);
    }
 
-   public static void showError(Throwable e, String msg) {
+   public static void showError(Throwable e, String msg, Component parent) {
       logError(e, msg);
 
       if (!show_)
@@ -108,26 +123,59 @@ public class ReportingUtils {
          fullMsg = "Unknown error (please check CoreLog.txt file for more information)";
       }
 
-      int maxNrLines = 30;
-      String test[] = fullMsg.split("\n");
-      if (test.length < maxNrLines) {
-         JOptionPane.showMessageDialog(null, fullMsg, "Micro-Manager Error", JOptionPane.ERROR_MESSAGE);
+      ReportingUtils.showErrorMessage(fullMsg, parent);
+   }
+
+   private static String formatAlertMessage(String[] lines) {
+      com.google.common.escape.Escaper escaper =
+         com.google.common.html.HtmlEscapers.htmlEscaper();
+      StringBuilder sb = new StringBuilder();
+      sb.append("<html>");
+      for (String line : lines) {
+         sb.append("<div width='640'>");
+         sb.append(escaper.escape(line));
+         sb.append("</div>");
+      }
+      sb.append("</html>");
+      return sb.toString();
+   }
+
+   private static void showErrorMessage(final String fullMsg, final Component parent) {
+      int maxNrLines = 10;
+      String lines[] = fullMsg.split("\n");
+      if (lines.length < maxNrLines) {
+         String wrappedMsg = formatAlertMessage(lines);
+         JOptionPane.showMessageDialog(parent, wrappedMsg,
+                 "Micro-Manager Error", JOptionPane.ERROR_MESSAGE);
       } else {
          JTextArea area = new JTextArea(fullMsg);
          area.setRows(maxNrLines);
          area.setColumns(50);
          area.setLineWrap(true);
          JScrollPane pane = new JScrollPane(area);
-         JOptionPane.showMessageDialog(null, pane, "Micro-Manager Error", JOptionPane.ERROR_MESSAGE);
+         JOptionPane.showMessageDialog(parent, pane,
+                 "Micro-Manager Error", JOptionPane.ERROR_MESSAGE);
       }
 }
 
    public static void showError(Throwable e) {
-      showError(e, "");
+      showError(e, "", MMStudio.getFrame());
    }
 
    public static void showError(String msg) {
-      showError(null, msg);
+      showError(null, msg, MMStudio.getFrame());
+   }
+
+   public static void showError(Throwable e, String msg) {
+      showError(e, msg, MMStudio.getFrame());
+   }
+
+   public static void showError(Throwable e, Component parent) {
+      showError(e, "", parent);
+   }
+
+   public static void showError(String msg, Component parent) {
+      showError(null, msg, parent);
    }
 
    private static String getStackTraceAsString(Throwable aThrowable) {
@@ -143,11 +191,42 @@ public class ReportingUtils {
       }
    }
 
+   /**
+    * As above, but doesn't require a Throwable; a convenience function for
+    * logging when you want to know where you were called from.
+    */
+   public static String getStackTraceAsString() {
+      String result = "";
+      for (StackTraceElement line : java.lang.Thread.currentThread().getStackTrace()) {
+         result += "  at " + line.toString() + "\n";
+      }
+      return result;
+   }
+
+   /**
+    * As above, but only the caller is returned, not the entire trace.
+    */
+   public static String getCaller() {
+      // First is getStackTrace, second is us, third is whoever called us,
+      // fourth is whoever called *them*.
+      return java.lang.Thread.currentThread().getStackTrace()[3].toString();
+   }
+
    public static void showError(ActionEvent e) {
       throw new UnsupportedOperationException("Not yet implemented");
    }
 
-   public static void displayNonBlockingMessage(String message) {
+   public static void displayNonBlockingMessage(final String message) {
+      if (!SwingUtilities.isEventDispatchThread()) {
+         SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+               ReportingUtils.displayNonBlockingMessage(message);
+            }
+         });
+         return;
+      }
+
       if (null != owningFrame_) {
          Calendar c = Calendar.getInstance();
          final JOptionPane optionPane = new JOptionPane(c.getTime().toString() + " " + message, JOptionPane.WARNING_MESSAGE, JOptionPane.OK_CANCEL_OPTION);
@@ -156,6 +235,7 @@ public class ReportingUtils {
          optionPane.addPropertyChangeListener(
                  new PropertyChangeListener() {
 
+                    @Override
                     public void propertyChange(PropertyChangeEvent e) {
                        String prop = e.getPropertyName();
                        if (dialog.isVisible() && (e.getSource() == optionPane) && (prop.equals(JOptionPane.VALUE_PROPERTY))) {

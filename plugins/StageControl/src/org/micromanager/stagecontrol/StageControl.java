@@ -21,54 +21,57 @@
 
 package org.micromanager.stagecontrol;
 
-import java.awt.Color;
-
-import mmcorej.CMMCore;
 import org.micromanager.api.MMPlugin;
 import org.micromanager.api.ScriptInterface;
 
 
 public class StageControl implements MMPlugin {
-   public static String menuName = "Stage Control";
-   public static String tooltipDescription = "A virtual joystick that allows for manual control"
-		   +" of the XY and Z stages";
-   private CMMCore core_;
+   public static final String menuName = "Stage Control";
+   public static final String tooltipDescription =
+      "A virtual joystick for manual control of the current XY and Z stages";
+
    private ScriptInterface gui_;
    private StageControlFrame myFrame_;
 
+   @Override
    public void setApp(ScriptInterface app) {
-      gui_ = app;                                        
-      core_ = app.getMMCore();
-      String focusDeviceLabel = core_.getFocusDevice();
-      if (myFrame_ == null)
+      gui_ = app;       
+      if (myFrame_ == null) {
          myFrame_ = new StageControlFrame(gui_);
-      myFrame_.setTitle(String.format("[--%s--]", focusDeviceLabel));
+         myFrame_.setBackground(gui_.getBackgroundColor());
+         gui_.addMMBackgroundListener(myFrame_);
+         gui_.addMMListener(myFrame_);
+      }
+      myFrame_.initialize();
       myFrame_.setVisible(true);
    }
 
+   @Override
    public void dispose() {
       // nothing todo:
    }
 
+   @Override
    public void show() {
          String ig = "Stage Control";
    }
 
-   public void configurationChanged() {
-   }
-
+   @Override
    public String getInfo () {
       return "Stage Control Plugin";
    }
 
+   @Override
    public String getDescription() {
       return tooltipDescription;
    }
    
+   @Override
    public String getVersion() {
       return "First version";
    }
    
+   @Override
    public String getCopyright() {
       return "University of California, 2010";
    }

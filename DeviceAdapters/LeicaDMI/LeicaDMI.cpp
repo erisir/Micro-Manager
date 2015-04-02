@@ -44,38 +44,6 @@
 #include <sstream>
 #include <algorithm>
 
-// TODO: linux entry code
-// Note that this only works with gcc (which we should be testing for)
-#ifdef __GNUC__
-void __attribute__ ((constructor)) my_init(void)
-{
-}
-void __attribute__ ((destructor)) my_fini(void)
-{
-}
-#endif
-
-// windows dll entry code
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/,                                
-                          DWORD  ul_reason_for_call,                         
-                          LPVOID /*lpReserved*/                              
-                   )                                                         
-   {                                                                         
-      switch (ul_reason_for_call)                                            
-      {                                                                      
-      case DLL_PROCESS_ATTACH:                                               
-      break;                                                                 
-      case DLL_THREAD_ATTACH:    
-      break;                                                                 
-      case DLL_THREAD_DETACH:
-      break;
-      case DLL_PROCESS_DETACH:
-      break;
-      }
-       return TRUE;
-   }
-#endif
 
 using namespace std;
 
@@ -92,6 +60,7 @@ const char* g_LevelProp = "Level";
 const char* g_LeicaDeviceName = "Scope";
 const char* g_LeicaReflector = "IL-Turret";
 const char* g_LeicaNosePiece = "ObjectiveTurret";
+const char* g_LeicaFastFilterWheel = "FastFilterWheel";
 const char* g_LeicaFieldDiaphragmTL = "TL-FieldDiaphragm";
 const char* g_LeicaApertureDiaphragmTL = "TL-ApertureDiaphragm";
 const char* g_LeicaFieldDiaphragmIL = "IL-FieldDiaphragm";
@@ -118,25 +87,25 @@ const char* g_LeicaAFC = "Adaptive Focus Control";
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_LeicaDeviceName,"Leica DMI microscope controlled through serial interface");
-   AddAvailableDeviceName(g_LeicaTransmittedLightShutter,"Transmitted Light Shutter"); 
-   AddAvailableDeviceName(g_LeicaIncidentLightShutter,"Incident Light Shutter"); 
-   AddAvailableDeviceName(g_LeicaReflector,"Reflector Turret (dichroics)"); 
-   AddAvailableDeviceName(g_LeicaNosePiece,"Objective Turret");
-   AddAvailableDeviceName(g_LeicaFocusAxis,"Z-drive");
-   AddAvailableDeviceName(g_LeicaXYStage,"XYStage");
-   AddAvailableDeviceName(g_LeicaFieldDiaphragmTL,"Field Diaphragm (Trans)");
-   AddAvailableDeviceName(g_LeicaApertureDiaphragmTL,"Aperture Diaphragm (Condensor)");
-   AddAvailableDeviceName(g_LeicaFieldDiaphragmIL,"Field Diaphragm (Fluorescence)");
-   AddAvailableDeviceName(g_LeicaApertureDiaphragmIL,"Aperture Diaphragm (Fluorescence)");
-   AddAvailableDeviceName(g_LeicaMagChanger,"Tube Lens (magnification changer)");
-   AddAvailableDeviceName(g_LeicaTLPolarizer, "Transmitted light Polarizer");
-   AddAvailableDeviceName(g_LeicaDICTurret, "DIC Turret");
-   AddAvailableDeviceName(g_LeicaCondensorTurret, "Condensor Turret");
-   AddAvailableDeviceName(g_LeicaTransmittedLight,"Transmitted Light");
-   AddAvailableDeviceName(g_LeicaAFC,"Adaptive Focus Control");
-
-	AddAvailableDeviceName(::g_LeicaSidePort,"Side Port");
+   RegisterDevice(g_LeicaDeviceName, MM::HubDevice, "Leica DMI microscope controlled through serial interface");
+   RegisterDevice(g_LeicaTransmittedLightShutter, MM::ShutterDevice, "Transmitted Light Shutter");
+   RegisterDevice(g_LeicaIncidentLightShutter, MM::ShutterDevice, "Incident Light Shutter");
+   RegisterDevice(g_LeicaReflector, MM::StateDevice, "Reflector Turret (dichroics)");
+   RegisterDevice(g_LeicaNosePiece, MM::StateDevice, "Objective Turret");
+   RegisterDevice(g_LeicaFastFilterWheel, MM::StateDevice, "Fast Filter Wheel");
+   RegisterDevice(g_LeicaFocusAxis, MM::StageDevice, "Z-drive");
+   RegisterDevice(g_LeicaXYStage, MM::XYStageDevice, "XYStage");
+   RegisterDevice(g_LeicaFieldDiaphragmTL, MM::GenericDevice, "Field Diaphragm (Trans)");
+   RegisterDevice(g_LeicaApertureDiaphragmTL, MM::GenericDevice, "Aperture Diaphragm (Condensor)");
+   RegisterDevice(g_LeicaFieldDiaphragmIL, MM::GenericDevice, "Field Diaphragm (Fluorescence)");
+   RegisterDevice(g_LeicaApertureDiaphragmIL, MM::GenericDevice, "Aperture Diaphragm (Fluorescence)");
+   RegisterDevice(g_LeicaMagChanger, MM::MagnifierDevice, "Tube Lens (magnification changer)");
+   RegisterDevice(g_LeicaTLPolarizer, MM::StateDevice, "Transmitted light Polarizer");
+   RegisterDevice(g_LeicaDICTurret, MM::StateDevice, "DIC Turret");
+   RegisterDevice(g_LeicaCondensorTurret, MM::StateDevice, "Condensor Turret");
+   RegisterDevice(g_LeicaTransmittedLight, MM::ShutterDevice, "Transmitted Light");
+   RegisterDevice(g_LeicaAFC, MM::AutoFocusDevice, "Adaptive Focus Control");
+   RegisterDevice(g_LeicaSidePort, MM::StateDevice, "Side Port");
 }
 using namespace std;
 
@@ -159,6 +128,8 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
         return new ILTurret();
    else if (strcmp(deviceName, g_LeicaNosePiece) == 0)
         return new ObjectiveTurret();
+   else if (strcmp(deviceName, g_LeicaFastFilterWheel) == 0)
+        return new FastFilterWheel();
    else if (strcmp(deviceName, g_LeicaFocusAxis) == 0)
         return new ZDrive();
    else if (strcmp(deviceName, g_LeicaFieldDiaphragmTL) == 0)
@@ -201,8 +172,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // LeicaScope
 //
 LeicaScope::LeicaScope() :
-   initialized_(false),                                                 
-   answerTimeoutMs_(250)
+   initialized_(false)
 {
    InitializeDefaultErrorMessages();
    SetErrorText(ERR_ANSWER_TIMEOUT, "The Leica microscope does not answer.  Is it switched on and connected to this computer?");
@@ -289,6 +259,7 @@ int LeicaScope::GetNumberOfDiscoverableDevices()
 
       AttemptToDiscover(g_IL_Turret, g_LeicaReflector);
       AttemptToDiscover(g_Revolver, g_LeicaNosePiece);
+      AttemptToDiscover(g_Fast_Filter_Wheel, g_LeicaFastFilterWheel);
       AttemptToDiscover(g_Field_Diaphragm_TL, g_LeicaFieldDiaphragmTL);
       AttemptToDiscover(g_Aperture_Diaphragm_TL, g_LeicaApertureDiaphragmTL);
       AttemptToDiscover(g_Field_Diaphragm_IL, g_LeicaFieldDiaphragmIL);
@@ -315,9 +286,14 @@ int LeicaScope::GetNumberOfDiscoverableDevices()
 }
 
 void LeicaScope::GetDiscoverableDevice(int deviceNum, char *deviceName,
-                                      unsigned int maxLength)
+                                       unsigned int maxLength)
 {
-    strcpy(deviceName, discoveredDevices_[deviceNum].c_str());
+   if (0 <= deviceNum && deviceNum < static_cast<int>(discoveredDevices_.size()))
+   {
+      strncpy(deviceName, discoveredDevices_[deviceNum].c_str(), maxLength - 1);
+      deviceName[maxLength - 1] = 0;
+   }
+   return;
 }
 
 int LeicaScope::Initialize() 
@@ -392,6 +368,7 @@ int LeicaScope::DetectInstalledDevices()
 
    AttemptToDiscover(g_IL_Turret, g_LeicaReflector);
    AttemptToDiscover(g_Revolver, g_LeicaNosePiece);
+   AttemptToDiscover(g_Fast_Filter_Wheel, g_LeicaFastFilterWheel);
    AttemptToDiscover(g_Field_Diaphragm_TL, g_LeicaFieldDiaphragmTL);
    AttemptToDiscover(g_Aperture_Diaphragm_TL, g_LeicaApertureDiaphragmTL);
    AttemptToDiscover(g_Field_Diaphragm_IL, g_LeicaFieldDiaphragmIL);
@@ -961,7 +938,7 @@ int ILTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
          if (g_ScopeModel.UsesMethods()) {
             // check if the new position is allowed with this method
             int method;
-            int ret = g_ScopeModel.method_.GetPosition(method);
+            g_ScopeModel.method_.GetPosition(method);
             if (!g_ScopeModel.ILTurret_.cube_[pos].IsMethodAvailable(method)) {
                // the new cube does not support the current method.  Look for a method:
                // Look first in the FLUO methods, than in all available methods
@@ -1136,7 +1113,7 @@ int ObjectiveTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
          if (g_ScopeModel.UsesMethods()) {
             // check if the new position is allowed with this method
             int method;
-            int ret = g_ScopeModel.method_.GetPosition(method);
+            g_ScopeModel.method_.GetPosition(method);
             if (!g_ScopeModel.ObjectiveTurret_.objective_[pos].IsMethodAvailable(method)) {
                // the new cube does not support the current method.  Look for a method:
                // Look first in the FLUO methods, than in all available methods
@@ -1206,6 +1183,150 @@ int ObjectiveTurret::OnImmersion(MM::PropertyBase* pProp, MM::ActionType eAct)
 }
 
 
+
+///////////////////////////////////////////////////////////////////////////////
+// FastFilterWheel.  
+///////////////////////////////////////////////////////////////////////////////
+FastFilterWheel::FastFilterWheel() :
+   numPos_(5),
+   initialized_(false),
+   name_(g_LeicaFastFilterWheel),
+   description_("Fast Filter Wheel"),
+   filterWheelID_(0)
+{
+   InitializeDefaultErrorMessages();
+
+   // Error messages
+   SetErrorText(ERR_SCOPE_NOT_ACTIVE, "Leica Scope is not initialized.  The Fast Filter Wheel cannot work without it");
+   SetErrorText(ERR_SET_POSITION_FAILED, "Unable to set requested position");
+   SetErrorText(ERR_MODULE_NOT_FOUND, "No Fast Filter Wheel installed in this Leica microscope");
+
+   // Name
+   CreateProperty(MM::g_Keyword_Name, name_.c_str(), MM::String, true);
+
+   // Description
+   CreateProperty(MM::g_Keyword_Description, description_.c_str(), MM::String, true);
+
+   CreatePropertyWithHandler("Filter Wheel ID", "0", MM::Integer, false, &FastFilterWheel::OnFilterWheelID,true);
+   for (int i=0; i<4; ++i) {
+      stringstream ss;
+      ss << i;
+      AddAllowedValue("Filter Wheel ID", ss.str().c_str());
+   }
+
+}
+
+FastFilterWheel::~FastFilterWheel()
+{
+   Shutdown();
+}
+
+void FastFilterWheel::GetName(char* name) const
+{
+   CDeviceUtils::CopyLimitedString(name, g_LeicaFastFilterWheel);
+}
+
+int FastFilterWheel::Initialize()
+{
+   if (!g_ScopeInterface.portInitialized_)
+      return ERR_SCOPE_NOT_ACTIVE;
+
+   int ret = DEVICE_OK;
+   if (!g_ScopeInterface.IsInitialized())
+      ret = g_ScopeInterface.Initialize(*this, *GetCoreCallback());
+   if (ret != DEVICE_OK)
+      return ret;
+   
+   // check if this turret exists:
+   if (! g_ScopeModel.IsDeviceAvailable(g_Revolver))
+      return ERR_MODULE_NOT_FOUND;
+
+   // State
+   // -----
+   CPropertyAction* pAct = new CPropertyAction(this, &FastFilterWheel::OnState);
+   ret = CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   // Label
+   // -----
+   pAct = new CPropertyAction(this, &CStateBase::OnLabel);
+   ret = CreateProperty(MM::g_Keyword_Label,  "Undefined", MM::String, false, pAct);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   // create default positions and labels
+   int maxPos;
+   ret = g_ScopeModel.FastFilterWheel_[filterWheelID_].GetMaxPosition(maxPos);
+   if (ret != DEVICE_OK)
+      return ret;
+   numPos_ = maxPos;
+
+   for (unsigned i=0; i < numPos_; i++)
+   {
+      std::stringstream ss;
+      ss << i << "_" << g_ScopeModel.FastFilterWheel_[filterWheelID_].GetPositionLabel(i+1);
+      SetPositionLabel(i, ss.str().c_str());
+   }
+
+   initialized_ = true;
+
+   return DEVICE_OK;
+   if (ret != DEVICE_OK)
+      return ret;
+
+   return DEVICE_OK;
+}
+
+int FastFilterWheel::Shutdown()
+{
+   if (initialized_) 
+      initialized_ = false;
+   return DEVICE_OK;
+}
+
+bool FastFilterWheel::Busy()
+{
+   bool busy;
+   int ret = g_ScopeModel.FastFilterWheel_[filterWheelID_].GetBusy(busy);
+   if (ret != DEVICE_OK)  // This is bad and should not happen
+      return false;
+
+   return busy;
+}
+
+int FastFilterWheel::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      int pos;
+      int ret = g_ScopeModel.FastFilterWheel_[filterWheelID_].GetPosition(pos);
+      if (ret != DEVICE_OK)
+         return ret;
+      pProp->Set((long) (pos - 1));
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      long pos;
+      pProp->Get(pos);
+      return g_ScopeInterface.SetFastFilterWheelPosition(*this, *GetCoreCallback(), filterWheelID_ + 1, pos + 1);
+   }
+   return DEVICE_OK;
+}
+
+
+int FastFilterWheel::OnFilterWheelID(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(filterWheelID_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(filterWheelID_);
+   }
+   return DEVICE_OK;
+}
 
 /*
  * LeicaFocusStage: Micro-Manager implementation of focus drive
@@ -1392,7 +1513,6 @@ int ZDrive::OnSpeed(MM::PropertyBase* pProp, MM::ActionType eAct)
 */
 XYStage::XYStage (): 
    CXYStageBase<XYStage>(),
-   busy_ (false),
    initialized_ (false),
    originXSteps_(0),
    originYSteps_(0)
@@ -1902,8 +2022,7 @@ MagChanger::MagChanger() :
    numPos_(4),
    initialized_ (false),
    name_("Magnifier"),
-   description_("Motorized Magnifier"),
-   pos_(1)
+   description_("Motorized Magnifier")
 {
    InitializeDefaultErrorMessages();
 
@@ -2172,6 +2291,13 @@ int TLPolarizer::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    else if (eAct == MM::AfterSet)
    {
       pProp->Get(pos_);
+      int curr_pos;
+      int ret = g_ScopeModel.tlPolarizer_.GetPosition(curr_pos);
+      if (ret != DEVICE_OK)
+         return ret;
+      if (curr_pos == pos_)
+         return DEVICE_OK;
+
       return g_ScopeInterface.SetTLPolarizerPosition(*this, *GetCoreCallback(), pos_);
    }
    return DEVICE_OK;
@@ -2282,8 +2408,6 @@ int DICTurret::Initialize()
    ret = SetPropertyLimits("Prism Fine Position", min, max);
    if (ret != DEVICE_OK)
       return ret;
-
-   ret = 
 
    ret = UpdateStatus();
    if (ret!= DEVICE_OK)
@@ -2485,7 +2609,7 @@ int CondensorTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    {
       pProp->Get(pos_);
       int pos;
-      int ret = g_ScopeModel.Condensor_.GetPosition(pos);
+      g_ScopeModel.Condensor_.GetPosition(pos);
       if (pos == pos_ + 1)
          return DEVICE_OK;
       pos = pos_ + 1;
@@ -2501,10 +2625,13 @@ int CondensorTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 // Transmitted Light
 ///////////////////////////////////////////////////////////////////////////////
 TransmittedLight::TransmittedLight():   
-initialized_ (false),
-state_(false), level_(1)
+   initialized_ (false),
+   state_(false), 
+   level_(1),
+   changedTime_(0.0)
 {
    InitializeDefaultErrorMessages();
+   EnableDelay();
 
    SetErrorText(ERR_SCOPE_NOT_ACTIVE, "Leica Scope is not initialized.  It is needed for the Transmitted Light module to work");
    SetErrorText(ERR_MODULE_NOT_FOUND, "This device is not installed in this Leica microscope");
@@ -2546,6 +2673,9 @@ int TransmittedLight::Initialize()
    if (DEVICE_OK != ret)
       return ret;
 
+   // Set timer for Busy signal
+   changedTime_ = GetCurrentMMTime();
+
    // State
    CPropertyAction* pAct = new CPropertyAction (this, &TransmittedLight::OnState);
    ret = CreateProperty(MM::g_Keyword_State, state_ ? "1" : "0", MM::Integer, false, pAct); 
@@ -2570,10 +2700,6 @@ int TransmittedLight::Initialize()
 
    AddAllowedValue("Control", "Computer");
    AddAllowedValue("Control", "Manual");
-
-   //ret = UpdateStatus();
-   //if (ret != DEVICE_OK) 
-   //  return ret; 
 
    // set TL to known initial state: shutter=closed, level = 0
    level_ = 0;
@@ -2600,12 +2726,16 @@ int TransmittedLight::Shutdown()
 
 bool TransmittedLight::Busy()
 {
-   bool busy;
-   int ret = g_ScopeModel.TransmittedLight_.GetBusy(busy);
+   bool model_busy;
+   int ret = g_ScopeModel.TransmittedLight_.GetBusy(model_busy);
    if (ret != DEVICE_OK)  // This is bad and should not happen
       return false;
 
-   return busy;
+   MM::MMTime interval = GetCurrentMMTime() - changedTime_;
+   MM::MMTime delay(GetDelayMs()*1000.0);
+   bool timer_busy = (interval < delay);
+
+   return model_busy || timer_busy;
 }
 
 int TransmittedLight::OnState(MM::PropertyBase *pProp, MM::ActionType eAct)
@@ -2657,6 +2787,8 @@ int TransmittedLight::OnLevel(MM::PropertyBase *pProp, MM::ActionType eAct)
       // apply level is shutter is open
       if (state_)
       {
+         // Set timer for Busy signal
+         changedTime_ = GetCurrentMMTime();
          int ret = g_ScopeInterface.SetTransmittedLightShutterPosition(*this, *GetCoreCallback(), (int)level_);
          if (ret != DEVICE_OK)
             return ret;
@@ -2670,7 +2802,7 @@ int TransmittedLight::OnManual(MM::PropertyBase *pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int manual = 0;
-      int ret = g_ScopeInterface.GetTransmittedLightManual(*this, *GetCoreCallback(), manual);
+      g_ScopeInterface.GetTransmittedLightManual(*this, *GetCoreCallback(), manual);
       if (manual == 0)
       {
          pProp->Set("Computer");
@@ -2699,6 +2831,7 @@ int TransmittedLight::SetOpen(bool open)
 {
    if (open && !state_)
    {
+      changedTime_ = GetCurrentMMTime();
       // shutter opening
 	   int ret = g_ScopeInterface.SetTransmittedLightShutterPosition(*this, *GetCoreCallback(), (int)level_);
 	   if (ret != DEVICE_OK)
@@ -2706,8 +2839,9 @@ int TransmittedLight::SetOpen(bool open)
    }
    else if (!open && state_)
    {
+      changedTime_ = GetCurrentMMTime();
       // shutter closing
-	   int ret = g_ScopeInterface.SetTransmittedLightShutterPosition(*this, *GetCoreCallback(), 0);
+      int ret = g_ScopeInterface.SetTransmittedLightShutterPosition(*this, *GetCoreCallback(), 0);
 	   if (ret != DEVICE_OK)
 		   return ret;
    }
@@ -2943,8 +3077,7 @@ SidePort::SidePort():
    numPos_(3),
    initialized_ (false),
    name_("Side Port"),
-   description_("Side Port"),
-   pos_(1)
+   description_("Side Port")
 {
    InitializeDefaultErrorMessages();
 

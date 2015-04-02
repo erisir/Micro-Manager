@@ -8,8 +8,14 @@
  * 
  */
 
-package edu.valelab.GaussianFit;
+package edu.valelab.gaussianfit;
 
+import edu.valelab.gaussianfit.algorithm.FindLocalMaxima;
+import edu.valelab.gaussianfit.utils.ProgressThread;
+import edu.valelab.gaussianfit.data.GaussianInfo;
+import edu.valelab.gaussianfit.data.SpotData;
+import edu.valelab.gaussianfit.fitting.ZCalibrator;
+import edu.valelab.gaussianfit.utils.MMWindowAbstraction;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.gui.Roi;
@@ -22,12 +28,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import org.micromanager.api.MMWindow;
-import org.micromanager.utils.MMScriptException;
-import org.micromanager.utils.ReportingUtils;
+import edu.valelab.gaussianfit.utils.ReportingUtils;
+import java.util.List;
 
 /**
  *
@@ -39,12 +41,16 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
    GaussianFitStackThread[] gfsThreads_;
    private volatile Thread t_ = null;
    private static boolean running_ = false;
-   private FindLocalMaxima.FilterType preFilterType_;
+   private final FindLocalMaxima.FilterType preFilterType_;
+   private final String positionString_;
+   private boolean showDataWindow_ = true;
 
-   public FitAllThread(int shape, int fitMode, FindLocalMaxima.FilterType preFilterType) {
+   public FitAllThread(int shape, int fitMode, 
+           FindLocalMaxima.FilterType preFilterType, String positions) {
       shape_ = shape;
       fitMode_ = fitMode;
       preFilterType_ = preFilterType;
+      positionString_ = positions;
    }
 
    public synchronized void  init() {
@@ -54,12 +60,19 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
       running_ = true;
       t_.start();
    }
+   
+   public synchronized void join(long millis) throws InterruptedException {
+      if (!running_) {
+         return;
+      }
+      t_.join(millis);
+   } 
 
    public synchronized void stop() {
       if (gfsThreads_ != null) {
-         for (int i=0; i<gfsThreads_.length; i++) {
-            if (gfsThreads_[i] != null) {
-               gfsThreads_[i].stop();
+         for (GaussianFitStackThread gfsThread : gfsThreads_) {
+            if (gfsThread != null) {
+               gfsThread.stop();
             }
          }
       }
@@ -71,14 +84,23 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
       return running_;
    }
 
+   public synchronized List<SpotData> getResults() {
+      return resultList_;
+   }
+   
+   public synchronized void showDataWindow(boolean flag) {
+      showDataWindow_ = flag;
+   }
+   
+   @Override
    public void run() {
 
       // List with spot positions found through the Find Maxima command
-      sourceList_ = new LinkedBlockingQueue<GaussianSpotData>();
-      resultList_ = Collections.synchronizedList(new ArrayList<GaussianSpotData>());
+      sourceList_ = new LinkedBlockingQueue<SpotData>();
+      resultList_ = Collections.synchronizedList(new ArrayList<SpotData>());
 
       // take the active ImageJ image
-      ImagePlus siPlus = null;
+      ImagePlus siPlus;
       try {
          siPlus = IJ.getImage();
       } catch (Exception ex) {
@@ -87,8 +109,9 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
       }
 
       int nrThreads = ij.Prefs.getThreads();
-         if (nrThreads > 8)
-            nrThreads = 8;
+      if (nrThreads > 8) {
+         nrThreads = 8;
+      }
 
       Roi originalRoi = siPlus.getRoi();
 
@@ -99,26 +122,38 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
       int nrSlices = siPlus.getNSlices();
       int maxNrSpots = 0;
 
-      MMWindow mw = new MMWindow(siPlus);
+      boolean isMMWindow = MMWindowAbstraction.isMMWindow(siPlus);
 
-      if (!mw.isMMWindow()) {
+      if (isMMWindow) {
+         String[] parts = positionString_.split("-");
+         nrPositions = MMWindowAbstraction.getNumberOfPositions(siPlus);
+         int startPos = 1; int endPos = 1;
+         if (parts.length > 0) {
+            startPos = Integer.parseInt(parts[0]);
+         }
+         if (parts.length > 1) {
+            endPos = Integer.parseInt(parts[1]);
+         }
+         if (endPos > nrPositions) {
+            endPos = nrPositions;
+         }
+         if (endPos < startPos) {
+            endPos = startPos;
+         }
+         for (int p = startPos; p <= endPos; p++) {
+            MMWindowAbstraction.setPosition(siPlus, p);
+
+            int nrSpots = analyzeImagePlus(siPlus, p, nrThreads, originalRoi);
+            if (nrSpots > maxNrSpots) {
+               maxNrSpots = nrSpots;
+            }
+         }
+      }
+
+      if (!isMMWindow) {
          int nrSpots = analyzeImagePlus(siPlus, 1, nrThreads, originalRoi);
          if (nrSpots > maxNrSpots) {
             maxNrSpots = nrSpots;
-         }
-      } else { // MMImageWindow
-         nrPositions = mw.getNumberOfPositions();
-     
-         for (int p = 1; p <= nrPositions; p++) {
-            try {
-               mw.setPosition(p);
-               int nrSpots = analyzeImagePlus(siPlus, p, nrThreads, originalRoi);
-               if (nrSpots > maxNrSpots) {
-                  maxNrSpots = nrSpots;
-               }
-            } catch (MMScriptException ex) {
-               Logger.getLogger(FitAllThread.class.getName()).log(Level.SEVERE, null, ex);
-            }
          }
       }
 
@@ -130,8 +165,9 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
          running_ = false;
          return;
       }
-      DataCollectionForm dcForm = DataCollectionForm.getInstance();
       
+      DataCollectionForm dcForm = DataCollectionForm.getInstance();
+
       double zMax = resultList_.get(0).getZCenter();
       if (zMax < 0.0) {
          zMax = 0.0;
@@ -139,56 +175,60 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
       double zMin = zMax;
       ZCalibrator zc = DataCollectionForm.zc_;
       if (zc != null) {
-         for (GaussianSpotData spot : resultList_) {
+         for (SpotData spot : resultList_) {
             double zTmp = spot.getZCenter();
             if (zMax < zTmp) {
                zMax = zTmp;
             }
             if (zMin > zTmp && zTmp > 0.0) {
                zMin = zTmp;
-            }  
+            }
          }
       }
-      
-      
+
+
       ArrayList<Double> timePoints = new ArrayList<Double>();
       // ugly code to deal with 1-based frame numbers and their relation to timePoints
       timePoints.add(0.0);
-      // ZEPHYRE
-      for (int i=1; i <= resultList_.size(); i++) {
-//      for (int i=1; i <= nrFrames; i++) {
+      for (int i = 1; i <= nrFrames; i++) {
          timePoints.add((i - 1) * timeIntervalMs_);
       }
 
-      dcForm.addSpotData(siPlus.getWindow().getTitle(), siPlus.getTitle(), "",
-              siPlus.getWidth(), siPlus.getHeight(), (float) pixelSize_, 
-              (float) zStackStepSize_, shape_, halfSize_,
-              nrChannels, nrFrames, nrSlices, nrPositions, resultList_.size(), 
-              resultList_, timePoints, false, DataCollectionForm.Coordinates.NM, 
-              DataCollectionForm.zc_.hasFitFunctions(), 
+      String title = siPlus.getTitle();
+      if (nrPositions > 1) {
+         title += "_Pos" + positionString_;
+      }
+      dcForm.addSpotData(title, siPlus.getTitle(), "",
+              siPlus.getWidth(), siPlus.getHeight(), pixelSize_,
+              zStackStepSize_, shape_, halfSize_,
+              nrChannels, nrFrames, nrSlices, nrPositions, resultList_.size(),
+              resultList_, timePoints, false, DataCollectionForm.Coordinates.NM,
+              DataCollectionForm.zc_.hasFitFunctions(),
               zMin, zMax);
-      
-      dcForm.setVisible(true);
+
+      if (showDataWindow_) {
+         dcForm.setVisible(true);
+      }
 
       // report duration of analysis
       double took = (endTime - startTime) / 1E9;
       double rate = resultList_.size() / took;
       DecimalFormat df2 = new DecimalFormat("#.##");
       DecimalFormat df0 = new DecimalFormat("#");
-      print ("Analyzed " + resultList_.size() + " spots in " + df2.format(took) + 
-              " seconds (" + df0.format(rate) + " spots/sec.)");
+      print("Analyzed " + resultList_.size() + " spots in " + df2.format(took)
+              + " seconds (" + df0.format(rate) + " spots/sec.)");
 
       running_ = false;
    }
 
-
+   @SuppressWarnings("unchecked")
    private int analyzeImagePlus(ImagePlus siPlus, int position, int nrThreads, Roi originalRoi) {
 
       int nrSpots = 0;
       // Start up IJ.Prefs.getThreads() threads for gaussian fitting
       gfsThreads_ = new GaussianFitStackThread[nrThreads];
-      for (int i=0; i<nrThreads; i++) {
-         gfsThreads_[i] = new GaussianFitStackThread(sourceList_,resultList_, siPlus, halfSize_,
+      for (int i = 0; i < nrThreads; i++) {
+         gfsThreads_[i] = new GaussianFitStackThread(sourceList_, resultList_, siPlus, halfSize_,
                  shape_, fitMode_);
 
          // TODO: more efficient way of passing through settings!
@@ -208,7 +248,7 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
          gfsThreads_[i].setUseNrPhotonsFilter(useNrPhotonsFilter_);
          gfsThreads_[i].init();
       }
-      
+
       // work around strange bug that happens with freshly opened images
       for (int i = 1; i <= siPlus.getNChannels(); i++) {
          siPlus.setPosition(i, siPlus.getCurrentSlice(), siPlus.getFrame());
@@ -218,22 +258,26 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
       int imageCount = 0;
       try {
          for (int c = 1; c <= siPlus.getNChannels(); c++) {
-            if (!running_)
+            if (!running_) {
                break;
+            }
             for (int z = 1; z <= siPlus.getNSlices(); z++) {
-               if (!running_)
+               if (!running_) {
                   break;
+               }
                for (int f = 1; f <= siPlus.getNFrames(); f++) {
-                  if (!running_)
+                  if (!running_) {
                      break;
+                  }
                   // to avoid making a gigantic sourceList and running out of memory
                   // sleep a bit when the sourcesize gets too big
                   // once we have very fast multi-core computers, this constant can be increased
-                  if (sourceList_.size() > 100000)
+                  if (sourceList_.size() > 100000) {
                      try {
-                     Thread.sleep(1000);
-                  } catch (InterruptedException ex) {
-                     // not sure what to do
+                        Thread.sleep(1000);
+                     } catch (InterruptedException ex) {
+                        // not sure what to do
+                     }
                   }
 
                   imageCount++;
@@ -241,7 +285,7 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
 
                   ImageProcessor siProc = null;
                   Polygon p = new Polygon();
-                  synchronized (GaussianSpotData.lockIP) {
+                  synchronized (SpotData.lockIP) {
                      siPlus.setPositionWithoutUpdate(c, z, f);
                      // If ROI manager is used, use RoiManager Rois
                      //  may be dangerous if the user is not aware
@@ -280,18 +324,19 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
                      sC[j][1] = p.ypoints[j];
                   }
 
+                  
                   Arrays.sort(sC, new SpotSortComparator());
 
                   for (int j = 0; j < sC.length; j++) {
                      // filter out spots too close to the edge
                      if (sC[j][0] > halfSize_ && sC[j][0] < siPlus.getWidth() - halfSize_
                              && sC[j][1] > halfSize_ && sC[j][1] < siPlus.getHeight() - halfSize_) {
-                        ImageProcessor sp = GaussianSpotData.getSpotProcessor(siProc,
+                        ImageProcessor sp = SpotData.getSpotProcessor(siProc,
                                 halfSize_, sC[j][0], sC[j][1]);
                         if (sp == null) {
                            continue;
                         }
-                        GaussianSpotData thisSpot = new GaussianSpotData(sp, c, z, f,
+                        SpotData thisSpot = new SpotData(sp, c, z, f,
                                 position, j, sC[j][0], sC[j][1]);
                         try {
                            sourceList_.put(thisSpot);
@@ -315,7 +360,7 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
       }
 
       // Send working threads signal that we are done:
-      GaussianSpotData lastSpot = new GaussianSpotData(null, -1, 1, -1, -1, -1, -1, -1);
+      SpotData lastSpot = new SpotData(null, -1, 1, -1, -1, -1, -1, -1);
       try {
          sourceList_.put(lastSpot);
       } catch (InterruptedException iex) {
@@ -339,6 +384,7 @@ public class FitAllThread extends GaussianInfo implements Runnable  {
    private class SpotSortComparator implements Comparator {
 
       // Return the result of comparing the two row arrays
+      @Override
       public int compare(Object o1, Object o2) {
          int[] p1 = (int[]) o1;
          int[] p2 = (int[]) o2;

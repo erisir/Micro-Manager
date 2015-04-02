@@ -77,6 +77,8 @@ public:
    int SetPixelsTo(unsigned char red, unsigned char green, unsigned char blue);
    int SetPixelsTo(unsigned char intensity);
    int DisplayImage();
+   int SetExposure(double interval_ms);
+   double GetExposure();
 
    unsigned int GetWidth();
    unsigned int GetHeight();
@@ -88,6 +90,8 @@ public:
    int OnGraphicsPort(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnInversion(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnMonochromeColor(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+   int IsSLMSequenceable(bool& isSequenceable) const {isSequenceable = false; return DEVICE_OK;}
 
 private:
    string graphicsPortDescription_;

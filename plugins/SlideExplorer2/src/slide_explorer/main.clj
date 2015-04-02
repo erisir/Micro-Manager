@@ -4,9 +4,10 @@
            (java.util.prefs Preferences)
            (java.util.concurrent Executors)
            (javax.swing JOptionPane)
-           (org.micromanager AcquisitionEngine2010 MMStudioMainFrame)
+           (org.micromanager AcquisitionEngine2010 MMStudio)
            (org.micromanager.utils ImageUtils JavaUtils)
-           (org.micromanager.acquisition TaggedImageQueue))
+           (org.micromanager.acquisition TaggedImageQueue)
+           (org.micromanager.pixelcalibrator.PixelCalibratorPlugin))
   (:require [clojure.java.io :as io]
             [clojure.set]
             [org.micromanager.mm :as mm]
@@ -17,7 +18,6 @@
             [slide-explorer.affine :as affine]
             [slide-explorer.image :as image]
             [slide-explorer.tile-cache :as tile-cache]
-            [slide-explorer.canvas :as canvas]
             [slide-explorer.tiles :as tiles]
             [slide-explorer.persist :as persist]
             [slide-explorer.disk :as disk]
@@ -35,7 +35,7 @@
 
 (defonce positions-atom (atom []))
 
-(def gui-prefs (Preferences/userNodeForPackage MMStudioMainFrame))
+(def gui-prefs (Preferences/userNodeForPackage MMStudio))
 
 (def current-xy-positions (atom {}))
 
@@ -134,7 +134,7 @@
 
 (defn acquire-tagged-image-sequence [settings]
   (let [acq-engine (AcquisitionEngine2010. mm/gui)
-        q (engine/run acq-engine settings false)]
+        q (engine/run acq-engine settings false nil nil)]
     (take-while #(not= % TaggedImageQueue/POISON)
                 (repeatedly #(.take q)))))
 
@@ -158,15 +158,20 @@
 
 ;;; channel display settings
 
+(defn apply-to-map-values [f m]
+  (into {}
+        (for [[k v] m] [k (f v)])))
+
+(defn channel-info [tagged-images-in-a-channel]
+  (apply image/intensity-range (map :proc tagged-images-in-a-channel)))  
+
 (defn initial-lut-maps [tagged-image-processors]
-  (merge-with
-    merge
+  (let [colors (stack-colors tagged-image-processors)
+        image-map (group-by #(get-in % [:tags "Channel"]) tagged-image-processors)]
     (into {}
-          (for [[chan color] (stack-colors tagged-image-processors)]
-            [chan {:color color}]))
-    (into {}
-          (for [[chan images] (group-by #(get-in % [:tags "Channel"]) tagged-image-processors)]
-            [(or chan "Default") (assoc (apply image/intensity-range (map :proc images)) :gamma 1.0)]))))
+          (for [[name images] image-map]
+            [name (merge {:color (colors name -1) :gamma 1.0}
+                         (channel-info images))]))))
 
 ;; tile arrangement
 
@@ -253,6 +258,7 @@
   (-> mm/gui .getAcquisitionEngine .getSequenceSettings
       engine/convert-settings
       (assoc :use-autofocus false
+             :use-position-list false
              :frames nil
              :positions nil
              :slices nil
@@ -277,8 +283,8 @@ Would you like to run automatic pixel calibration?"
                   "Pixel calibration required."
                   JOptionPane/YES_NO_OPTION)]
     (when (= answer JOptionPane/YES_OPTION)
-      (doto (eval '(org.micromanager.pixelcalibrator.PixelCalibratorPlugin.))
-        (.setApp (MMStudioMainFrame/getInstance));
+      (doto (org.micromanager.pixelcalibrator.PixelCalibratorPlugin.)
+        (.setApp (MMStudio/getInstance))
         .show))))
 
 (defn provide-constraints [screen-state-atom available-keys]
@@ -322,6 +328,7 @@ Would you like to run automatic pixel calibration?"
                               z-origin
                               acq-settings)
         explore-fn #(explore memory-tiles-atom screen-state-atom acquired-images)]
+    (def fs  first-seq)
     (let [width (mm/core getImageWidth)
           height (mm/core getImageHeight)]
       (swap! screen-state-atom merge
@@ -336,12 +343,13 @@ Would you like to run automatic pixel calibration?"
               :tile-dimensions [width height]
               :x (long (/ width 2))
               :y (long (/ height 2))}))
+    (println (:channels @screen-state-atom))
     (double-click-to-navigate screen-state-atom)
     (watch-xy-stages screen-state-atom)
     (positions/handle-positions screen-state-atom)
     (user-controls/handle-mode-keys (view/panel screen-state-atom) screen-state-atom)
     (explore-when-needed screen-state-atom explore-fn)
-    (when @utils/test
+    (when @utils/testing
       (def ai acquired-images)
       (def affine affine-stage-to-pixel))))
   
@@ -358,7 +366,7 @@ Would you like to run automatic pixel calibration?"
 ; resulting tiles are added to memory-tiles-atom. Tiles
 ; added are automatically asynchronously saved to disk, and the indices
 ; are added to disk-tiles.
-; memory-tiles and overlay-tiles are limited to 200 images each,
+; memory-tiles and display-tiles-atom are limited to 200 images each,
 ; using an LRU eviction policy.
 ; When view-state viewing area is adjusted, tiles needed for the
 ; new viewing area are loaded back into memory-tiles. If we are
@@ -367,12 +375,12 @@ Would you like to run automatic pixel calibration?"
 ; Overlay tiles are generated whenever memory tiles are added
 ; or the contrast is changed.
 ; The view redraws tiles inside viewing area whenever view-state
-; has been adjusted or a new image appears in overlay-tiles.
+; has been adjusted or a new image appears in display-tiles-atom.
 
 (defn go
   "The main function that starts a slide explorer window."
   ([dir new?]
-    (mm/load-mm (MMStudioMainFrame/getInstance))
+    (mm/load-mm (MMStudio/getInstance))
     (when (and new? (not (origin-here-stage-to-pixel-transform)))
       (pixels-not-calibrated))
     (let [settings (if-not new?
@@ -389,6 +397,11 @@ Would you like to run automatic pixel calibration?"
   ([]
     (go (io/file (str "tmp" (rand-int 10000000))) true)))
   
+(defn create-data-set
+  []
+  (when-let [dir (persist/create-dir-dialog)]
+    (go (io/file dir) true)))
+
 (defn load-data-set
   []
   (when-let [dir (persist/open-dir-dialog)]

@@ -65,7 +65,6 @@ class LeicaScope : public HubBase<LeicaScope>
 
    private:
       bool initialized_;
-      double answerTimeoutMs_;
       std::vector<std::string> discoveredDevices_;
 
       void AttemptToDiscover(int deviceCode, const char* deviceName);
@@ -157,9 +156,9 @@ protected:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    std::string description_;
+   long pos_;
 };
 
 class ObjectiveTurret : public CStateDeviceBase<ObjectiveTurret>
@@ -186,10 +185,40 @@ protected:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    std::string description_;
+   long pos_;
 };
+
+
+class FastFilterWheel : public CStateDeviceBase<FastFilterWheel>
+{
+public:
+   FastFilterWheel();
+   ~FastFilterWheel();
+
+   // MMDevice API
+   int Initialize();
+   int Shutdown();
+    
+   void GetName(char* pszName) const;
+   bool Busy();
+   unsigned long GetNumberOfPositions() const {return numPos_;};
+
+   // action interface
+   int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnFilterWheelID(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+protected:
+   unsigned int numPos_;
+
+private:
+   bool initialized_;
+   std::string name_;
+   std::string description_;
+   long filterWheelID_;
+};
+
 
 class ZDrive : public CStageBase<ZDrive>
 {
@@ -264,7 +293,6 @@ public:
 
 
 private:
-   bool busy_;
    bool initialized_;
    std::string name_;
    std::string description_;
@@ -292,10 +320,10 @@ public:
    int OnPosition(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   bool initialized_;
    std::string name_;
    std::string description_;
    unsigned int numPos_;
+   bool initialized_;
    LeicaDeviceModel* diaphragm_;
    int deviceID_;
 };
@@ -323,7 +351,6 @@ protected:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    std::string description_;
 };
@@ -350,9 +377,9 @@ protected:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    std::string description_;
+   long pos_;
 };
 
 class DICTurret : public CStateDeviceBase<DICTurret>
@@ -378,10 +405,10 @@ protected:
 
 private:
    bool initialized_;
-   long pos_;
-   double finePos_;
    std::string name_;
    std::string description_;
+   long pos_;
+   double finePos_;
 };
 
 class CondensorTurret : public CStateDeviceBase<CondensorTurret>
@@ -406,9 +433,9 @@ protected:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    std::string description_;
+   long pos_;
 };
 
 // The incident light a.k.a the flourecense lamp is being derived
@@ -446,6 +473,7 @@ private:
    std::string description_;
    bool state_;
    long level_;
+   MM::MMTime changedTime_;
 };
 
 class AFC: public CAutoFocusBase<AFC>
@@ -506,7 +534,6 @@ protected:
 
 private:
    bool initialized_;
-   long pos_;
    std::string name_;
    std::string description_;
 };

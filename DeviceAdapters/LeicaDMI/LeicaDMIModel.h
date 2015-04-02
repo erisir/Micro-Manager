@@ -64,11 +64,11 @@ public:
    int SetMinPosition(int minPosition) {minPosition_ = minPosition; return DEVICE_OK;};
 
 protected:
-   MM_THREAD_GUARD mutex_;
+   MMThreadLock mutex_;
    int position_;
-   bool busy_;
-   int maxPosition_;
    int minPosition_;
+   int maxPosition_;
+   bool busy_;
 };
 
 /*
@@ -129,6 +129,21 @@ public:
    int lowerZ_;
    int immerseZ_;
    int zStepSize_;
+};
+
+/*
+ * Model for Leica Fast Filter Wheel
+ */
+class LeicaFastFilterWheelModel : public LeicaDeviceModel
+{
+public:
+   LeicaFastFilterWheelModel();
+   std::map<int, std::string> positionLabels_;
+
+   static const int maxNrFilters_ = 5;
+
+   int SetPositionLabel(int position, std::string label);
+   std::string GetPositionLabel(int position);
 };
 
 /*
@@ -253,7 +268,6 @@ public:
 private:
    double offset_;
    bool mode_;
-   double diff_;
    int topLEDColor_;
    int bottomLEDColor_;
 };
@@ -318,6 +332,7 @@ public:
    LeicaILTurretModel ILTurret_;
    LeicaCondensorModel Condensor_;
    LeicaObjectiveTurretModel ObjectiveTurret_;
+   LeicaFastFilterWheelModel FastFilterWheel_[4];
    LeicaDriveModel ZDrive_;
    LeicaDriveModel XDrive_;
    LeicaDriveModel YDrive_;
@@ -333,8 +348,8 @@ public:
 	LeicaDeviceModel sidePort_;
 
 private:
-   std::vector<bool> availableDevices_;
    bool usesMethods_;
+   std::vector<bool> availableDevices_;
    std::vector<bool> availableMethods_;
    std::vector<std::string> methodNames_;
 

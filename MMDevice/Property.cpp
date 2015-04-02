@@ -17,18 +17,21 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id$
-//
+// CVS:           $Id: Property.cpp 14603 2014-11-11 18:15:08Z mark $
 
-const int BUFSIZE = 60;
-#include <assert.h>
-#include <cstdio>
 #include "Property.h"
+
+#include <cstdio>
+#include <math.h>
+
 using namespace std;
 
 #if WIN32
    #define snprintf _snprintf
 #endif
+
+const int BUFSIZE = 60; // For number-to-string conversion
+
 
 vector<string> MM::Property::GetAllowedValues() const
 {
@@ -41,13 +44,13 @@ vector<string> MM::Property::GetAllowedValues() const
 
 void MM::Property::AddAllowedValue(const char* value)
 {
-   values_.insert(make_pair<string, long>(value, 0L));
+   values_.insert(make_pair(value, 0L));
    limits_ = false;
 }
 
 void MM::Property::AddAllowedValue(const char* value, long data)
 {
-   values_.insert(make_pair<string, long>(value, data));
+   values_.insert(make_pair(value, data));
    hasData_ = true;
    limits_ = false;
 }
@@ -85,20 +88,6 @@ void MM::Property::SetSequenceable(long sequenceMaxSize)
    sequenceable_ = (sequenceMaxSize != 0);
    sequenceMaxSize_ = sequenceMaxSize;
 }
-
-MM::Property& MM::Property::operator=(const MM::Property& rhs)
- {
-    readOnly_ = rhs.readOnly_;
-    values_ = rhs.values_;
-    cached_ = rhs.cached_;
-    delete fpAction_; // !!! do not copy actions
-
-    // TODO: do we really nead Clone()?
-    // Since actions are not copied in the equals operator,
-    // the whole issue of cloning properties is suspect
-
-    return *this;
- }
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -145,23 +134,6 @@ bool MM::StringProperty::Get(std::string& strVal) const
    return true;
 }
 
-MM::Property* MM::StringProperty::Clone() const
-{
-   MM::StringProperty* pProp = new MM::StringProperty();
-   *pProp = *this;
-   return pProp;
-}
-
- MM::StringProperty& MM::StringProperty::operator=(const MM::StringProperty& rhs)
- {
-    if (this == &rhs)
-       return *this;
-
-    MM::Property::operator=(rhs);
-    value_ = rhs.value_;
-    return *this;
- }
-
 ///////////////////////////////////////////////////////////////////////////////
 // MM::FloatProperty
 // ~~~~~~~~~~~~~~~~
@@ -169,11 +141,20 @@ MM::Property* MM::StringProperty::Clone() const
 
 double MM::FloatProperty::Truncate(double dVal)
 {
-   char fmtStr[20];
-   char buf[BUFSIZE];
-   sprintf(fmtStr, "%%.%df", decimalPlaces_);
-   snprintf(buf, BUFSIZE, fmtStr, dVal);
-   return atof(buf);
+   if (dVal >= 0)
+      return floor(dVal * reciprocalMinimalStep_ + 0.5) / reciprocalMinimalStep_;
+   else
+      return ceil(dVal * reciprocalMinimalStep_ - 0.5) / reciprocalMinimalStep_;
+}
+
+double MM::FloatProperty::TruncateDown(double dVal)
+{
+   return floor(dVal * reciprocalMinimalStep_) / reciprocalMinimalStep_;
+}
+
+double MM::FloatProperty::TruncateUp(double dVal)
+{
+   return ceil(dVal * reciprocalMinimalStep_) / reciprocalMinimalStep_;
 }
 
 bool MM::FloatProperty::Set(double dVal)
@@ -220,22 +201,10 @@ bool MM::FloatProperty::Get(std::string& strVal) const
    return true;
 }
 
-MM::Property* MM::FloatProperty::Clone() const
+bool MM::FloatProperty::SetLimits(double lowerLimit, double upperLimit)
 {
-   MM::FloatProperty* pProp = new MM::FloatProperty();
-   *pProp = *this;
-   return pProp;
+   return MM::Property::SetLimits(TruncateUp(lowerLimit), TruncateDown(upperLimit));
 }
-
- MM::FloatProperty& MM::FloatProperty::operator=(const MM::FloatProperty& rhs)
- {
-    if (this == &rhs)
-       return *this;
-
-    MM::Property::operator=(rhs);
-    value_ = rhs.value_;
-    return *this;
- }
 
 ///////////////////////////////////////////////////////////////////////////////
 // MM::IntegerProperty
@@ -282,23 +251,6 @@ bool MM::IntegerProperty::Get(std::string& strVal) const
    strVal = pszBuf;
    return true;
 }
-
-MM::Property* MM::IntegerProperty::Clone() const
-{
-   MM::IntegerProperty* pProp = new MM::IntegerProperty();
-   *pProp = *this;
-   return pProp;
-}
-
- MM::IntegerProperty& MM::IntegerProperty::operator=(const MM::IntegerProperty& rhs)
- {
-    if (this == &rhs)
-       return *this;
-
-    MM::Property::operator=(rhs);
-    value_ = rhs.value_;
-    return *this;
- }
 
 ///////////////////////////////////////////////////////////////////////////////
 // MM::PropertyCollection
@@ -378,7 +330,7 @@ unsigned MM::PropertyCollection::GetSize() const
    return (unsigned) properties_.size();
 }
 
-int MM::PropertyCollection::CreateProperty(const char* pszName, const char* pszValue, MM::PropertyType eType, bool bReadOnly, MM::ActionFunctor* pAct, bool initStatus)
+int MM::PropertyCollection::CreateProperty(const char* pszName, const char* pszValue, MM::PropertyType eType, bool bReadOnly, MM::ActionFunctor* pAct, bool isPreInitProperty)
 {
    // check if the name allready exists
    if (Find(pszName))
@@ -408,7 +360,7 @@ int MM::PropertyCollection::CreateProperty(const char* pszName, const char* pszV
    if (!pProp->Set(pszValue))
       return false;
    pProp->SetReadOnly(bReadOnly);
-   pProp->SetInitStatus(initStatus);
+   pProp->SetInitStatus(isPreInitProperty);
    properties_[pszName] = pProp;
 
    // assign action functor

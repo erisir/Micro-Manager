@@ -8,8 +8,8 @@
 //						"Off". "Fire" does nothing at all. All other commands are
 //						realized as properties and differ from device to device.
 //						Supported devices are:
-//							+ DC2010 - universal LED driver	\
-//							+ DC2100 - high power LED driver / both uses the DC2xxx class
+//                   + DC2010 - universal LED driver	
+//							+ DC2100 - high power LED driver - both uses the DC2xxx class
 //							+ DC3100 - FLIM LED driver
 //							+ DC4100 - four channel LED driver
 //
@@ -51,9 +51,9 @@ const char* g_DeviceDC4100Name = "Thorlabs DC4100";
 ---------------------------------------------------------------------------*/
 MODULE_API void InitializeModuleData()
 {
-	AddAvailableDeviceName(g_DeviceDC2xxxName, "DC2010/DC2100 High Power LED Driver");
-	AddAvailableDeviceName(g_DeviceDC3100Name, "DC3100 FLIM LED Driver");
-	AddAvailableDeviceName(g_DeviceDC4100Name, "DC4100 Four channel LED Driver");
+	RegisterDevice(g_DeviceDC2xxxName, MM::ShutterDevice, "DC2010/DC2100 High Power LED Driver");
+	RegisterDevice(g_DeviceDC3100Name, MM::ShutterDevice, "DC3100 FLIM LED Driver");
+	RegisterDevice(g_DeviceDC4100Name, MM::ShutterDevice, "DC4100 Four channel LED Driver");
 }
 
 
@@ -120,8 +120,6 @@ DC2xxx::DC2xxx() :
 	m_pwmFrequency(0),
 	m_pwmDutyCycle(0),
 	m_pwmCounts(0),
-	//m_displayBrightness(0),
-   m_busy(false),
    m_initialized(false)
 {
 	InitializeDefaultErrorMessages();
@@ -1011,7 +1009,6 @@ DC3100::DC3100() :
 	m_moduCurrent(0),
 	m_moduFrequency(10.0),
 	m_moduDepth(0),
-   m_busy(false),
    m_initialized(false)
 {
 	InitializeDefaultErrorMessages();
@@ -1829,7 +1826,6 @@ DC4100::DC4100() :
    m_status("No Fault"),
 	m_serialNumber("n/a"),
    m_firmwareRev("n/a"),
-   m_busy(false),
    m_initialized(false)
 {
 	InitializeDefaultErrorMessages();
@@ -2602,7 +2598,10 @@ int DC4100::ValidateDevice(void)
 	getLastError(&nRet);
 	if (nRet != DEVICE_OK) return nRet;
 
-   if((devName.find("DC4100")) == std::string::npos && (devName.find("LEDD4")) == std::string::npos)
+   if( (devName.find("DC4100")) == std::string::npos && 
+         (devName.find("DC4104")) == std::string::npos &&
+         (devName.find("LEDD4"))  == std::string::npos
+         )
        nRet = ERR_INVALID_DEVICE;
 
 	return nRet;

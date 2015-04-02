@@ -5,7 +5,7 @@
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple.hpp>
 #include "DEConstants.h"
-#include "DEServer.pb.h"
+#include "DEServer.h"
 
 using namespace std;
 using namespace DEMessaging;
@@ -33,7 +33,7 @@ namespace DEMessaging
 			{
 				// Check return types.
 				bool formatIsCorrect = true;
-				if (singleCommand.parameter_size() != this->_params.size())
+				if (singleCommand.parameter_size() != static_cast<int>(this->_params.size()))
 					formatIsCorrect = false;
 
 				if (formatIsCorrect)

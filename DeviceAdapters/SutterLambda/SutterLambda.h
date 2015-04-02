@@ -19,7 +19,7 @@
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 10/26/2005
 //                Nico Stuurman, Oct. 2010
 //
-// CVS:           $Id$
+// CVS:           $Id: SutterLambda.h 13358 2014-05-09 02:48:15Z mark $
 //
 
 #ifndef _SUTTER_LAMBDA_H_
@@ -106,7 +106,6 @@ private:
    unsigned curPos_;
    bool open_;
    unsigned speed_;
-   bool busy_;
    double answerTimeoutMs_;
    Wheel& operator=(Wheel& /*rhs*/) {assert(false); return *this;}
 };
@@ -149,13 +148,13 @@ private:
    bool initialized_;
    const int id_;
    std::string name_;
+   unsigned int nd_;
    std:: string port_;
    std::string controllerType_;
    std::string controllerId_;
    double answerTimeoutMs_;
    MM::MMTime changedTime_;
    std::string curMode_;
-   unsigned int nd_;
    Shutter& operator=(Shutter& /*rhs*/) {assert(false); return *this;}
 };
 
@@ -229,7 +228,6 @@ private:
    std::string name_;
    std::string port_;
    unsigned curPos_;
-   bool busy_;
    double answerTimeoutMs_;
 };
 

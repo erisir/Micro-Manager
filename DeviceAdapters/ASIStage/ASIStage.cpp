@@ -49,6 +49,7 @@ const char* g_ZStageDeviceName = "ZStage";
 const char* g_CRIFDeviceName = "CRIF";
 const char* g_CRISPDeviceName = "CRISP";
 const char* g_AZ100TurretName = "AZ100 Turret";
+const char* g_StateDeviceName = "State Device";
 const char* g_LEDName = "LED";
 const char* g_Open = "Open";
 const char* g_Closed = "Closed";
@@ -90,12 +91,13 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ZStageDeviceName, "Add-on Z-stage");
-   AddAvailableDeviceName(g_XYStageDeviceName, "XY Stage");
-   AddAvailableDeviceName(g_CRIFDeviceName, "CRIF");
-   AddAvailableDeviceName(g_CRISPDeviceName, "CRISP");
-   AddAvailableDeviceName(g_AZ100TurretName, "AZ100 Turret");
-   AddAvailableDeviceName(g_LEDName, "LED");
+   RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "Add-on Z-stage");
+   RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "XY Stage");
+   RegisterDevice(g_CRIFDeviceName, MM::AutoFocusDevice, "CRIF");
+   RegisterDevice(g_CRISPDeviceName, MM::AutoFocusDevice, "CRISP");
+   RegisterDevice(g_AZ100TurretName, MM::StateDevice, "AZ100 Turret");
+   RegisterDevice(g_StateDeviceName, MM::StateDevice, "State Device");
+   RegisterDevice(g_LEDName, MM::ShutterDevice, "LED");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -124,6 +126,10 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
    else if (strcmp(deviceName, g_AZ100TurretName) == 0)
    {
       return  new AZ100Turret();
+   }
+   else if (strcmp(deviceName, g_StateDeviceName) == 0)
+   {
+      return  new StateDevice();
    }
    else if (strcmp(deviceName, g_LEDName) == 0)
    {
@@ -167,6 +173,7 @@ MM::DeviceDetectionStatus ASICheckSerialPort(MM::Device& device, MM::Core& core,
          MM::Device* pS = core.GetDevice(&device, portToCheck.c_str());
          std::vector< std::string> possibleBauds;
          possibleBauds.push_back("9600");
+         possibleBauds.push_back("115200");
          for( std::vector< std::string>::iterator bit = possibleBauds.begin(); bit!= possibleBauds.end(); ++bit )
          {
             core.SetDeviceProperty(portToCheck.c_str(), MM::g_Keyword_BaudRate, (*bit).c_str() );
@@ -221,11 +228,13 @@ MM::DeviceDetectionStatus ASICheckSerialPort(MM::Device& device, MM::Core& core,
 // ASIBase (convenience parent class)
 //
 ASIBase::ASIBase(MM::Device *device, const char *prefix) :
+   oldstage_(false),
+   core_(0),
    initialized_(false),
+   device_(device),
    oldstagePrefix_(prefix),
    port_("Undefined")
 {
-   device_ = static_cast<ASIDeviceBase *>(device);
 }
 
 ASIBase::~ASIBase()
@@ -242,7 +251,7 @@ int ASIBase::ClearPort(void)
    int ret;
    while ((int) read == bufSize)
    {
-      ret = device_->ReadFromComPort(port_.c_str(), clear, bufSize, read);
+      ret = core_->ReadFromSerial(device_, port_.c_str(), clear, bufSize, read);
       if (ret != DEVICE_OK)
          return ret;
    }
@@ -259,7 +268,7 @@ int ASIBase::SendCommand(const char *command) const
       base_command += oldstagePrefix_;
    base_command += command;
    // send command
-   ret = device_->SendSerialCommand(port_.c_str(), base_command.c_str(), "\r");
+   ret = core_->SetSerialCommand(device_, port_.c_str(), base_command.c_str(), "\r");
    return ret;
 }
 
@@ -278,7 +287,12 @@ int ASIBase::QueryCommand(const char *command, std::string &answer) const
       terminator = "\r\n\3";
    else
       terminator = "\r\n";
-   ret = device_->GetSerialAnswer(port_.c_str(), terminator, answer);
+
+   const size_t BUFSIZE = 2048;
+   char buf[BUFSIZE] = {'\0'};
+   ret = core_->GetSerialAnswer(device_, port_.c_str(), BUFSIZE, buf, terminator);
+   answer = buf;
+
    return ret;
 }
 
@@ -321,7 +335,6 @@ int ASIBase::CheckDeviceStatus(void)
 // XYStage
 //
 XYStage::XYStage() :
-   CXYStageBase<XYStage>(),
    ASIBase(this, "2H"),
    stepSizeXUm_(0.0), 
    stepSizeYUm_(0.0), 
@@ -331,9 +344,11 @@ XYStage::XYStage() :
    joyStickSpeedFast_(60),
    joyStickSpeedSlow_(5),
    joyStickMirror_(false),
-   joyStickSwapXY_(false),
    nrMoveRepetitions_(0),
-   answerTimeoutMs_(1000)
+   answerTimeoutMs_(1000),
+   serialOnlySendChanged_(true),
+   manualSerialAnswer_(""),
+   post2010firmware_(false)
 {
    InitializeDefaultErrorMessages();
 
@@ -372,6 +387,8 @@ MM::DeviceDetectionStatus XYStage::DetectDevice(void)
 
 int XYStage::Initialize()
 {
+   core_ = GetCoreCallback();
+
    // empty the Rx serial buffer before sending command
    ClearPort(); 
 
@@ -382,6 +399,26 @@ int XYStage::Initialize()
    int ret = CheckDeviceStatus();
    if (ret != DEVICE_OK)
       return ret;
+
+   pAct = new CPropertyAction (this, &XYStage::OnCompileDate);
+   CreateProperty("CompileDate", "", MM::String, true, pAct);
+   UpdateProperty("CompileDate");
+
+   // see if firmware date is 201x;
+   // this snippet will need to be updated in 2020 ;-)
+   char compile_date[MM::MaxStrLength];
+   post2010firmware_ =  (GetProperty("CompileDate", compile_date) == DEVICE_OK
+               && compile_date[9]=='1');  // i.e. between 2010 and 2019
+
+   // if really old firmware then don't get build name
+   // build name is really just for diagnostic purposes anyway
+   // I think it was present before 2010 but this is easy way
+   if (post2010firmware_)
+   {
+      pAct = new CPropertyAction (this, &XYStage::OnBuildName);
+      CreateProperty("BuildName", "", MM::String, true, pAct);
+      UpdateProperty("BuildName");
+   }
 
    // Most ASIStages have the origin in the top right corner, the following reverses direction of the X-axis:
    ret = SetAxisDirection();
@@ -406,7 +443,7 @@ int XYStage::Initialize()
    if (hasCommand("WT X?")) {
       pAct = new CPropertyAction (this, &XYStage::OnWait);
       CreateProperty("Wait_Cycles", "5", MM::Integer, false, pAct);
-      SetPropertyLimits("Wait_Cycles", 0, 255);
+//      SetPropertyLimits("Wait_Cycles", 0, 255);  // don't artificially restrict range
    }
 
    // Speed (sets both x and y)
@@ -414,9 +451,9 @@ int XYStage::Initialize()
       pAct = new CPropertyAction (this, &XYStage::OnSpeed);
       CreateProperty("Speed-S", "1", MM::Float, false, pAct);
       // Maximum Speed that can be set in Speed-S property
-      pAct = new CPropertyAction(this, &XYStage::OnMaxSpeed);
-      CreateProperty("Maximum Speed, Do Not Change", "7.5", MM::Float, false, pAct);
-      SetPropertyLimits("Maximum Speed, Do Not Change", 0.1, 25.0);
+      char max_speed[MM::MaxStrLength];
+      GetMaxSpeed(max_speed);
+      CreateProperty("Maximum Speed (Do Not Change)", max_speed, MM::Float, true);
    }
 
    // Backlash (sets both x and y)
@@ -429,6 +466,12 @@ int XYStage::Initialize()
    if (hasCommand("E X?")) {
       pAct = new CPropertyAction (this, &XYStage::OnError);
       CreateProperty("Error-E(nm)", "0", MM::Float, false, pAct);
+   }
+
+   // acceleration (sets both x and y)
+   if (hasCommand("AC X?")) {
+      pAct = new CPropertyAction (this, &XYStage::OnAcceleration);
+      CreateProperty("Acceleration-AC(ms)", "0", MM::Integer, false, pAct);
    }
 
    // Finish Error (sets both x and y)
@@ -464,6 +507,20 @@ int XYStage::Initialize()
    CreateProperty("JoyStick Slow Speed", "100", MM::Integer, false, pAct);
    SetPropertyLimits("JoyStick Slow Speed", 1, 100);
 
+   // property to allow sending arbitrary serial commands and receiving response
+   pAct = new CPropertyAction (this, &XYStage::OnSerialCommand);
+   CreateProperty("SerialCommand", "", MM::String, false, pAct);
+
+   // this is only changed programmatically, never by user
+   // contains last response to the OnSerialCommand action
+   pAct = new CPropertyAction (this, &XYStage::OnSerialResponse);
+   CreateProperty("SerialResponse", "", MM::String, true, pAct);
+
+   // disable sending serial commands unless changed (by default this is enabled)
+   pAct = new CPropertyAction (this, &XYStage::OnSerialCommandOnlySendChanged);
+   CreateProperty("OnlySendSerialCommandOnChange", "Yes", MM::String, false, pAct);
+   AddAllowedValue("OnlySendSerialCommandOnChange", "Yes");
+   AddAllowedValue("OnlySendSerialCommandOnChange", "No");
 
    /* Disabled.  Use the MA command instead
    // Number of times stage approaches a new position (+1)
@@ -550,7 +607,18 @@ int XYStage::SetRelativePositionSteps(long x, long y)
    ClearPort();
 
    ostringstream command;
-   command << fixed << "R X=" << x/ASISerialUnit_  << " Y=" << y/ASISerialUnit_; // in 10th of micros
+   if ( (x == 0) && (y != 0) )
+   {
+      command << fixed << "R Y=" << y/ASISerialUnit_;
+   }
+   else if ( (x != 0) && (y == 0) )
+   {
+      command << fixed << "R X=" << x/ASISerialUnit_;
+   }
+   else
+   {
+      command << fixed << "R X=" << x/ASISerialUnit_  << " Y=" << y/ASISerialUnit_; // in 10th of microns
+   }
 
    string answer;
    // query the device
@@ -908,6 +976,50 @@ int XYStage::OnVersion(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+// Get the compile date of this controller
+int XYStage::OnCompileDate(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      if (initialized_)
+         return DEVICE_OK;
+
+      ostringstream command;
+      command << "CD";
+      string answer;
+      // query the device
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      pProp->Set(answer.c_str());
+
+   }
+   return DEVICE_OK;
+}
+
+// Get the build name of this controller
+int XYStage::OnBuildName(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      if (initialized_)
+         return DEVICE_OK;
+
+      ostringstream command;
+      command << "BU";
+      string answer;
+      // query the device
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      pProp->Set(answer.c_str());
+
+   }
+   return DEVICE_OK;
+}
+
 
 // This sets how often the stage will approach the same position (0 = 1!!)
 int XYStage::OnNrMoveRepetitions(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -980,10 +1092,25 @@ int XYStage::OnWait(MM::PropertyBase* pProp, MM::ActionType eAct)
    else if (eAct == MM::AfterSet) {
       long waitCycles;
       pProp->Get(waitCycles);
+
+      // enforce positive
       if (waitCycles < 0)
          waitCycles = 0;
-      else if (waitCycles > 255)
-         waitCycles = 255;
+
+      // if firmware date is 201x  then use msec/int definition of WaitCycles
+      // would be better to parse firmware (8.4 and earlier used unsigned char)
+      // and that transition occurred ~2008 but this is easier than trying to
+      // parse version strings
+      if (post2010firmware_)
+      {
+         // don't enforce upper limit
+      }
+      else  // enforce limit for 2009 and earlier firmware or
+      {     // if getting compile date wasn't successful
+         if (waitCycles > 255)
+            waitCycles = 255;
+      }
+
       ostringstream command;
       command << "WT X=" << waitCycles << " Y=" << waitCycles;
       string answer;
@@ -1117,6 +1244,58 @@ int XYStage::OnFinishError(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+int XYStage::OnAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out acceleration for the X axis, but set for both
+      ostringstream command;
+      command << "AC X?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":X") == 0)
+      {
+         double speed = atof(answer.substr(3, 8).c_str());
+         pProp->Set(speed);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      double accel;
+      pProp->Get(accel);
+      if (accel < 0.0)
+         accel = 0.0;
+      ostringstream command;
+      command << "AC X=" << accel << " Y=" << accel;
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
 int XYStage::OnOverShoot(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
@@ -1223,16 +1402,22 @@ int XYStage::OnError(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
-int XYStage::OnMaxSpeed(MM::PropertyBase* pProp, MM::ActionType eAct)
+int XYStage::GetMaxSpeed(char * maxSpeedStr)
 {
-   if (eAct == MM::BeforeGet)
-   {
-      pProp->Set(maxSpeed_);
-   }
-   else if (eAct == MM::AfterSet)
-   {
-      pProp->Get(maxSpeed_);
-   }
+   double origMaxSpeed = maxSpeed_;
+   char orig_speed[MM::MaxStrLength];
+   int ret = GetProperty("Speed-S", orig_speed);
+   if ( ret != DEVICE_OK)
+      return ret;
+   maxSpeed_ = 10001;
+   SetProperty("Speed-S", "10000");
+   ret = GetProperty("Speed-S", maxSpeedStr);
+   maxSpeed_ = origMaxSpeed;  // restore in case we return early
+   if (ret != DEVICE_OK)
+      return ret;
+   ret = SetProperty("Speed-S", orig_speed);
+   if (ret != DEVICE_OK)
+      return ret;
    return DEVICE_OK;
 }
 
@@ -1472,6 +1657,53 @@ int XYStage::OnJSSlowSpeed(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+int XYStage::OnSerialCommand(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // do nothing
+   }
+   else if (eAct == MM::AfterSet) {
+      static string last_command;
+      string tmpstr;
+      pProp->Get(tmpstr);
+      tmpstr =   UnescapeControlCharacters(tmpstr);
+      // only send the command if it has been updated, or if the feature has been set to "no"/false then always send
+      if (!serialOnlySendChanged_ || (tmpstr.compare(last_command) != 0))
+      {
+         last_command = tmpstr;
+         int ret = QueryCommand(tmpstr.c_str(), manualSerialAnswer_);
+         if (ret != DEVICE_OK)
+            return ret;
+      }
+   }
+   return DEVICE_OK;
+}
+
+int XYStage::OnSerialResponse(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet || eAct == MM::AfterSet)
+   {
+      // always read
+      if (!pProp->Set(EscapeControlCharacters(manualSerialAnswer_).c_str()))
+         return DEVICE_INVALID_PROPERTY_VALUE;
+   }
+   return DEVICE_OK;
+}
+
+int XYStage::OnSerialCommandOnlySendChanged(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   string tmpstr;
+   if (eAct == MM::AfterSet) {
+      pProp->Get(tmpstr);
+      if (tmpstr.compare("Yes") == 0)
+         serialOnlySendChanged_ = true;
+      else
+         serialOnlySendChanged_ = false;
+   }
+   return DEVICE_OK;
+}
+
 
 int XYStage::GetPositionStepsSingle(char /*axis*/, long& /*steps*/)
 {
@@ -1499,6 +1731,105 @@ int XYStage::SetAxisDirection()
    return ERR_UNRECOGNIZED_ANSWER;
 }
 
+string XYStage::EscapeControlCharacters(const string v)
+// based on similar function in FreeSerialPort.cpp
+{
+   ostringstream mess;  mess.str("");
+   for( string::const_iterator ii = v.begin(); ii != v.end(); ++ii)
+   {
+      if (*ii > 31)
+         mess << *ii;
+      else if (*ii == 13)
+         mess << "\\r";
+      else if (*ii == 10)
+         mess << "\\n";
+      else if (*ii == 9)
+         mess << "\\t";
+      else
+         mess << "\\" << (unsigned int)(*ii);
+   }
+   return mess.str();
+}
+
+string XYStage::UnescapeControlCharacters(const string v0)
+// based on similar function in FreeSerialPort.cpp
+{
+   // the string input from the GUI can contain escaped control characters, currently these are always preceded with \ (0x5C)
+   // and always assumed to be decimal or C style, not hex
+
+   string detokenized;
+   string v = v0;
+
+   for( string::iterator jj = v.begin(); jj != v.end(); ++jj)
+   {
+      bool breakNow = false;
+      if( '\\' == *jj )
+      {
+         // the next 1 to 3 characters might be converted into a control character
+         ++jj;
+         if( v.end() == jj)
+         {
+            // there was an escape at the very end of the input string so output it literally
+            detokenized.push_back('\\');
+            break;
+         }
+         const string::iterator nextAfterEscape = jj;
+         std::string thisControlCharacter;
+         // take any decimal digits immediately after the escape character and convert to a control character
+         while(0x2F < *jj && *jj < 0x3A )
+         {
+            thisControlCharacter.push_back(*jj++);
+            if( v.end() == jj)
+            {
+               breakNow = true;
+               break;
+            }
+         }
+         int code = -1;
+         if ( 0 < thisControlCharacter.length())
+         {
+            istringstream tmp(thisControlCharacter);
+            tmp >> code;
+         }
+         // otherwise, if we are still at the first character after the escape,
+         // possibly treat the next character like a 'C' control character
+         if( nextAfterEscape == jj)
+         {
+            switch( *jj)
+            {
+            case 'r':
+               ++jj;
+               code = 13; // CR \r
+               break;
+            case 'n':
+               ++jj;
+               code = 10; // LF \n
+               break;
+            case 't':
+               ++jj;
+               code = 9; // TAB \t
+               break;
+            case '\\':
+               ++jj;
+               code = '\\';
+               break;
+            default:
+               code = '\\'; // the '\' wasn't really an escape character....
+               break;
+            }
+            if( v.end() == jj)
+               breakNow = true;
+         }
+         if( -1 < code)
+            detokenized.push_back((char)code);
+      }
+      if( breakNow)
+         break;
+      detokenized.push_back(*jj);
+   }
+   return detokenized;
+}
+
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1507,11 +1838,15 @@ int XYStage::SetAxisDirection()
 ZStage::ZStage() :
    ASIBase(this, "1H"),
    axis_("Z"),
+   axisNr_(4),
    stepSizeUm_(0.1),
    answerTimeoutMs_(1000),
    sequenceable_(false),
+   runningFastSequence_(false),
    hasRingBuffer_(false),
-   nrEvents_(50)
+   nrEvents_(50),
+   maxSpeed_(7.5),
+   motorOn_(true)
 {
    InitializeDefaultErrorMessages();
 
@@ -1534,6 +1869,12 @@ ZStage::ZStage() :
    AddAllowedValue("Axis", "F");
    AddAllowedValue("Axis", "P");
    AddAllowedValue("Axis", "Z");
+
+   // size of the ring buffer
+   pAct = new CPropertyAction (this, &ZStage::OnRingBufferSize);
+   CreateProperty("RingBufferSize", "50", MM::Integer, false, pAct, true);
+   AddAllowedValue("RingBufferSize", "50");
+   AddAllowedValue("RingBufferSize", "250");
 }
 
 ZStage::~ZStage()
@@ -1554,6 +1895,8 @@ MM::DeviceDetectionStatus ZStage::DetectDevice(void)
 
 int ZStage::Initialize()
 {
+   core_ = GetCoreCallback();
+
    // empty the Rx serial buffer before sending command
    ClearPort();
 
@@ -1573,15 +1916,76 @@ int ZStage::Initialize()
    if (ret != DEVICE_OK) 
       ret = GetPositionSteps(curSteps_);
 
+   CPropertyAction* pAct;
+
    if (HasRingBuffer())
    {
-      CPropertyAction* pAct = new CPropertyAction (this, &ZStage::OnSequence);
+      pAct = new CPropertyAction (this, &ZStage::OnSequence);
       const char* spn = "Use Sequence";
       CreateProperty(spn, "No", MM::String, false, pAct);
       AddAllowedValue(spn, "No");
       AddAllowedValue(spn, "Yes");
+
+      pAct = new CPropertyAction (this, &ZStage::OnFastSequence);
+      spn = "Use Fast Sequence";
+      CreateProperty(spn, "No", MM::String, false, pAct);
+      AddAllowedValue(spn, "No");
+      AddAllowedValue(spn, "Armed");
    }
-      
+
+   // Speed (sets both x and y)
+   if (hasCommand("S " + axis_ + "?")) {
+      pAct = new CPropertyAction (this, &ZStage::OnSpeed);
+      CreateProperty("Speed-S", "1", MM::Float, false, pAct);
+      // Maximum Speed that can be set in Speed-S property
+      char max_speed[MM::MaxStrLength];
+      GetMaxSpeed(max_speed);
+      CreateProperty("Maximum Speed (Do Not Change)", max_speed, MM::Float, true);
+   }
+
+   // Backlash (sets both x and y)
+   if (hasCommand("B " + axis_ + "?")) {
+      pAct = new CPropertyAction (this, &ZStage::OnBacklash);
+      CreateProperty("Backlash-B", "0", MM::Float, false, pAct);
+   }
+
+   // Error (sets both x and y)
+   if (hasCommand("E " + axis_ + "?")) {
+      pAct = new CPropertyAction (this, &ZStage::OnError);
+      CreateProperty("Error-E(nm)", "0", MM::Float, false, pAct);
+   }
+
+   // acceleration (sets both x and y)
+   if (hasCommand("AC " + axis_ + "?")) {
+      pAct = new CPropertyAction (this, &ZStage::OnAcceleration);
+      CreateProperty("Acceleration-AC(ms)", "0", MM::Integer, false, pAct);
+   }
+
+   // Finish Error (sets both x and y)
+   if (hasCommand("PC " + axis_ + "?")) {
+      pAct = new CPropertyAction (this, &ZStage::OnFinishError);
+      CreateProperty("FinishError-PCROS(nm)", "0", MM::Float, false, pAct);
+   }
+
+   // OverShoot (sets both x and y)
+   if (hasCommand("OS " + axis_ + "?")) {
+      pAct = new CPropertyAction (this, &ZStage::OnOverShoot);
+      CreateProperty("OverShoot(um)", "0", MM::Float, false, pAct);
+   }
+
+   // MotorCtrl, (works on both x and y)
+   pAct = new CPropertyAction (this, &ZStage::OnMotorCtrl);
+   CreateProperty("MotorOnOff", "On", MM::String, false, pAct);
+   AddAllowedValue("MotorOnOff", "On");
+   AddAllowedValue("MotorOnOff", "Off");
+
+   // Wait cycles
+   if (hasCommand("WT " + axis_ + "?")) {
+      pAct = new CPropertyAction (this, &ZStage::OnWait);
+      CreateProperty("Wait_Cycles", "5", MM::Integer, false, pAct);
+      //      SetPropertyLimits("Wait_Cycles", 0, 255);  // don't artificially restrict range
+   }
+
    initialized_ = true;
    return DEVICE_OK;
 }
@@ -1597,6 +2001,11 @@ int ZStage::Shutdown()
 
 bool ZStage::Busy()
 {
+   if (runningFastSequence_)
+   {
+      return false;
+   }
+
    // empty the Rx serial buffer before sending command
    ClearPort();
 
@@ -1809,14 +2218,21 @@ bool ZStage::HasRingBuffer()
    return hasRingBuffer_;
 }
 
-
 int ZStage::StartStageSequence()
 {
+   if (runningFastSequence_)
+   {
+      return DEVICE_OK;
+   }
+
    string answer;
-   std::string command = "RM Y=4 Z=0";
-   if (axis_ == "F")
-      command = "RM Y=8 Z=0";
-   int ret = QueryCommand(command.c_str(), answer); // ensure that ringbuffer pointer points to first entry and that we only trigger the Z axis
+   
+   // ensure that ringbuffer pointer points to first entry and 
+   // that we only trigger the desired axis
+   ostringstream os;
+   os << "RM Y=" << axisNr_ << " Z=0";
+ 
+   int ret = QueryCommand(os.str().c_str(), answer); 
    if (ret != DEVICE_OK)
       return ret;
 
@@ -1835,6 +2251,11 @@ int ZStage::StartStageSequence()
 
 int ZStage::StopStageSequence() 
 {
+   if (runningFastSequence_)
+   {
+      return DEVICE_OK;
+   }
+
    std::string answer;
    int ret = QueryCommand("TTL X=0", answer); // switches off TTL triggering
    if (ret != DEVICE_OK)
@@ -1848,6 +2269,11 @@ int ZStage::StopStageSequence()
 
 int ZStage::SendStageSequence()
 {
+   if (runningFastSequence_)
+   {
+      return DEVICE_OK;
+   }
+
    // first clear the buffer in the device
    std::string answer;
    int ret = QueryCommand("RM X=0", answer); // clears the ringbuffer
@@ -1861,6 +2287,9 @@ int ZStage::SendStageSequence()
          ostringstream os;
          os.precision(0);
          // Strange, but this command needs <CR><LF>.  
+         // It appears for WhizKid the LD reply is :A without <CR><LF> so maybe sending extra one helps
+         // that is also why the answer can have :N-1
+         // basically we are trying to compensate for the controller's faults here
          os << fixed << "LD " << axis_ << "=" << sequence_[i] * 10 << "\r\n"; 
          ret = QueryCommand(os.str().c_str(), answer);
          if (ret != DEVICE_OK)
@@ -1877,6 +2306,11 @@ int ZStage::SendStageSequence()
 
 int ZStage::ClearStageSequence()
 {
+   if (runningFastSequence_)
+   {
+      return DEVICE_OK;
+   }
+
    sequence_.clear();
 
    // clear the buffer in the device
@@ -1913,14 +2347,57 @@ int ZStage::GetControllerInfo()
    std::string token;
    while (getline(iss, token, '\r'))
    {
-      if (token == "RING BUFFER")
+      std::string ringBuffer = "RING BUFFER";
+      if (0 == token.compare(0, ringBuffer.size(), ringBuffer))
+      {
          hasRingBuffer_ = true;
+         if (token.size() > ringBuffer.size()) 
+         {
+            int rsize = atoi(token.substr(ringBuffer.size()).c_str());
+            // untested code, trying to be safe
+            if (rsize > 50) 
+            {
+               nrEvents_ = rsize;
+            }
+         }
+      }
+	   std::string ma = "Motor Axes: ";
+	   if (token.substr(0, ma.length()) == ma)
+	   {
+		   std::istringstream axes(token.substr(ma.length(), std::string::npos));
+		   std::string thisAxis;
+		   int i = 1;
+		   while (getline(axes, thisAxis, ' '))
+		   {
+            if (thisAxis == axis_)
+			   {
+               axisNr_ = i;
+            }
+            i = i << 1;
+         }
+      }	 
       // TODO: add in tests for other capabilities/devices
    }
-
+ 
    LogMessage(answer.c_str(), false);
 
    return DEVICE_OK;
+}
+
+bool ZStage::hasCommand(std::string command) {
+   string answer;
+   // query the device
+   int ret = QueryCommand(command.c_str(), answer);
+   if (ret != DEVICE_OK)
+      return false;
+
+   if (answer.substr(0,2).compare(":A") == 0)
+      return true;
+   if (answer.substr(0,4).compare(":N-1") == 0)
+      return false;
+
+   // if we do not get an answer, or any other answer, this is probably OK
+   return true;
 }
 
 
@@ -1984,6 +2461,526 @@ int ZStage::OnSequence(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+int ZStage::OnFastSequence(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   int ret;
+
+   if (eAct == MM::BeforeGet)
+   {
+      if (runningFastSequence_)
+         pProp->Set("Armed");
+      else
+         pProp->Set("No");
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      std::string prop;
+      pProp->Get(prop);
+
+      // only let user do fast sequence if regular one is enabled
+      if (!sequenceable_) {
+         pProp->Set("No");
+         return DEVICE_OK;
+      }
+
+      if (prop.compare("Armed") == 0)
+      {
+         runningFastSequence_ = false;
+         ret = SendStageSequence();
+         if (ret) return ret;  // same as RETURN_ON_MM_ERROR
+         ret = StartStageSequence();
+         if (ret) return ret;  // same as RETURN_ON_MM_ERROR
+         runningFastSequence_ = true;
+      }
+      else
+      {
+         runningFastSequence_ = false;
+         ret = StopStageSequence();
+         if (ret) return ret;  // same as RETURN_ON_MM_ERROR
+      }
+   }
+
+
+   return DEVICE_OK;
+}
+
+int ZStage::OnRingBufferSize(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(nrEvents_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(nrEvents_);
+   }
+
+   return DEVICE_OK;
+}
+
+// This sets the number of waitcycles
+int ZStage::OnWait(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out waitcycles for the X axis, but set for both
+      ostringstream command;
+      command << "WT " << axis_ << "?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":" + axis_) == 0)
+      {
+         long waitCycles = atol(answer.substr(3).c_str());
+         pProp->Set(waitCycles);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      long waitCycles;
+      pProp->Get(waitCycles);
+
+      // enforce positive
+      if (waitCycles < 0)
+         waitCycles = 0;
+
+      // if firmware date is 201x  then use msec/int definition of WaitCycles
+      // would be better to parse firmware (8.4 and earlier used unsigned char)
+      // and that transition occurred ~2008 but this is easier than trying to
+      // parse version strings
+      char compile_date[MM::MaxStrLength];
+      if (GetProperty("CompileDate", compile_date) == DEVICE_OK
+            && compile_date[9]=='1')  // i.e. between 2010 and 2019
+      {
+         // don't enforce upper limit
+      }
+      else  // enforce limit for 2009 and earlier firmware or
+      {     // if getting compile date wasn't successful
+         if (waitCycles > 255)
+            waitCycles = 255;
+      }
+
+      ostringstream command;
+      command << "WT " << axis_ << "=" << waitCycles;
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+
+int ZStage::OnBacklash(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out waitcycles for the X axis, but set for both
+      ostringstream command;
+      command << "B " << axis_ << "?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":" + axis_) == 0)
+      {
+         double speed = atof(answer.substr(3, 8).c_str());
+         pProp->Set(speed);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      double backlash;
+      pProp->Get(backlash);
+      if (backlash < 0.0)
+         backlash = 0.0;
+      ostringstream command;
+      command << "B " << axis_ << "=" << backlash;
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+int ZStage::OnFinishError(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out waitcycles for the X axis, but set for both
+      ostringstream command;
+      command << "PC " << axis_ << "?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":" + axis_) == 0)
+      {
+         double fError = atof(answer.substr(3, 8).c_str());
+         pProp->Set(1000000* fError);
+         return DEVICE_OK;
+      }
+      if (answer.substr(0,2).compare(":A") == 0)
+      {
+         // Answer is of the form :A X=0.00003
+         double fError = atof(answer.substr(5, 8).c_str());
+         pProp->Set(1000000* fError);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      double error;
+      pProp->Get(error);
+      if (error < 0.0)
+         error = 0.0;
+      error = error/1000000;
+      ostringstream command;
+      command << "PC " << axis_ << "=" << error;
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+int ZStage::OnAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out acceleration for the X axis, but set for both
+      ostringstream command;
+      command << "AC " + axis_ + "?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":" + axis_) == 0)
+      {
+         double speed = atof(answer.substr(3, 8).c_str());
+         pProp->Set(speed);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      double accel;
+      pProp->Get(accel);
+      if (accel < 0.0)
+         accel = 0.0;
+      ostringstream command;
+      command << "AC " << axis_ << "=" << accel;
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+int ZStage::OnOverShoot(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out waitcycles for the X axis, but set for both
+      ostringstream command;
+      command << "OS " + axis_ + "?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+      {
+         double overShoot = atof(answer.substr(5, 8).c_str());
+         pProp->Set(overShoot * 1000.0);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      double overShoot;
+      pProp->Get(overShoot);
+      if (overShoot < 0.0)
+         overShoot = 0.0;
+      overShoot = overShoot / 1000.0;
+      ostringstream command;
+      command << fixed << "OS " << axis_ << "=" << overShoot;
+      string answer;
+      // query the device
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+int ZStage::OnError(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out waitcycles for the X axis, but set for both
+      ostringstream command;
+      command << "E " + axis_ + "?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":" + axis_) == 0)
+      {
+         double fError = atof(answer.substr(3, 8).c_str());
+         pProp->Set(fError * 1000000.0);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      double error;
+      pProp->Get(error);
+      if (error < 0.0)
+         error = 0.0;
+      error = error / 1000000.0;
+      ostringstream command;
+      command << fixed << "E " << axis_ << "=" << error;
+      string answer;
+      // query the device
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+int ZStage::GetMaxSpeed(char * maxSpeedStr)
+{
+   double origMaxSpeed = maxSpeed_;
+   char orig_speed[MM::MaxStrLength];
+   int ret = GetProperty("Speed-S", orig_speed);
+   if ( ret != DEVICE_OK)
+      return ret;
+   maxSpeed_ = 10001;
+   SetProperty("Speed-S", "10000");
+   ret = GetProperty("Speed-S", maxSpeedStr);
+   maxSpeed_ = origMaxSpeed;  // restore in case we return early
+   if (ret != DEVICE_OK)
+      return ret;
+   ret = SetProperty("Speed-S", orig_speed);
+   if (ret != DEVICE_OK)
+      return ret;
+   return DEVICE_OK;
+}
+
+int ZStage::OnSpeed(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // To simplify our life we only read out waitcycles for the X axis, but set for both
+      ostringstream command;
+      command << "S " + axis_ + "?";
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+      {
+         double speed = atof(answer.substr(5).c_str());
+         pProp->Set(speed);
+         return DEVICE_OK;
+      }
+      // deal with error later
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   else if (eAct == MM::AfterSet) {
+      double speed;
+      pProp->Get(speed);
+      if (speed < 0.0)
+         speed = 0.0;
+      // Note, max speed may differ depending on pitch screw
+      else if (speed > maxSpeed_)
+         speed = maxSpeed_;
+      ostringstream command;
+      command << fixed << "S " << axis_ << "=" << speed;
+      string answer;
+      // query the device
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+int ZStage::OnMotorCtrl(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      // The controller can not report whether or not the motors are on.  Cache the value
+      if (motorOn_)
+         pProp->Set("On");
+      else
+         pProp->Set("Off");
+
+      return DEVICE_OK;
+   }
+   else if (eAct == MM::AfterSet) {
+      string motorOn;
+      string value;
+      pProp->Get(motorOn);
+      if (motorOn == "On") {
+         motorOn_ = true;
+         value = "+";
+      } else {
+         motorOn_ = false;
+         value = "-";
+      }
+      ostringstream command;
+      command << "MC " << axis_ << "X" << value;
+      string answer;
+      // query command
+      int ret = QueryCommand(command.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,2).compare(":A") == 0)
+         return DEVICE_OK;
+      else if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(3).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+   return DEVICE_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+// CRIF reflection-based autofocussing unit (Nico, May 2007)
+////
 //////////////////////////////////////////////////////////////////////
 // CRIF reflection-based autofocussing unit (Nico, May 2007)
 ////
@@ -2023,6 +3020,8 @@ CRIF::~CRIF()
 
 int CRIF::Initialize()
 {
+   core_ = GetCoreCallback();
+
    if (initialized_)
       return DEVICE_OK;
 
@@ -2496,9 +3495,7 @@ int CRIF::OnWaitAfterLock(MM::PropertyBase* pProp, MM::ActionType eAct)
 ////
 CRISP::CRISP() :
    ASIBase(this, "" /* LX-4000 Prefix Unknown */),
-   justCalibrated_(false),
    axis_("Z"),
-   stepSizeUm_(0.1),
    ledIntensity_(50),
    na_(0.65),
    waitAfterLock_(1000),
@@ -2527,6 +3524,7 @@ CRISP::CRISP() :
    pAct = new CPropertyAction (this, &CRISP::OnAxis);
    CreateProperty("Axis", "Z", MM::String, false, pAct, true);
    AddAllowedValue("Axis", "Z");
+   AddAllowedValue("Axis", "P");
    AddAllowedValue("Axis", "F");
 }
 
@@ -2542,6 +3540,8 @@ MM::DeviceDetectionStatus CRISP::DetectDevice(void)
 
 int CRISP::Initialize()
 {
+   core_ = GetCoreCallback();
+
    if (initialized_)
       return DEVICE_OK;
 
@@ -2613,6 +3613,9 @@ int CRISP::Initialize()
 
    pAct = new CPropertyAction(this, &CRISP::OnDitherError);
    CreateProperty("Dither Error", "", MM::Integer, true, pAct);
+
+   pAct = new CPropertyAction(this, &CRISP::OnLogAmpAGC);
+   CreateProperty("LogAmpAGC", "", MM::Integer, true, pAct);
 
 
    // Values that only we can change should be cached and enquired here:
@@ -3125,7 +4128,7 @@ int CRISP::OnGainMultiplier(MM::PropertyBase* pProp, MM::ActionType eAct)
       long nr;
       pProp->Get(nr);
       ostringstream command;
-      command << fixed << "KA Z=" << nr;
+      command << fixed << "KA " << axis_ << "=" << nr;
 
       return SetCommand(command.str());
    }
@@ -3256,6 +4259,19 @@ int CRISP::OnDitherError(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+int CRISP::OnLogAmpAGC(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      float val;
+      int ret = GetValue("AFLIM X?", val);
+      if (ret != DEVICE_OK)
+         return ret;
+      pProp->Set(val);
+   }
+   return DEVICE_OK;
+}
+
 
 
 /***************************************************************************
@@ -3295,6 +4311,8 @@ void AZ100Turret::GetName(char* Name) const
 
 int AZ100Turret::Initialize()
 {
+   core_ = GetCoreCallback();
+
    // state
    CPropertyAction* pAct = new CPropertyAction (this, &AZ100Turret::OnState);
    int ret = CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct);
@@ -3414,9 +4432,245 @@ int AZ100Turret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+StateDevice::StateDevice() :
+   ASIBase(this, "" /* LX-4000 Prefix Unknown */),
+   numPos_(4),
+   axis_("F"),
+   position_(0),
+   answerTimeoutMs_(1000)
+{
+   InitializeDefaultErrorMessages();
+
+   // create pre-initialization properties
+   // ------------------------------------
+
+   // Name
+   CreateProperty(MM::g_Keyword_Name, g_StateDeviceName, MM::String, true);
+
+   // Description
+   CreateProperty(MM::g_Keyword_Description, "ASI State Device", MM::String, true);
+
+   // Port
+   CPropertyAction* pAct = new CPropertyAction (this, &StateDevice::OnPort);
+   CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
+
+   // number of positions needs to be specified beforehand (later firmware allows querying)
+   pAct = new CPropertyAction (this, &StateDevice::OnNumPositions);
+   CreateProperty("NumPositions", "4", MM::Integer, false, pAct, true);
+
+   // Axis
+   pAct = new CPropertyAction (this, &StateDevice::OnAxis);
+   CreateProperty("Axis", "F", MM::String, false, pAct, true);
+   AddAllowedValue("Axis", "F");
+   AddAllowedValue("Axis", "T");
+   AddAllowedValue("Axis", "Z");
+
+}
+
+StateDevice::~StateDevice()
+{
+   Shutdown();
+}
+
+MM::DeviceDetectionStatus StateDevice::DetectDevice(void)
+{
+   return ASICheckSerialPort(*this,*GetCoreCallback(), port_, answerTimeoutMs_);
+}
+
+void StateDevice::GetName(char* Name) const
+{
+   CDeviceUtils::CopyLimitedString(Name, g_StateDeviceName);
+}
+
+int StateDevice::Initialize()
+{
+   core_ = GetCoreCallback();
+
+   // state
+   CPropertyAction* pAct = new CPropertyAction (this, &StateDevice::OnState);
+   int ret = CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct);
+   if (ret != DEVICE_OK)
+      return ret;
+   char pos[3];
+   for (int i=0; i<numPos_; i++)
+   {
+      sprintf(pos, "%d", i);
+      AddAllowedValue(MM::g_Keyword_State, pos);
+   }
+
+   // Label
+   pAct = new CPropertyAction (this, &CStateBase::OnLabel);
+   ret = CreateProperty(MM::g_Keyword_Label, "", MM::String, false, pAct);
+   if (ret != DEVICE_OK)
+      return ret;
+   char state[11];
+   for (int i=0; i<numPos_; i++)
+   {
+      sprintf(state, "Position-%d", i);
+      SetPositionLabel(i,state);
+   }
+
+   // get current position
+   ret = UpdateCurrentPosition();  // updates position_
+   if (ret != DEVICE_OK)
+      return ret;
+
+   ret = UpdateStatus();
+   if (ret != DEVICE_OK)
+      return ret;
+
+   initialized_ = true;
+   return DEVICE_OK;
+}
+
+int StateDevice::Shutdown()
+{
+   if (initialized_)
+   {
+      initialized_ = false;
+   }
+   return DEVICE_OK;
+}
+
+bool StateDevice::Busy()
+{
+   // empty the Rx serial buffer before sending command
+   ClearPort();
+
+   const char* command = "/";
+   string answer;
+   // query command
+   int ret = QueryCommand(command, answer);
+   if (ret != DEVICE_OK)
+      return false;
+
+   if (answer.length() >= 1)
+   {
+     if (answer.substr(0,1) == "B") return true;
+     else if (answer.substr(0,1) == "N") return false;
+     else return false;
+   }
+
+   return false;
+}
+
+int StateDevice::OnNumPositions(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(numPos_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(numPos_);
+   }
+
+   return DEVICE_OK;
+}
+
+int StateDevice::OnAxis(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(axis_.c_str());
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      pProp->Get(axis_);
+   }
+
+   return DEVICE_OK;
+}
+
+int StateDevice::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(port_.c_str());
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      if (initialized_)
+      {
+         // revert
+         pProp->Set(port_.c_str());
+         return ERR_PORT_CHANGE_FORBIDDEN;
+      }
+
+      pProp->Get(port_);
+   }
+
+   return DEVICE_OK;
+}
+
+int StateDevice::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(position_);
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      long position;
+      pProp->Get(position);
+
+      ostringstream os;
+      os << "M " << axis_ << "=" << position + 1;
+
+      string answer;
+      // query command
+      int ret = QueryCommand(os.str().c_str(), answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(2,4).c_str());
+         return ERR_OFFSET + errNo;
+      }
+
+      if (answer.substr(0,2) == ":A") {
+         position_ = position;
+      }
+      else
+         return ERR_UNRECOGNIZED_ANSWER;
+   }
+
+   return DEVICE_OK;
+}
+
+int StateDevice::UpdateCurrentPosition()
+{
+   // find out what position we are currently in
+   ostringstream os;
+   os << "W " << axis_;
+
+   string answer;
+   // query command
+   int ret = QueryCommand(os.str().c_str(), answer);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   if (answer.substr(0, 2).compare(":N") == 0 && answer.length() > 2)
+   {
+      int errNo = atoi(answer.substr(2,4).c_str());
+      return ERR_OFFSET + errNo;
+   }
+
+   if (answer.substr(0,2) == ":A")
+   {
+      position_ = (long) atoi(answer.substr(3,2).c_str()) - 1;
+   }
+   else
+   {
+      return ERR_UNRECOGNIZED_ANSWER;
+   }
+
+   return DEVICE_OK;
+}
+
 
 LED::LED() :
-   CShutterBase<LED>(),
    ASIBase(this, "" /* LX-4000 Prefix Unknown */),
    open_(false),
    intensity_(1),
@@ -3457,6 +4711,8 @@ LED::~LED()
 
 int LED::Initialize()
 {
+   core_ = GetCoreCallback();
+
    // empty the Rx serial buffer before sending command
    ClearPort();
 

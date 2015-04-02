@@ -39,7 +39,6 @@
 #include <iostream>
 #include <sstream>
 #include <math.h>
-//#include "../../MMCore/MMCore.h"
 #include "../../MMDevice/ModuleInterface.h"
 //#include "../../MMDevice/DeviceUtils.h"
 #include "XLed.h"
@@ -729,7 +728,7 @@ int XLedDev::GetLedParmVal(unsigned char* sResp, char* sParm)
     std::ostringstream osMessage;
     char sData[60];
 
-    if (sResp == NULL || sParm == NULL) return NULL;
+    if (sResp == NULL || sParm == NULL) return DEVICE_ERR;
 
     memset(sData, 0, 60);
 
@@ -756,7 +755,7 @@ int XLedDev::GetLedParmVal(unsigned char* sResp, char* sParm)
     if (sValue != NULL) 
     {
         char* sNext = strchr(sValue, ',');
-        if (sNext != NULL) *sNext = NULL;
+        if (sNext != NULL) *sNext = '\0';;
     }
 
     if (sValue != NULL) strcpy(sParm, sValue);
@@ -778,12 +777,12 @@ int XLedDev::GetLedParmVal(unsigned char* sResp, char* sParm)
 int XLedDev::GetLedParm(unsigned char* sCmd, unsigned char* sResp, char* sParm)
 {
     // check input paramter
-    if (sCmd == NULL || sResp == NULL) return NULL;
+    if (sCmd == NULL || sResp == NULL) return DEVICE_ERR;
 
     // call serial I/O to get message
     int ret = XLedSerialIO(sCmd, sResp);
 
-    if (ret != DEVICE_OK) return NULL;
+    if (ret != DEVICE_OK) return ret;
 
     if (sParm !=NULL)
     {
@@ -1284,7 +1283,6 @@ int XLedDev::OnLedIntensity(MM::PropertyBase* pProp, MM::ActionType eAct)
 int XLedDev::OnPulseMode(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
     std::ostringstream osMessage;
-    int nDebugLog = XLed::Instance()->GetDebugLogFlag();
     unsigned char sCmdGet[8] = { 0x70, 0x6D, 0x3F, XLed::XL_TxTerm, 0x00, 0x00, 0x00, 0x00 };
     unsigned char sCmdSet[8] = { 0x70, 0x6D, 0x3D, 0x30, XLed::XL_TxTerm, 0x00, 0x00, 0x00 };
     unsigned char* sResp = XLed::Instance()->GetParameter(XLed::XL_SigPulseMode);
@@ -1498,7 +1496,10 @@ int XLedDev::OnSignalOnTime(MM::PropertyBase* pProp, MM::ActionType eAct)
         if (XLed::Instance()->GetDebugLogFlag() > 1)
         {
             osMessage.str("");
-            osMessage << "<XLedDev::OnSignalOnTime> AfterSet(2)(" << XLed::Instance()->GetXLedStr(XLed::XL_SignalOnTimeLabel).c_str() << "=<" << lSignalOnTime << "," <<  m_lSignalOnTime << ">), Returncode = " << ret; ">)";
+            osMessage << "<XLedDev::OnSignalOnTime> AfterSet(2)(" << 
+               XLed::Instance()->GetXLedStr(XLed::XL_SignalOnTimeLabel).c_str() << 
+               "=<" << lSignalOnTime << "," <<  m_lSignalOnTime << 
+               ">), Returncode = " << ret << ">)";
             this->LogMessage(osMessage.str().c_str());
         }
 
@@ -1585,7 +1586,10 @@ int XLedDev::OnSignalOffTime(MM::PropertyBase* pProp, MM::ActionType eAct)
         if (XLed::Instance()->GetDebugLogFlag() > 1)
         {
             osMessage.str("");
-            osMessage << "<XLedDev::OnSignalOffTime> AfterSet(2)(" << XLed::Instance()->GetXLedStr(XLed::XL_SignalOffTimeLabel).c_str() << "=<" << lSignalOffTime << "," <<  m_lSignalOffTime << ">), Returncode = " << ret; ">)";
+            osMessage << "<XLedDev::OnSignalOffTime> AfterSet(2)(" << 
+               XLed::Instance()->GetXLedStr(XLed::XL_SignalOffTimeLabel).c_str() << "=<" << 
+               lSignalOffTime << "," <<  m_lSignalOffTime << ">), Returncode = " << 
+               ret << ">)";
             this->LogMessage(osMessage.str().c_str());
         }
 
@@ -1834,7 +1838,7 @@ int XLedDev::XLedSerialIO(unsigned char* sCmd, unsigned char* sResp)
 int XLedDev::WriteCommand(const unsigned char* sCommand)
 {
     int ret = DEVICE_OK;
-    int nCmdLength = strlen((const char*)sCommand);
+    std::size_t nCmdLength = strlen((const char*)sCommand);
     ostringstream osMessage;
 
     if (XLed::Instance()->GetDebugLogFlag() > 1)
@@ -1842,7 +1846,7 @@ int XLedDev::WriteCommand(const unsigned char* sCommand)
         osMessage.str("");
         char sHex[3];
         osMessage << "<XLedDev::WriteCommand> (cmd ";
-        for (int n=0; n < nCmdLength; n++)
+        for (unsigned n=0; n < nCmdLength; n++)
         {
             XLed::Instance()->Byte2Hex(sCommand[n], sHex);
             osMessage << "[" << n << "]=<" << sHex << ">";
@@ -1854,7 +1858,7 @@ int XLedDev::WriteCommand(const unsigned char* sCommand)
 
     // write command out
     ret = DEVICE_OK;
-    for (int nByte = 0; nByte < nCmdLength && ret == DEVICE_OK; nByte++)
+    for (unsigned nByte = 0; nByte < nCmdLength && ret == DEVICE_OK; nByte++)
     {
         ret = WriteToComPort(XLed::Instance()->GetSerialPort().c_str(), (const unsigned char*)&sCommand[nByte], 1);
         // CDeviceUtils::SleepMs(1);

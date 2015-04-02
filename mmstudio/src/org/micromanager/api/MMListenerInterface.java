@@ -43,6 +43,14 @@ public interface MMListenerInterface{
     */
    public void configGroupChangedAlert(String groupName, String newConfig);
 
+   /**
+    * This function will be called when a configuration file is loaded
+    * It can be used to stay informed of changes in the hardware configuration
+    * Note that devices can be loaded an unloaded individually, in which case
+    * this function will not be called
+    */
+   public void systemConfigurationLoaded();
+   
    /*
     * Implement this callback to be informed when the current pixel size
     * changes.
@@ -63,9 +71,15 @@ public interface MMListenerInterface{
    /**
     * Implement to be notified that the exposure time given camera has changed
     * @param cameraName - label of camera whose exposure changed
-    * @param newExposureTime - ne exposure time
+    * @param newExposureTime - new exposure time
     */
    public void exposureChanged(String cameraName, double newExposureTime);
-   
+
+   /**
+    * Implement to be notified that the exposure time given camera has changed
+    * @param slmName - label of SLM/Galvo whose exposure changed
+    * @param newExposureTime - new exposure time
+    */
+   public void slmExposureChanged(String slmName, double newExposureTime);
 }
 

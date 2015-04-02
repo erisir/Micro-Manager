@@ -1,65 +1,84 @@
-Install_Win32/
-Install_x64/
-Debug/
-Release/
-bin_Win32/
-build/
-bin/
+# Editors, etc.
+*~
+.*.swp
+.swp
+tags
+.DS_Store
+*.log
+*.stamp
+*.dirstamp
 
-#image
-*.jpg
-*.gif
+/SecretDeviceAdapters/
 
-# C/C++
-
-*.obj
-*.o
-*.d
-*.idb
-*.pdb
-*.suo
+# Visual Studio
+*.ncb
+*.opensdf
 *.sdf
-*.ipch
-*.props
+*.suo
+*.vcproj.*.user
+*.vcxproj.user
+ipch/
 
-# Java
-*.class
-*.jar
+# GNU build system
+*.la
+*.lo
+*.o
+*.trs
+.deps/
+.libs/
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+config.guess
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+libtool
+ltmain.sh
+m4/libtool.m4
+m4/ltoptions.m4
+m4/ltsugar.m4
+m4/ltversion.m4
+m4/lt~obsolete.m4
+missing
+test-driver
 
 # Python
 *.pyc
-*.pyd
+*.pyo
+__pycache__/
 
-# Swig
-*_wrap.cxx
+# Build
+*.class
+*.jar
+*-Tests
+ant_test.sh
+build/
+test-reports/
+/doxygen/out/
+/dependencies/
+/dist/
+/stage/
+/symbols/
 
-# Binaries
-*.lib
-*.dll
-*.exe
+# Testing
+/testing/gtest-*.zip
+/testing/gtest/
 
-# Misc
-.metadata/
-*.settings/
-*.swp
-*~
-*.project
-*.classpath
-*.cproject
-*.pydevproject
-*.css
-*.props
-*.xslt
-*.old
-*.stackdump
-
-*.opensdf
- 
-
-#keil
-*.lst
-*.m51
-*.plg
-*.A51
-*.Opt
-*.Bak
+# Generated source
+.svn
+/buildscripts/launchers/micromanager
+/buildscripts/launchers/mmimagej
+/MMCoreJ_wrap/gensrc/
+/MMCoreJ_wrap/MMCoreJ_wrap.cxx
+/MMCoreJ_wrap/MMCoreJ_wrap.h
+/MMCorePy_wrap/MMCorePy.py
+/MMCorePy_wrap/MMCorePy_wrap.cxx
+/MMCorePy_wrap/MMCorePy_wrap.h
+/DeviceAdapters/DirectElectron/src/DEMessaging/DEServer.pb.cc
+/DeviceAdapters/DirectElectron/src/DEMessaging/DEServer.pb.h

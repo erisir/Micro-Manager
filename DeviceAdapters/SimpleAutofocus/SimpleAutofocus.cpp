@@ -37,7 +37,6 @@
 
 
 #include "../../MMDevice/ModuleInterface.h"
-#include "../../MMCore/Error.h"
 #include "boost/lexical_cast.hpp"
 #include "boost/tuple/tuple.hpp"
 #include <set>
@@ -59,7 +58,6 @@
 // Controller
 const char* g_ControllerName = "SimpleAutofocus";
 const char* g_FocusMonitorDeviceName = "FocusMonitor";
-const char* g_TPFocusDeviceName = "TPFocus";
 
 const bool messageDebug = false;
 
@@ -142,9 +140,8 @@ public:
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ControllerName, "SimpleAutofocus Finder");
-   AddAvailableDeviceName(g_FocusMonitorDeviceName, "Focus score monitor - 100XImaging Inc.");
-   AddAvailableDeviceName(g_TPFocusDeviceName, "Three point focus - 100XImaging Inc.");
+   RegisterDevice(g_ControllerName, MM::AutoFocusDevice, "SimpleAutofocus Finder");
+   RegisterDevice(g_FocusMonitorDeviceName, MM::ImageProcessorDevice, "Focus score monitor - 100XImaging Inc.");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -162,11 +159,6 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
       // create autoFocus
       return new FocusMonitor();
    }
-   if (strcmp(deviceName, g_TPFocusDeviceName) == 0)
-   {
-      // create autoFocus
-      return new ThreePointAF();
-   }
    return 0;
 }
 
@@ -179,10 +171,29 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // Controller implementation
 // ~~~~~~~~~~~~~~~~~~~~
 
-SimpleAutofocus::SimpleAutofocus(const char* name) : name_(name), pCore_(NULL), cropFactor_(0.2), busy_(false),
-   coarseStepSize_(1.), coarseSteps_ (5), fineStepSize_ (0.3), fineSteps_ ( 5), threshold_( 0.1), enableAutoShuttering_(1),
-   sizeOfTempShortBuffer_(0), pShort_(NULL),latestSharpness_(0.), recalculate_(0), mean_(0.), standardDeviationOverMean_(0.),
-   pPoints_(NULL), pSmoothedIm_(NULL), sizeOfSmoothedIm_(0), offset_(0.), exposureForAutofocusAcquisition_(0.), binningForAutofocusAcquisition_(0)
+SimpleAutofocus::SimpleAutofocus(const char* name) : 
+   name_(name), 
+   offset_(0.), 
+   coarseStepSize_(1.), 
+   coarseSteps_ (5), 
+   fineStepSize_ (0.3), 
+   fineSteps_ ( 5), 
+   threshold_( 0.1), 
+   pCore_(NULL), 
+   cropFactor_(0.2), 
+   busy_(false),
+   latestSharpness_(0.), 
+   enableAutoShuttering_(1),
+   sizeOfTempShortBuffer_(0), 
+   pSmoothedIm_(NULL), 
+   sizeOfSmoothedIm_(0), 
+   pShort_(NULL),
+   recalculate_(0), 
+   mean_(0.), 
+   standardDeviationOverMean_(0.),
+   pPoints_(NULL), 
+   exposureForAutofocusAcquisition_(0.), 
+   binningForAutofocusAcquisition_(0)
 {
 }
 

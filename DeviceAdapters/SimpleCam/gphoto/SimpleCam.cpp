@@ -35,7 +35,7 @@
 #include "CoreFoundation/CoreFoundation.h"
 #include <sys/param.h>
 #include <sys/stat.h>
-#endif __APPLE__
+#endif // __APPLE__
 
 using namespace std;
 
@@ -60,7 +60,6 @@ int CSimpleCam::setLibPaths()
       This allows packaging the gphoto2 drivers with the application.
    */
    char executablePath[MAXPATHLEN];
-   uint32_t bufSize = sizeof(executablePath); 
    CFBundleRef mainBundle = CFBundleGetMainBundle();
    CFURLRef resourcesURL = CFBundleCopyResourcesDirectoryURL(mainBundle); // get path of bundle
    bool dirFound = CFURLGetFileSystemRepresentation(resourcesURL, TRUE, (UInt8 *)executablePath, MAXPATHLEN);
@@ -115,7 +114,7 @@ int CSimpleCam::setLibPaths()
    }
    else
       gp_log(GP_LOG_ERROR, "SimpleCam", "Failed to get path of executable. Using default libgphoto2 and libgphoto2_port driver directory.");
-#endif __APPLE__
+#endif // __APPLE__
 return 0;
 }
 
@@ -139,9 +138,7 @@ bool CSimpleCam::listCameras(vector<string>& detected)
 
    /* List cameras */
    CameraAbilitiesList *abilitiesList;
-   CameraAbilities abilities;
    GPPortInfoList *portInfoList;
-   GPPortInfo portInfo;
    CameraList *cameraList;
 
    if (rc >= GP_OK)
@@ -588,7 +585,7 @@ bool CSimpleCam::setShutterSpeed(std::string newShutterSpeed)
    }
 
    if (rc >= GP_OK)
-      rc = rc = gp_widget_set_value(shutterSpeedConfig, newShutterSpeed.c_str());
+      rc = gp_widget_set_value(shutterSpeedConfig, newShutterSpeed.c_str());
 
    if (rc >= GP_OK)
       rc = gp_camera_set_config(camera_, rootConfig, context_);
@@ -698,7 +695,7 @@ bool CSimpleCam::setISO(std::string newISO)
    }
 
    if (rc >= GP_OK)
-      rc = rc = gp_widget_set_value(isoConfig, newISO.c_str());
+      rc = gp_widget_set_value(isoConfig, newISO.c_str());
 
    if (rc >= GP_OK)
       rc = gp_camera_set_config(camera_, rootConfig, context_);

@@ -68,6 +68,10 @@ public:
       return ReadFromComPort(port_.c_str(), answer, maxLen, bytesRead);
    }
    static MMThreadLock& GetLock() {return lock_;}
+   void SetShutterState(unsigned state) {shutterState_ = state;}
+   void SetSwitchState(unsigned state) {switchState_ = state;}
+   unsigned GetShutterState() {return shutterState_;}
+   unsigned GetSwitchState() {return switchState_;}
 
 private:
    int GetControllerVersion(int&);
@@ -78,6 +82,8 @@ private:
    bool timedOutputActive_;
    int version_;
    static MMThreadLock lock_;
+   unsigned switchState_;
+   unsigned shutterState_;
 };
 
 class CArduinoShutter : public CShutterBase<CArduinoShutter>  
@@ -145,7 +151,7 @@ public:
    int OnSequence(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   static const int NUMPATTERNS = 12;
+   static const unsigned int NUMPATTERNS = 12;
 
    int OpenPort(const char* pszName, long lnValue);
    int WriteToPort(long lnValue);
@@ -202,8 +208,6 @@ private:
    double maxV_;
    double volts_;
    double gatedVolts_;
-   unsigned int encoding_;
-   unsigned int resolution_;
    unsigned channel_;
    unsigned maxChannel_;
    bool gateOpen_;
@@ -243,7 +247,7 @@ private:
 class ArduinoInputMonitorThread : public MMDeviceThreadBase
 {
    public:
-      ArduinoInputMonitorThread(CArduinoInput& aInput, bool debug);
+      ArduinoInputMonitorThread(CArduinoInput& aInput);
      ~ArduinoInputMonitorThread();
       int svc();
       int open (void*) { return 0;}
@@ -251,14 +255,15 @@ class ArduinoInputMonitorThread : public MMDeviceThreadBase
 
       void Start();
       void Stop() {stop_ = true;}
-      ArduinoInputMonitorThread & operator=( const ArduinoInputMonitorThread & ) {}
+      ArduinoInputMonitorThread & operator=( const ArduinoInputMonitorThread & ) 
+      {
+         return *this;
+      }
 
 
    private:
-      MM_THREAD_HANDLE thread_;
-      CArduinoInput& aInput_;
       long state_;
-      bool debug_;
+      CArduinoInput& aInput_;
       bool stop_;
 };
 

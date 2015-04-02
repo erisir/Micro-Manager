@@ -67,11 +67,11 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_Controller, "Ludl Controller");             
-   AddAvailableDeviceName(g_Shutter, "Ludl Shutter");             
-   AddAvailableDeviceName(g_Wheel, "Ludl Filter Wheel");
-   //AddAvailableDeviceName(g_XYStageDeviceName, "XY Stage");
-   //AddAvailableDeviceName(g_StageDeviceName, "Single Axis Stage");
+   RegisterDevice(g_Controller, MM::GenericDevice, "Ludl Controller");
+   RegisterDevice(g_Shutter, MM::ShutterDevice, "Ludl Shutter");
+   RegisterDevice(g_Wheel, MM::StateDevice, "Ludl Filter Wheel");
+   //RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "XY Stage");
+   //RegisterDevice(g_StageDeviceName, MM::StageDevice, "Single Axis Stage");
 }                                                                            
                                                                              
 MODULE_API MM::Device* CreateDevice(const char* deviceName)                  
@@ -131,43 +131,13 @@ int clearPort(MM::Device& device, MM::Core& core, const char* port)
    }
    return DEVICE_OK;
 }
-      
-/*
- * Returns DEVICE_OK upon receiving ':A'
- * Returns Error Nr upon receiving ':N x'
- * Otherwise returns ERR_COMMAND_FAILED
- */
-int getResult(MM::Device& device, MM::Core& core, const char* port)
-{ 
-   const int bufSize = 255;
-   char rec[bufSize];
-   string result;
-   int ret = core.GetSerialAnswer(&device, port_.c_str(), bufSize, rec, "\n");
-   if (ret != DEVICE_OK) 
-      return ret;
-   result = rec;
-   if ( (result.length() < 1) || (result[0] != ':') )
-      return ERR_NO_ANSWER;
-   if (result[1] == 'A') 
-      return DEVICE_OK;
-   if (result[1] == 'N')
-   {
-      int errorNr = atoi(result.substr(2,64).c_str());
-      if (errorNr > 0)
-         return errorNr;
-      else
-         return ERR_COMMAND_FAILED;
-   }
-   // We should never get here
-   return ERR_UNRECOGNIZED_ANSWER;
-}
 
 /*
  * Change command level, 65 = high command set, 66 = low command set
  */
 int changeCommandLevel(MM::Device& device, MM::Core& core, const char* commandLevel)
 {
-   int level;
+   unsigned char level;
    if (strcmp(commandLevel, g_CommandLevelHigh) == 0)
       level = 65;
    else if (strcmp(commandLevel, g_CommandLevelLow) == 0)
@@ -488,7 +458,6 @@ int Hub::OnTransmissionDelay(MM::PropertyBase* pProp, MM::ActionType pAct)
 
 Wheel::Wheel() : 
    name_(g_Wheel), 
-   pos_(1),
    initialized_(false), 
    deviceNumber_(1),
    moduleId_(17),
@@ -751,7 +720,7 @@ int Wheel::OnID(MM::PropertyBase* pProp, MM::ActionType eAct)
       long id;
       pProp->Get(id);
       if (id >= 17 && id <= 21)
-         moduleId_ = (unsigned) id;
+         moduleId_ = (unsigned char) id;
       else 
          return ERR_INVALID_ID;
 
@@ -838,8 +807,7 @@ Shutter::Shutter() :
    name_(g_Shutter), 
    shutterNumber_(1), 
    initialized_(false), 
-   moduleId_(17),
-   openTimeUs_(0)
+   moduleId_(17)
 {
    InitializeDefaultErrorMessages();
    SetErrorText(ERR_UNRECOGNIZED_ANSWER, "Unrecognized answer received from the device");
@@ -1078,11 +1046,11 @@ int Shutter::GetShutterPosition(bool& state)
       return DEVICE_SERIAL_INVALID_RESPONSE;
 
    if (shutterNumber_ == 1)
-      state = reply & 4;
+      state = (reply & 4) != 0;
    else if (shutterNumber_ == 2)
-      state = reply & 8;
+      state = (reply & 8) != 0;
    else if (shutterNumber_ == 3)
-      state = reply & 16;
+      state = (reply & 16) != 0;
 
    return DEVICE_OK;
 }
@@ -1100,7 +1068,7 @@ int Shutter::OnID(MM::PropertyBase* pProp, MM::ActionType eAct)
       long id;
       pProp->Get(id);
       if (id >= 0 && id <= 20)
-         moduleId_ = (unsigned) id;
+         moduleId_ = (unsigned char) id;
       else 
          return ERR_INVALID_ID;
 
@@ -1563,7 +1531,7 @@ int XYStage::Stop()
  * Returns the stage position limits in um.
  * TODO: implement!!!
  */
-int XYStage::GetLimits(double& xMin, double& xMax, double& yMin, double& yMax)
+int XYStage::GetLimits(double& /*xMin*/, double& /*xMax*/, double& /*yMin*/, double& /*yMax*/)
 {
    return DEVICE_UNSUPPORTED_COMMAND;
 }
@@ -2053,7 +2021,7 @@ int Stage::SetOrigin()
    return DEVICE_UNSUPPORTED_COMMAND;
 }
  
-int Stage::GetLimits(double& min, double& max)
+int Stage::GetLimits(double& /*min*/, double& /*max*/)
 {
    return DEVICE_UNSUPPORTED_COMMAND;
 }

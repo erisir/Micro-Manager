@@ -33,8 +33,8 @@
 #include "DeviceUtils.h"
 #include "ModuleInterface.h"
 #include "DeviceThreads.h"
-#include <math.h>
 
+#include <math.h>
 #include <assert.h>
 
 #include <string>
@@ -74,17 +74,17 @@ const char* const g_Msg_DEVICE_PROPERTY_NOT_SEQUENCEABLE="This property is not s
 const char* const g_Msg_DEVICE_SEQUENCE_TOO_LARGE="Sequence is too large for this device";
 const char* const g_Msg_DEVICE_NOT_YET_IMPLEMENTED="This command has not yet been implemented for this devce.";
 
+inline long nint( double value )
+{
+   return (long)floor( 0.5 + value);
+};
+
 /**
 * Implements functionality common to all devices.
 * Typically used as the base class for actual device adapters. In general,
 * derived class do not override DeviceBase methods, but rather take advantage
 * of using them to simplify development of specific drivers.
 */
-inline long nint( double value )
-{ 
-   return (long)floor( 0.5 + value);
-};
-
 template <class T, class U>
 class CDeviceBase : public T
 {
@@ -96,12 +96,12 @@ public:
    /**
    * Returns the library handle (for use only by the calling code).
    */
-   HDEVMODULE GetModuleHandle() const {return module_;}
+   virtual HDEVMODULE GetModuleHandle() const {return module_;}
 
    /**
    * Assigns a name for the module (for use only by the calling code).
    */
-   void SetModuleName(const char* name)
+   virtual void SetModuleName(const char* name)
    {
       moduleName_ = name;
    }
@@ -109,7 +109,7 @@ public:
    /**
    * Returns the module name (for use only by the calling code).
    */
-   void GetModuleName(char* name) const
+   virtual void GetModuleName(char* name) const
    {
       CDeviceUtils::CopyLimitedString(name, moduleName_.c_str());
    }
@@ -117,7 +117,7 @@ public:
    /**
    * Assigns description string for a device (for use only by the calling code).
    */
-   void SetDescription(const char* descr)
+   virtual void SetDescription(const char* descr)
    {
       description_ = descr;
    }
@@ -125,7 +125,7 @@ public:
    /**
    * Returns device description (for use only by the calling code).
    */
-   void GetDescription(char* name) const
+   virtual void GetDescription(char* name) const
    {
       CDeviceUtils::CopyLimitedString(name, description_.c_str());
    }
@@ -133,14 +133,14 @@ public:
    /**
    * Sets the library handle (for use only by the calling code).
    */
-   void SetModuleHandle(HDEVMODULE hModule) {module_ = hModule;}
+   virtual void SetModuleHandle(HDEVMODULE hModule) {module_ = hModule;}
 
    /**
    * Sets the device label (for use only by the calling code).
    * Labels are usually manipulated by the parent application and used
    * for high-level programming.
    */
-   void SetLabel(const char* label)
+   virtual void SetLabel(const char* label)
    {
       label_ = label;
    }
@@ -150,7 +150,7 @@ public:
    * Labels are usually manipulated by the parent application and used
    * for high-level programming.
    */
-   void GetLabel(char* name) const
+   virtual void GetLabel(char* name) const
    {
       CDeviceUtils::CopyLimitedString(name, label_.c_str());
    }
@@ -160,37 +160,37 @@ public:
    * Delay of 0 means that the device should be synchronized by polling with the
    * Busy() method.
    */
-   double GetDelayMs() const {return delayMs_;}
+   virtual double GetDelayMs() const {return delayMs_;}
 
    /**
    * Returns the device delay used for synchronization by the calling code.
    * Delay of 0 means that the device should be synchronized by polling with the
    * Busy() method.
    */
-   void SetDelayMs(double delay) {delayMs_ = delay;}
+   virtual void SetDelayMs(double delay) {delayMs_ = delay;}
 
    /**
    * Sets the callback for accessing parent functionality (used only by the calling code).
    */
-   void SetCallback(MM::Core* cbk) {callback_ = cbk;}
+   virtual void SetCallback(MM::Core* cbk) {callback_ = cbk;}
 
    /**
    * Signals if the device responds to different delay settings.
    * Default device behavior is to ignore delays and use busy signals instead.
    */
-   bool UsesDelay() {return usesDelay_;}
+   virtual bool UsesDelay() {return usesDelay_;}
 
    /**
    * Returns the number of properties.
    */
-   unsigned GetNumberOfProperties() const {return (unsigned)properties_.GetSize();}
+   virtual unsigned GetNumberOfProperties() const {return (unsigned)properties_.GetSize();}
 
    /**
    * Obtains the value of the property.
    * @param name - property identifier (name)
    * @param value - the value of the property
    */
-   int GetProperty(const char* name, char* value) const
+   virtual int GetProperty(const char* name, char* value) const
    {
       std::string strVal;
       // additional information for reporting invalid properties.
@@ -250,7 +250,7 @@ public:
    * @param name - property identifier (name)
    * @param readOnly - read-only or not
    */
-   int GetPropertyReadOnly(const char* name, bool& readOnly) const
+   virtual int GetPropertyReadOnly(const char* name, bool& readOnly) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -269,7 +269,7 @@ public:
    * @param name - property identifier (name)
    * @param readOnly - read-only or not
    */
-   int GetPropertyInitStatus(const char* name, bool& preInit) const
+   virtual int GetPropertyInitStatus(const char* name, bool& preInit) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -283,7 +283,7 @@ public:
       return DEVICE_OK;
    }
 
-   int HasPropertyLimits(const char* name, bool& hasLimits) const
+   virtual int HasPropertyLimits(const char* name, bool& hasLimits) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -301,7 +301,7 @@ public:
     * @param name - property identifier (name)
     * @param lowLimit - returns lower limit
     */
-   int GetPropertyLowerLimit(const char* name, double& lowLimit) const
+   virtual int GetPropertyLowerLimit(const char* name, double& lowLimit) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -319,7 +319,7 @@ public:
     * @param name - property identifier (name)
     * @param hiLimit - returns upper limit
     */
-   int GetPropertyUpperLimit(const char* name, double& hiLimit) const
+   virtual int GetPropertyUpperLimit(const char* name, double& hiLimit) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -337,7 +337,7 @@ public:
    * @param name - property identifier (name)
    * @param sequenceable - sequenceable or not
    */
-   int IsPropertySequenceable(const char* name, bool& sequenceable) const
+   virtual int IsPropertySequenceable(const char* name, bool& sequenceable) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -356,7 +356,7 @@ public:
    * @param name - property identifier (name)
    * @param nrEvents - maximum number of events that can be handles by the device
    */
-   int GetPropertySequenceMaxLength(const char* name, long& nrEvents) const
+   virtual int GetPropertySequenceMaxLength(const char* name, long& nrEvents) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -384,7 +384,7 @@ public:
     * Should be overridden by the device adapter (when a sequence is implemented)
     * @param  name - property for which the sequence should be started
     */
-   int StartPropertySequence(const char* name)
+   virtual int StartPropertySequence(const char* name)
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -410,7 +410,7 @@ public:
     * Should be overridden by the device adapter (when a sequence is implemented)
     * @param  name - property for which the sequence should be started
     */
-   int StopPropertySequence(const char* name)
+   virtual int StopPropertySequence(const char* name)
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -434,7 +434,7 @@ public:
     * This function is used by the Core to communicate a sequence to the device
     * @param name - name of the sequenceable property
     */
-   int ClearPropertySequence(const char* name)
+   virtual int ClearPropertySequence(const char* name)
    {
       MM::Property* pProp;
       int ret = GetSequenceableProperty(&pProp, name);
@@ -448,7 +448,7 @@ public:
     * This function is used by the Core to communicate a sequence to the device
     * @param name - name of the sequenceable property
     */
-   int AddToPropertySequence(const char* name, const char* value)
+   virtual int AddToPropertySequence(const char* name, const char* value)
    {
       MM::Property* pProp;
       int ret = GetSequenceableProperty(&pProp, name);
@@ -463,7 +463,7 @@ public:
     * Sends the sequence to the device by calling the properties functor 
     * @param name - name of the sequenceable property
     */
-   int SendPropertySequence(const char* name)
+   virtual int SendPropertySequence(const char* name)
    {
       MM::Property* pProp;
       int ret = GetSequenceableProperty(&pProp, name);
@@ -479,7 +479,7 @@ public:
    * @param idx - property index
    * @param name - property name
    */
-   bool GetPropertyName(unsigned uIdx, char* name) const
+   virtual bool GetPropertyName(unsigned uIdx, char* name) const
    {
       std::string strName;
       if (!properties_.GetName(uIdx, strName))
@@ -492,7 +492,7 @@ public:
    /**
    * Obtain property type (string, float or integer)
    */
-   int GetPropertyType(const char* name, MM::PropertyType& pt) const
+   virtual int GetPropertyType(const char* name, MM::PropertyType& pt) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (!pProp)
@@ -507,7 +507,7 @@ public:
    * @param name - property name
    * @param value - propery value
    */
-   int SetProperty(const char* name, const char* value)
+   virtual int SetProperty(const char* name, const char* value)
    {
       int ret = properties_.Set(name, value);
       if( DEVICE_OK != ret)
@@ -522,7 +522,7 @@ public:
    /**
    * Checks if device supports a given property.
    */
-   bool HasProperty(const char* name) const
+   virtual bool HasProperty(const char* name) const
    {
       MM::Property* pProp = properties_.Find(name);
       if (pProp)
@@ -536,7 +536,7 @@ public:
    * If the set of property values is not defined, not bounded,
    * or property does not exist, the call returns 0.
    */
-   unsigned GetNumberOfPropertyValues(const char* propertyName) const
+   virtual unsigned GetNumberOfPropertyValues(const char* propertyName) const
    {
       MM::Property* pProp = properties_.Find(propertyName);
       if (!pProp)
@@ -552,7 +552,7 @@ public:
    * @param index
    * @param value
    */
-   bool GetPropertyValueAt(const char* propertyName, unsigned index, char* value) const
+   virtual bool GetPropertyValueAt(const char* propertyName, unsigned index, char* value) const
    {
       MM::Property* pProp = properties_.Find(propertyName);
       if (!pProp)
@@ -573,12 +573,66 @@ public:
    * @param eType - property type (string, integer or float)
    * @param readOnly - is the property read-only or not
    * @param pAct - function object called on the property actions
-   * @param initStatus - initialization status of the property. True if the property must exist
-   * prior to initialization, false if it doesn't matter. 
+   * @param isPreInitProperty - whether to create a "pre-init" property, whose
+   * value will be available before Initialize() is called
    */
-   int CreateProperty(const char* name, const char* value, MM::PropertyType eType, bool readOnly, MM::ActionFunctor* pAct=0, bool initStatus=false)
+   int CreateProperty(const char* name, const char* value, MM::PropertyType eType, bool readOnly, MM::ActionFunctor* pAct=0, bool isPreInitProperty=false)
    {
-      return properties_.CreateProperty(name, value, eType, readOnly, pAct, initStatus);
+      return properties_.CreateProperty(name, value, eType, readOnly, pAct, isPreInitProperty);
+   }
+
+   /**
+   * Creates a new property for the device.
+   * @param name - property name
+   * @param value - initial value
+   * @param eType - property type (string, integer or float)
+   * @param readOnly - is the property read-only or not
+   * @param memberFunction - Function pointer to the device object "OnProperty" member function, e.g. &MyDevice::OnState
+   * @param isPreInitProperty - whether to create a "pre-init" property, whose
+   * value will be available before Initialize() is called
+   */
+   int CreatePropertyWithHandler(const char* name, const char* value, MM::PropertyType eType, bool readOnly,
+                                 int(U::*memberFunction)(MM::PropertyBase* pProp, MM::ActionType eAct), bool isPreInitProperty=false) {
+      CPropertyAction* pAct = new CPropertyAction((U*) this, memberFunction);
+      return CreateProperty(name, value, eType, readOnly, pAct, isPreInitProperty);
+   }
+
+   /**
+    * Create an integer-valued property for the device
+    */
+   int CreateIntegerProperty(const char* name, long value, bool readOnly, MM::ActionFunctor* pAct = 0, bool isPreInitProperty = false)
+   {
+      // Note: in theory, we can avoid converting to string and back. At this
+      // moment, it is not worth the trouble.
+      std::ostringstream oss;
+      oss << value;
+      return CreateProperty(name, oss.str().c_str(), MM::Integer, readOnly, pAct, isPreInitProperty);
+   }
+
+   /**
+    * Create a float-valued property for the device
+    */
+   int CreateFloatProperty(const char* name, double value, bool readOnly, MM::ActionFunctor* pAct = 0, bool isPreInitProperty = false)
+   {
+      // Note: in theory, we can avoid converting to string and back. At this
+      // moment, it is not worth the trouble.
+      //
+      // However, note the following assumtion being made here: the default
+      // settings of std::ostream will return strings with a decimal precision
+      // of 6 digits. When this eventually gets passed to
+      // MM::FloatProperty::Set(double), it gets truncated to 4 digits before
+      // being stored. Thus, we do not loose any information.
+      std::ostringstream oss;
+      oss << value;
+      return CreateProperty(name, oss.str().c_str(), MM::Float, readOnly, pAct, isPreInitProperty);
+   }
+
+   /**
+    * Create a string-valued property for the device
+    */
+   int CreateStringProperty(const char* name, const char* value, bool readOnly, MM::ActionFunctor* pAct = 0, bool isPreInitProperty = false)
+   {
+      return CreateProperty(name, value, MM::String, readOnly, pAct, isPreInitProperty);
    }
 
    /**
@@ -690,7 +744,7 @@ public:
    /**
    * Obtains the error text associated with the error code.
    */
-   bool GetErrorText(int errorCode, char* text) const
+   virtual bool GetErrorText(int errorCode, char* text) const
    {
       std::map<int, std::string>::const_iterator it;
       it = messages_.find(errorCode);
@@ -720,25 +774,25 @@ public:
 
    // acq context api
    // NOTE: experimental feature, do not count on these methods
-   int AcqBefore() {return DEVICE_OK;}
-   int AcqAfter() {return DEVICE_OK;}
-   int AcqBeforeFrame() {return DEVICE_OK;}
-   int AcqAfterFrame() {return DEVICE_OK;}
-   int AcqBeforeStack() {return DEVICE_OK;}
-   int AcqAfterStack() {return DEVICE_OK;}
+   virtual int AcqBefore() {return DEVICE_OK;}
+   virtual int AcqAfter() {return DEVICE_OK;}
+   virtual int AcqBeforeFrame() {return DEVICE_OK;}
+   virtual int AcqAfterFrame() {return DEVICE_OK;}
+   virtual int AcqBeforeStack() {return DEVICE_OK;}
+   virtual int AcqAfterStack() {return DEVICE_OK;}
 
    // device discovery (auto-configuration)
-   MM::DeviceDetectionStatus DetectDevice(void){ 
+   virtual MM::DeviceDetectionStatus DetectDevice(void){ 
       return  MM::Unimplemented;
    };
 
    // hub - peripheral relationship
-   void SetParentID(const char* parentId)
+   virtual void SetParentID(const char* parentId)
    {
       parentID_ = parentId;
 
       // truncate if necessary
-      if (parentID_.size() >= MM::MaxStrLength)
+      if (parentID_.size() >= (unsigned) MM::MaxStrLength)
          parentID_ = parentID_.substr(MM::MaxStrLength-1);
 
       if (this->HasProperty(MM::g_Keyword_HubID))
@@ -747,7 +801,7 @@ public:
       }
    }
    
-   void GetParentID(char* parentID) const
+   virtual void GetParentID(char* parentID) const
    {
       CDeviceUtils::CopyLimitedString(parentID, parentID_.c_str());
    }
@@ -799,7 +853,7 @@ protected:
    * @param msg - message text
    * @param debugOnly - if true the meassage will be sent only in the log-debug mode
    */
-   int LogMessage(std::string msg, bool debugOnly = false) const
+   int LogMessage(const std::string& msg, bool debugOnly = false) const
    {
       if (callback_)
          return callback_->LogMessage(this, msg.c_str(), debugOnly);
@@ -831,7 +885,7 @@ protected:
    * @param message - message that will be displayed in output
    * @param debugOnly - if true the meassage will be sent only in the log-debug mode
    */
-   int LogTimeDiff(MM::MMTime start, MM::MMTime end, std::string message, bool debugOnly = false) const
+   int LogTimeDiff(MM::MMTime start, MM::MMTime end, const std::string& message, bool debugOnly = false) const
    {
       std::ostringstream os;
       MM::MMTime t = end-start;
@@ -884,7 +938,7 @@ protected:
       SetErrorText(DEVICE_DUPLICATE_LIBRARY, g_Msg_DEVICE_DUPLICATE_LIBRARY);
       SetErrorText(DEVICE_PROPERTY_NOT_SEQUENCEABLE, g_Msg_DEVICE_PROPERTY_NOT_SEQUENCEABLE);
       SetErrorText(DEVICE_SEQUENCE_TOO_LARGE, g_Msg_DEVICE_SEQUENCE_TOO_LARGE);
-	  SetErrorText(DEVICE_NOT_YET_IMPLEMENTED, g_Msg_DEVICE_NOT_YET_IMPLEMENTED);
+      SetErrorText(DEVICE_NOT_YET_IMPLEMENTED, g_Msg_DEVICE_NOT_YET_IMPLEMENTED);
    }
 
    /**
@@ -984,24 +1038,13 @@ protected:
    }
 
    /**
-   * Reads the current contents of Rx serial buffer.
+   * Not to be confused with MM::PortType MM::Serial::GetPortType() const.
    */
-   MM::PortType GetPortType(const char* portLabel)
+   MM::PortType GetSerialPortType(const char* portLabel)
    {
       if (callback_)
          return callback_->GetSerialPortType(portLabel);
       return MM::InvalidPort;
-   }
-
-   /**
-   * Device changed status
-   * Not implemented in Core and callback
-   */
-   int OnStatusChanged()
-   {
-      if (callback_)
-         return callback_->OnStatusChanged(this);
-      return DEVICE_NO_CALLBACK_REGISTERED;
    }
 
    /**
@@ -1018,6 +1061,9 @@ protected:
       return DEVICE_NO_CALLBACK_REGISTERED;
    }
 
+   /**
+    * Signals to the core that a property value has changed.
+    */
    int OnPropertyChanged(const char* propName, const char* propValue)
    {
       if (callback_)
@@ -1053,14 +1099,21 @@ protected:
       return DEVICE_NO_CALLBACK_REGISTERED;
    }
 
-   /**
-    * Device finished a task
-    * Not implemented in Core and callback
+   /*
     */
-   int OnFinished()
+   int OnSLMExposureChanged(double exposure)
    {
       if (callback_)
-         return callback_->OnFinished(this);
+         return callback_->OnSLMExposureChanged(this, exposure);
+      return DEVICE_NO_CALLBACK_REGISTERED;
+   }
+
+   /**
+    */
+   int OnMagnifierChanged()
+   {
+      if (callback_)
+         return callback_->OnMagnifierChanged(this);
       return DEVICE_NO_CALLBACK_REGISTERED;
    }
 
@@ -1117,7 +1170,7 @@ protected:
     * Can be called anywhere in the device code, but the most logical place is the constructor.
     * Use is optional, to provide useful info.
     */
-	void CreateHubIDProperty()
+   void CreateHubIDProperty()
    {
       char pid[MM::MaxStrLength];
       this->GetParentID(pid);
@@ -1136,6 +1189,23 @@ protected:
          return GetCoreCallback()->GetParentHub(this);
       
       return 0;
+   }
+
+   /**
+    * Returns the parent Hub device pointer, or null if there isn't any.
+    * Makes sure the Parent ID has been assigned.
+    */
+   template<class T_HUB>
+   T_HUB* AssignToHub() {
+      T_HUB* hub = static_cast<T_HUB*>(GetParentHub());
+      if (hub == NULL) {
+         LogMessage("Parent hub not defined.");
+      } else {
+         char hubLabel[MM::MaxStrLength];
+         hub->GetLabel(hubLabel);
+         SetParentID(hubLabel); // for backward comp.
+      }
+      return hub;
    }
 
 private:
@@ -1183,14 +1253,20 @@ private:
    std::string parentID_;
 };
 
+// Forbid instantiation of CDeviceBase<MM::Device, U>
+// (It was abused in the past.)
+template <class U>
+class CDeviceBase<MM::Device, U>
+{
+   CDeviceBase(); // private; construction disallowed
+};
+
 /**
 * Base class for creating generic devices.
 */
 template <class U>
-class CGenericBase : public CDeviceBase<MM::Device, U>
+class CGenericBase : public CDeviceBase<MM::Generic, U>
 {
-   MM::DeviceType GetType() const {return Type;}
-   static const MM::DeviceType Type = MM::GenericDevice;
 };
 
 /**
@@ -1206,15 +1282,15 @@ public:
    using CDeviceBase<MM::Camera, U>::SetAllowedValues;
    using CDeviceBase<MM::Camera, U>::GetBinning;
    using CDeviceBase<MM::Camera, U>::GetCoreCallback;
-   using CDeviceBase<MM::Camera, U>::GetImageBuffer;
-   using CDeviceBase<MM::Camera, U>::GetImageWidth;
-   using CDeviceBase<MM::Camera, U>::GetImageHeight;
-   using CDeviceBase<MM::Camera, U>::GetImageBytesPerPixel;
-   using CDeviceBase<MM::Camera, U>::SnapImage;
    using CDeviceBase<MM::Camera, U>::SetProperty;
    using CDeviceBase<MM::Camera, U>::LogMessage;
+   virtual const unsigned char* GetImageBuffer() = 0;
+   virtual unsigned GetImageWidth() const = 0;
+   virtual unsigned GetImageHeight() const = 0;
+   virtual unsigned GetImageBytesPerPixel() const = 0;
+   virtual int SnapImage() = 0;
 
-   CCameraBase() : busy_(false), thd_(0), stopOnOverflow_(false)
+   CCameraBase() : busy_(false), stopWhenCBOverflows_(false), thd_(0)
    {
       // create and intialize common transpose properties
       std::vector<std::string> allowedValues;
@@ -1319,17 +1395,6 @@ public:
       return 0;
    }
 
-   virtual void AddTag(const char* key, std::string deviceLabel, const char* value)
-   {
-      metadata_.PutTag(key, deviceLabel, value);
-   }
-
-
-   virtual void RemoveTag(const char* key)
-   {
-      metadata_.RemoveTag(key);
-   }
-
    /*
     * Fills serializedMetadata with the device's metadata tags.
     */
@@ -1354,7 +1419,7 @@ public:
       if (ret != DEVICE_OK)
          return ret;
       thd_->Start(numImages,interval_ms);
-      stopOnOverflow_ = stopOnOverflow;
+      stopWhenCBOverflows_ = stopOnOverflow;
       return DEVICE_OK;
    }
 
@@ -1388,28 +1453,36 @@ public:
       return DEVICE_UNSUPPORTED_COMMAND;
    }
 
-   virtual int InsertImage()
+   virtual bool IsCapturing(){return !thd_->IsStopped();}
+   
+   virtual void AddTag(const char* key, const char* deviceLabel, const char* value)
    {
-      char label[MM::MaxStrLength];
-      this->GetLabel(label);
-      Metadata md;
-      md.put("Camera", label);
-      int ret = GetCoreCallback()->InsertImage(this, GetImageBuffer(), GetImageWidth(),
-                                                     GetImageHeight(), GetImageBytesPerPixel(),
-                                                     md.Serialize().c_str());
-      if (!stopOnOverflow_ && ret == DEVICE_BUFFER_OVERFLOW)
-      {
-         // do not stop on overflow - just reset the buffer
-         GetCoreCallback()->ClearImageBuffer(this);
-         return GetCoreCallback()->InsertImage(this, GetImageBuffer(), GetImageWidth(),
-                                                     GetImageHeight(), GetImageBytesPerPixel(),
-                                                     md.Serialize().c_str());
-      } else
-         return ret;
+      metadata_.PutTag(key, deviceLabel, value);
    }
 
-   //Do actual capturing
-   //Called from inside the thread cicle 
+
+   virtual void RemoveTag(const char* key)
+   {
+      metadata_.RemoveTag(key);
+   }
+
+protected:
+   /////////////////////////////////////////////
+   // utility methods for use by derived classes
+   // //////////////////////////////////////////
+
+   virtual std::vector<std::string> GetTagKeys()
+   {
+      return metadata_.GetKeys();
+   }
+
+   virtual std::string GetTagValue(const char* key)
+   {
+      return metadata_.GetSingleTag(key).GetValue();
+   }
+
+   // Do actual capturing
+   // Called from inside the thread
    virtual int ThreadRun (void)
    {
       int ret=DEVICE_ERR;
@@ -1425,25 +1498,31 @@ public:
       }
       return ret;
    };
-   virtual bool IsCapturing(){return !thd_->IsStopped();}
-   
-   class CaptureRestartHelper
-   {
-      bool restart_;
-      CCameraBase* pCam_;
-   public:
-      CaptureRestartHelper(CCameraBase* pCam)
-         :pCam_(pCam)
-      {
-         restart_=pCam_->IsCapturing();
-      }
-      operator bool()
-      {
-         return restart_;
-      }
-   };
 
-protected:
+   virtual int InsertImage()
+   {
+      char label[MM::MaxStrLength];
+      this->GetLabel(label);
+      Metadata md;
+      md.put("Camera", label);
+      int ret = GetCoreCallback()->InsertImage(this, GetImageBuffer(), GetImageWidth(),
+         GetImageHeight(), GetImageBytesPerPixel(),
+         md.Serialize().c_str());
+      if (!stopWhenCBOverflows_ && ret == DEVICE_BUFFER_OVERFLOW)
+      {
+         // do not stop on overflow - just reset the buffer
+         GetCoreCallback()->ClearImageBuffer(this);
+         return GetCoreCallback()->InsertImage(this, GetImageBuffer(), GetImageWidth(),
+            GetImageHeight(), GetImageBytesPerPixel(),
+            md.Serialize().c_str());
+      } else
+         return ret;
+   }
+
+   virtual double GetIntervalMs() {return thd_->GetIntervalMs();}
+   virtual long GetImageCounter() {return thd_->GetImageCounter();}
+   virtual long GetNumberOfImages() {return thd_->GetNumberOfImages();}
+
    // called from the thread function before exit 
    virtual void OnThreadExiting() throw()
    {
@@ -1457,14 +1536,32 @@ protected:
          LogMessage(g_Msg_EXCEPTION_IN_ON_THREAD_EXITING, false);
       }
    }
-protected:
-   bool busy_;
-   bool stopOnOverflow_;
-   Metadata metadata_;
 
-   class BaseSequenceThread;
-   BaseSequenceThread * thd_;
-   friend class BaseSequenceThread;
+   virtual bool isStopOnOverflow() {return stopWhenCBOverflows_;}
+   virtual void setStopOnOverflow(bool stop) {stopWhenCBOverflows_ = stop;}
+
+   ////////////////////////////////////////////////////////////////////////////
+   // Helper Class
+   class CaptureRestartHelper
+   {
+      bool restart_;
+      CCameraBase* pCam_;
+
+   public:
+      CaptureRestartHelper(CCameraBase* pCam)
+         :pCam_(pCam)
+      {
+         restart_=pCam_->IsCapturing();
+      }
+      operator bool()
+      {
+         return restart_;
+      }
+   };
+   ////////////////////////////////////////////////////////////////////////////
+
+   // Nested class for live streaming
+   ////////////////////////////////////////////////////////////////////////////
    class BaseSequenceThread : public MMDeviceThreadBase
    {
       friend class CCameraBase;
@@ -1485,14 +1582,14 @@ protected:
       ~BaseSequenceThread() {}
 
       void Stop() {
-         MMThreadGuard(this->stopLock_);
+         MMThreadGuard g(this->stopLock_);
          stop_=true;
       }
 
       void Start(long numImages, double intervalMs)
       {
-         MMThreadGuard(this->stopLock_);
-         MMThreadGuard(this->suspendLock_);
+         MMThreadGuard g1(this->stopLock_);
+         MMThreadGuard g2(this->suspendLock_);
          numImages_=numImages;
          intervalMs_=intervalMs;
          imageCounter_=0;
@@ -1504,31 +1601,36 @@ protected:
          lastFrameTime_ = 0;
       }
       bool IsStopped(){
-         MMThreadGuard(this->stopLock_);
+         MMThreadGuard g(this->stopLock_);
          return stop_;
       }
       void Suspend() {
-         MMThreadGuard(this->suspendLock_);
+         MMThreadGuard g(this->suspendLock_);
          suspend_ = true;
       }
       bool IsSuspended() {
-         MMThreadGuard(this->suspendLock_);
+         MMThreadGuard g(this->suspendLock_);
          return suspend_;
       }
       void Resume() {
-         MMThreadGuard(this->suspendLock_);
+         MMThreadGuard g(this->suspendLock_);
          suspend_ = false;
       }
       double GetIntervalMs(){return intervalMs_;}
       void SetLength(long images) {numImages_ = images;}
-		long GetLength() const {return numImages_;}
+      //long GetLength() const {return numImages_;}
 
       long GetImageCounter(){return imageCounter_;}
       MM::MMTime GetStartTime(){return startTime_;}
       MM::MMTime GetActualDuration(){return actualDuration_;}
 
+      CCameraBase* GetCamera() {return camera_;}
+      long GetNumberOfImages() {return numImages_;}
+
+      void UpdateActualDuration() {actualDuration_ = camera_->GetCurrentMMTime() - startTime_;}
+
    private:
-      int svc(void) throw()
+      virtual int svc(void) throw()
       {
          int ret=DEVICE_ERR;
          try 
@@ -1540,28 +1642,40 @@ protected:
             if (IsStopped())
                camera_->LogMessage("SeqAcquisition interrupted by the user\n");
 
-			}catch(...){
+         }catch(...){
             camera_->LogMessage(g_Msg_EXCEPTION_IN_THREAD, false);
          }
          stop_=true;
-         actualDuration_ = camera_->GetCurrentMMTime() - startTime_;
+         UpdateActualDuration();
          camera_->OnThreadExiting();
          return ret;
       }
-   protected:
-      CCameraBase* camera_;
-      bool stop_;
-      bool suspend_;
+   private:
+      double intervalMs_;
       long numImages_;
       long imageCounter_;
-      double intervalMs_;
+      bool stop_;
+      bool suspend_;
+      CCameraBase* camera_;
       MM::MMTime startTime_;
       MM::MMTime actualDuration_;
       MM::MMTime lastFrameTime_;
       MMThreadLock stopLock_;
       MMThreadLock suspendLock_;
    };
+   //////////////////////////////////////////////////////////////////////////
+
+
+private:
+
+   bool busy_;
+   bool stopWhenCBOverflows_;
+   Metadata metadata_;
+
+   BaseSequenceThread * thd_;
+   friend class BaseSequenceThread;
 };
+
 
 /**
 * Base class for creating single axis stage adapters.
@@ -1569,12 +1683,13 @@ protected:
 template <class U>
 class CStageBase : public CDeviceBase<MM::Stage, U>
 {
+   virtual int GetPositionUm(double& pos) = 0;
+   virtual int SetPositionUm(double pos) = 0;
+
    /**
-   * Default implementation for the realative motion
+   * Default implementation for relative motion
    */
-   using CDeviceBase<MM::Stage, U>::GetPositionUm;
-   using CDeviceBase<MM::Stage, U>::SetPositionUm;
-   int SetRelativePositionUm(double d)
+   virtual int SetRelativePositionUm(double d)
    {
       double pos;
       int ret = GetPositionUm(pos);
@@ -1583,12 +1698,12 @@ class CStageBase : public CDeviceBase<MM::Stage, U>
       return SetPositionUm(pos + d);
    }
 
-   int SetAdapterOriginUm(double /*d*/)
+   virtual int SetAdapterOriginUm(double /*d*/)
    {
       return DEVICE_UNSUPPORTED_COMMAND;
    }
 
-   int Move(double /*velocity*/)
+   virtual int Move(double /*velocity*/)
    {
       return DEVICE_UNSUPPORTED_COMMAND;
    }
@@ -1633,9 +1748,6 @@ class CStageBase : public CDeviceBase<MM::Stage, U>
 template <class U>
 class CXYStageBase : public CDeviceBase<MM::XYStage, U>
 {
-   using CDeviceBase<MM::XYStage, U>::GetPositionUm;
-   using CDeviceBase<MM::XYStage, U>::SetPositionUm;
-
 public:
    CXYStageBase() : originXSteps_(0), originYSteps_(0), xPos_(0), yPos_(0)
    {
@@ -1650,7 +1762,7 @@ public:
    }
 
 
-   int SetPositionUm(double x, double y)
+   virtual int SetPositionUm(double x, double y)
    {
       bool mirrorX, mirrorY;
       GetOrientation(mirrorX, mirrorY);
@@ -1681,7 +1793,7 @@ public:
    /**
    * Default implementation for relative motion
    */
-   int SetRelativePositionUm(double dx, double dy)
+   virtual int SetRelativePositionUm(double dx, double dy)
    {
       bool mirrorX, mirrorY;
       GetOrientation(mirrorX, mirrorY);
@@ -1706,7 +1818,7 @@ public:
    * Defines position x,y (relative to current position) as the origin of our coordinate system
    * Get the current (stage-native) XY position
    */
-   int SetAdapterOriginUm(double x, double y)
+   virtual int SetAdapterOriginUm(double x, double y)
    {
       bool mirrorX, mirrorY;
       GetOrientation(mirrorX, mirrorY);
@@ -1728,7 +1840,7 @@ public:
       return DEVICE_OK;                                                         
    }                                                                            
 
-   int GetPositionUm(double& x, double& y)
+   virtual int GetPositionUm(double& x, double& y)
    {
       bool mirrorX, mirrorY;
       GetOrientation(mirrorX, mirrorY);
@@ -1759,7 +1871,7 @@ public:
    * The actual stage adapter should override it with the more
    * efficient implementation
    */ 
-   int SetRelativePositionSteps(long x, long y)
+   virtual int SetRelativePositionSteps(long x, long y)
    {
       long xSteps, ySteps;
       int ret = this->GetPositionSteps(xSteps, ySteps);
@@ -1769,7 +1881,7 @@ public:
       return this->SetPositionSteps(xSteps+x, ySteps+y);
    }
 
-   int Move(double /*vx*/, double /*vy*/)
+   virtual int Move(double /*vx*/, double /*vy*/)
    {
       return DEVICE_UNSUPPORTED_COMMAND;
    }
@@ -1919,7 +2031,37 @@ class CMagnifierBase : public CDeviceBase<MM::Magnifier, U>
 template <class U>
 class CSLMBase : public CDeviceBase<MM::SLM, U>
 {
+   virtual int GetSLMSequenceMaxLength(long& /*nrEvents*/) const 
+   {
+      return DEVICE_UNSUPPORTED_COMMAND;
+   }
 
+   virtual int StartSLMSequence() 
+   {
+      return DEVICE_UNSUPPORTED_COMMAND;
+   }
+
+   virtual int StopSLMSequence() {
+      return DEVICE_UNSUPPORTED_COMMAND;
+   }
+
+   virtual int ClearSLMSequence() {
+      return DEVICE_UNSUPPORTED_COMMAND;
+   }
+
+   virtual int AddToSLMSequence(const unsigned char * const /*image*/) 
+   {
+      return DEVICE_UNSUPPORTED_COMMAND;
+   }
+
+   virtual int AddToSLMSequence(const unsigned int * const /*image*/) 
+   {
+      return DEVICE_UNSUPPORTED_COMMAND;
+   }
+
+   virtual int SendSLMSequence() {
+      return DEVICE_UNSUPPORTED_COMMAND;
+   }
 };
 
 /**
@@ -1927,17 +2069,6 @@ class CSLMBase : public CDeviceBase<MM::SLM, U>
 */
 template <class U>
 class CGalvoBase : public CDeviceBase<MM::Galvo, U>
-{
-
-};
-
-
-
-/**
-* Base class for creating CommandDispatch adapters.
-*/
-template <class U>
-class CommandDispatchBase : public CDeviceBase<MM::CommandDispatch, U>
 {
 
 };
@@ -1950,10 +2081,7 @@ class HubBase : public CDeviceBase<MM::Hub, U>
 {
 public:
    HubBase() {}
-   ~HubBase()
-   {
-      ClearInstalledDevices();
-   }
+   virtual ~HubBase() {}
 
    /**
    * To provide automatic child device discovery,
@@ -1962,25 +2090,25 @@ public:
    * If this method is not overridden, it will do nothing
    * and return DEVICE_OK.
    */
-   int DetectInstalledDevices() {return DEVICE_OK;}
+   virtual int DetectInstalledDevices() {return DEVICE_OK;}
 
    /**
    * Returns the number of child devices after DetectInstalledDevices was called.
    * (Don't override this method.)
    */
-   unsigned GetNumberOfInstalledDevices() {return (unsigned)installedDevices.size();}
+   virtual unsigned GetNumberOfInstalledDevices() {return (unsigned)installedDevices.size();}
 
    /**
    * Returns a pointer to the device with index devIdx. 0 <= devIdx < GetNumberOfInstalledDevices().
    * (Don't override this method.)
    */
-   MM::Device* GetInstalledDevice(int devIdx) {return installedDevices[devIdx];}
+   virtual MM::Device* GetInstalledDevice(int devIdx) {return installedDevices[devIdx];}
 
    /**
    * Removes all installed devices that were created by DetectInstalledDevices()
    * (Don't override this method.)
    */
-   void ClearInstalledDevices()
+   virtual void ClearInstalledDevices()
    {
       for (unsigned i=0; i<installedDevices.size(); i++)
          delete installedDevices[i];
@@ -2017,7 +2145,7 @@ public:
    * Sets the state (position) of the device based on the state index.
    * Assumes that "State" property is implemented for the device.
    */
-   int SetPosition(long pos)
+   virtual int SetPosition(long pos)
    {
       return this->SetProperty(MM::g_Keyword_State, CDeviceUtils::ConvertToString(pos));
    }
@@ -2026,7 +2154,7 @@ public:
    * Sets the state (position) of the device based on the state label.
    * Assumes that "State" property is implemented for the device.
    */
-   int SetPosition(const char* label)
+   virtual int SetPosition(const char* label)
    {
       std::map<std::string, long>::const_iterator it;
       it = labels_.find(label);
@@ -2042,7 +2170,7 @@ public:
    * The gate needs to be implemented in the adapter's 'OnState function
    * (which is called through SetPosition)
    */
-   int SetGateOpen(bool open)
+   virtual int SetGateOpen(bool open)
    {  
       if (gateOpen_ != open) {
          gateOpen_ = open;
@@ -2055,7 +2183,7 @@ public:
       return DEVICE_OK;
    }
 
-   int GetGateOpen(bool& open) 
+   virtual int GetGateOpen(bool& open)
    {
       open = gateOpen_; 
       return DEVICE_OK;
@@ -2065,7 +2193,7 @@ public:
    * Obtains the state (position) index of the device.
    * Assumes that "State" property is implemented for the device.
    */
-   int GetPosition(long& pos) const
+   virtual int GetPosition(long& pos) const
    {
       char buf[MM::MaxStrLength];
       assert(this->HasProperty(MM::g_Keyword_State));
@@ -2083,7 +2211,7 @@ public:
    * Obtains the state (position) label of the device.
    * Assumes that "State" property is implemented for the device.
    */
-   int GetPosition(char* label) const
+   virtual int GetPosition(char* label) const
    {
       long pos;
       int ret = GetPosition(pos);
@@ -2096,7 +2224,7 @@ public:
    /**
    * Obtains the label associated with the position (state).
    */
-   int GetPositionLabel(long pos, char* label) const
+   virtual int GetPositionLabel(long pos, char* label) const
    {
       std::map<std::string, long>::const_iterator it;
       for (it=labels_.begin(); it!=labels_.end(); it++)
@@ -2117,7 +2245,7 @@ public:
    /**
    * Creates new label for the given position, or overrides the existing one.
    */
-   int SetPositionLabel(long pos, const char* label)
+   virtual int SetPositionLabel(long pos, const char* label)
    {
       // first test if the label already exists with different position defined
       std::map<std::string, long>::iterator it;
@@ -2153,7 +2281,7 @@ public:
    /**
    * Obtains the position associated with a label.
    */
-   int GetLabelPosition(const char* label, long& pos) const 
+   virtual int GetLabelPosition(const char* label, long& pos) const 
    {
       std::map<std::string, long>::const_iterator it;
       it = labels_.find(label);
@@ -2241,6 +2369,23 @@ public:
       }
 
       return DEVICE_OK;
+   }
+
+   /**
+    * Signals to the core that the state has changed, so that
+    * both "State" and "Label" properties should be updated.
+    */
+   int OnStateChanged(long position) {
+      int ret;   
+      ret = this->OnPropertyChanged(MM::g_Keyword_State,CDeviceUtils::ConvertToString(position));
+      if (ret != DEVICE_OK) {
+         return ret;
+      }
+
+      char label[MM::MaxStrLength];
+      GetPositionLabel(position, label);
+      ret = this->OnPropertyChanged(MM::g_Keyword_Label, label);
+      return ret;
    }
 
 private:

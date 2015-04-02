@@ -40,7 +40,6 @@
 #include <sstream>
 #include <math.h>
 #include <time.h>
-#include "../../MMCore/MMCore.h"
 #include "../../MMDevice/ModuleInterface.h"
 #include "../../MMDevice/DeviceUtils.h"
 #include "XLed.h"
@@ -80,49 +79,49 @@ MODULE_API void InitializeModuleData()
     //}
 
 	// initialize the controller device name
-	AddAvailableDeviceName( XLed::Instance()->GetXLedStr(XLed::XL_CtrlBoardName).c_str(),  XLed::Instance()->GetXLedStr(XLed::XL_CtrlBoardName).c_str());
+	RegisterDevice(XLed::Instance()->GetXLedStr(XLed::XL_CtrlBoardName).c_str(), MM::GenericDevice, XLed::Instance()->GetXLedStr(XLed::XL_CtrlBoardName).c_str());
 
     //if (ofsLogfile.is_open())
     //{
     //    ofsLogfile << "[" << tmNewTime.tm_year << "::" << tmNewTime.tm_mon << "::" << tmNewTime.tm_mday << "::" << tmNewTime.tm_hour << "::" << tmNewTime.tm_min << "::" << tmNewTime.tm_sec << "]   ";
-    //    ofsLogfile << "<XLed::AddAvailableDeviceName> :: XLedCtrl = (" << XLed::Instance()->GetXLedStr(XLed::XL_CtrlBoardName).c_str() << ")\n" << flush;
+    //    ofsLogfile << "<XLed::RegisterDevice> :: XLedCtrl = (" << XLed::Instance()->GetXLedStr(XLed::XL_CtrlBoardName).c_str() << ")\n" << flush;
     //    ofsLogfile.close();
     //}
 
 	// initialize the W LED device name
-	AddAvailableDeviceName(XLed::Instance()->GetXLedStr(XLed::XL_WLedDevName).c_str(), XLed::Instance()->GetXLedStr(XLed::XL_WLedDevName).c_str());
+	RegisterDevice(XLed::Instance()->GetXLedStr(XLed::XL_WLedDevName).c_str(), MM::ShutterDevice, XLed::Instance()->GetXLedStr(XLed::XL_WLedDevName).c_str());
 
     //if (ofsLogfile.is_open())
     //{
     //    ofsLogfile << "[" << tmNewTime.tm_year << "::" << tmNewTime.tm_mon << "::" << tmNewTime.tm_mday << "::" << tmNewTime.tm_hour << "::" << tmNewTime.tm_min << "::" << tmNewTime.tm_sec << "]   ";
-    //    ofsLogfile << "<XLed::AddAvailableDeviceName> :: XLedDevW = (" << XLed::Instance()->GetXLedStr(XLed::XL_WLedDevName).c_str() << ")\n" << flush;
+    //    ofsLogfile << "<XLed::RegisterDevice> :: XLedDevW = (" << XLed::Instance()->GetXLedStr(XLed::XL_WLedDevName).c_str() << ")\n" << flush;
     //}
 
 	// initialize the X LED device name
-	AddAvailableDeviceName(XLed::Instance()->GetXLedStr(XLed::XL_XLedDevName).c_str(), XLed::Instance()->GetXLedStr(XLed::XL_XLedDevName).c_str());
+	RegisterDevice(XLed::Instance()->GetXLedStr(XLed::XL_XLedDevName).c_str(), MM::ShutterDevice, XLed::Instance()->GetXLedStr(XLed::XL_XLedDevName).c_str());
 
     //if (ofsLogfile.is_open())
     //{
     //    ofsLogfile << "[" << tmNewTime.tm_year << "::" << tmNewTime.tm_mon << "::" << tmNewTime.tm_mday << "::" << tmNewTime.tm_hour << "::" << tmNewTime.tm_min << "::" << tmNewTime.tm_sec << "]   ";
-    //    ofsLogfile << "<XLed::AddAvailableDeviceName> :: XLedDevX = (" << XLed::Instance()->GetXLedStr(XLed::XL_XLedDevName).c_str() << ")\n" << flush;
+    //    ofsLogfile << "<XLed::RegisterDevice> :: XLedDevX = (" << XLed::Instance()->GetXLedStr(XLed::XL_XLedDevName).c_str() << ")\n" << flush;
     //}
 
 	// initialize the Y LED device name
-	AddAvailableDeviceName(XLed::Instance()->GetXLedStr(XLed::XL_YLedDevName).c_str(), XLed::Instance()->GetXLedStr(XLed::XL_YLedDevName).c_str());
+	RegisterDevice(XLed::Instance()->GetXLedStr(XLed::XL_YLedDevName).c_str(), MM::ShutterDevice, XLed::Instance()->GetXLedStr(XLed::XL_YLedDevName).c_str());
 
     //if (ofsLogfile.is_open())
     //{
     //    ofsLogfile << "[" << tmNewTime.tm_year << "::" << tmNewTime.tm_mon << "::" << tmNewTime.tm_mday << "::" << tmNewTime.tm_hour << "::" << tmNewTime.tm_min << "::" << tmNewTime.tm_sec << "]   ";
-    //    ofsLogfile << "<XLed::AddAvailableDeviceName> :: XLedDevY = (" << XLed::Instance()->GetXLedStr(XLed::XL_YLedDevName).c_str() << ")\n" << flush;
+    //    ofsLogfile << "<XLed::RegisterDevice> :: XLedDevY = (" << XLed::Instance()->GetXLedStr(XLed::XL_YLedDevName).c_str() << ")\n" << flush;
     //}
 
 	// initialize the Z LED device name
-	AddAvailableDeviceName(XLed::Instance()->GetXLedStr(XLed::XL_ZLedDevName).c_str(), XLed::Instance()->GetXLedStr(XLed::XL_ZLedDevName).c_str());
+	RegisterDevice(XLed::Instance()->GetXLedStr(XLed::XL_ZLedDevName).c_str(), MM::ShutterDevice, XLed::Instance()->GetXLedStr(XLed::XL_ZLedDevName).c_str());
 
     //if (ofsLogfile.is_open())
     //{
     //    ofsLogfile << "[" << tmNewTime.tm_year << "::" << tmNewTime.tm_mon << "::" << tmNewTime.tm_mday << "::" << tmNewTime.tm_hour << "::" << tmNewTime.tm_min << "::" << tmNewTime.tm_sec << "]   ";
-    //    ofsLogfile << "<XLed::AddAvailableDeviceName> :: XLedDevZ = (" << XLed::Instance()->GetXLedStr(XLed::XL_ZLedDevName).c_str() << ")\n" << flush;
+    //    ofsLogfile << "<XLed::RegisterDevice> :: XLedDevZ = (" << XLed::Instance()->GetXLedStr(XLed::XL_ZLedDevName).c_str() << ")\n" << flush;
     //    ofsLogfile.close();
    // }
 }
@@ -380,7 +379,7 @@ XLed::XLed()
     XLed::m_sXLedStr[XLed::XL_PWMStateLabel]            = "X.09 IPG State (1=Run 0=Off)";             // 22: XLed PWM State label
     XLed::m_sXLedStr[XLed::XL_PWMModeLabel]             = "X.10 IPG Running Mode (1=Sing 0=Cont)";    // 23: XLed PWM mode label
     XLed::m_sXLedStr[XLed::XL_FrontPanelLabel]          = "X.11 Front Panel (1=Lock 0=Unlock)";       // 24: Front Panel (Lock/UnLock) label
-    XLed::m_sXLedStr[XLed::XL_LCDScrnNumberLabel]       = "X.12 LCD Screen Number (2-6,8-13)";        // 25: LCD screen number label
+    XLed::m_sXLedStr[XLed::XL_LCDScrnNumberLabel]       = "X.12 LCD Screen Number (2-6;8-13)";        // 25: LCD screen number label
     XLed::m_sXLedStr[XLed::XL_LCDScrnBriteLabel]        = "X.13 LCD Brightness (0-255)";              // 26: LCD Screen brightness label
     XLed::m_sXLedStr[XLed::XL_LCDScrnSaverLabel]        = "X.14 LCD Screen Timeout (0:Disabled)";     // 27: LCD screen saver timeout label
     XLed::m_sXLedStr[XLed::XL_ClearAlarmLebel]          = "X.15 Clear Alarm (1:Cleared 0:Ok)";        // 28: Clear Alarm label
@@ -464,7 +463,7 @@ int XLed::ByteCopy(unsigned char* bDst, const unsigned char* bSrc, int nLength)
 void XLed::Byte2Hex(const unsigned char bByte, char* sHex)
 {
     char sHexDigit[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
-    sHex[2] =  NULL;
+    sHex[2] =  '\0';
     sHex[1] = sHexDigit[(int)(bByte & 0xF)];
     sHex[0] = sHexDigit[(int)(bByte / 0x10)];
     return;

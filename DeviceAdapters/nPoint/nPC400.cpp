@@ -40,7 +40,6 @@
 #include <sstream>
 #include <math.h>
 #include <time.h>
-#include "../../MMCore/MMCore.h"
 #include "../../MMDevice/ModuleInterface.h"
 #include "../../MMDevice/DeviceUtils.h"
 #include "nPC400.h"
@@ -77,7 +76,7 @@ MODULE_API void InitializeModuleData()
     //    if (ofsLogfile.is_open())
     //    {
     //        ofsLogfile << "[" << tmNewTime.tm_year << "::" << tmNewTime.tm_mon << "::" << tmNewTime.tm_mday << "::" << tmNewTime.tm_hour << "::" << tmNewTime.tm_min << "::" << tmNewTime.tm_sec << "]   ";
-    //        ofsLogfile << "<nPC400::AddAvailableDeviceName> :: nPC400Ctrl = (" << nPC400::Instance()->GetC400Str(nPC400::C400_ChannelBoardName).c_str() << ")";
+    //        ofsLogfile << "<nPC400::RegisterDevice> :: nPC400Ctrl = (" << nPC400::Instance()->GetC400Str(nPC400::C400_ChannelBoardName).c_str() << ")";
     //        ofsLogfile << " :: nPC400CH1 = (" << nPC400::Instance()->GetC400Str(nPC400::C400_CH1DeviceName).c_str() << ")";
     //        ofsLogfile << " :: nPC400CH2 = (" << nPC400::Instance()->GetC400Str(nPC400::C400_CH2DeviceName).c_str() << ")";
     //        ofsLogfile << " :: nPC400CH3 = (" << nPC400::Instance()->GetC400Str(nPC400::C400_CH3DeviceName).c_str() << ")";
@@ -93,25 +92,25 @@ MODULE_API void InitializeModuleData()
 	//}
 
 	// initialize the controller device name
-	AddAvailableDeviceName( nPC400::Instance()->GetC400Str(nPC400::C400_ChannelBoardName).c_str(),  nPC400::Instance()->GetC400Str(nPC400::C400_ChannelBoardName).c_str());
+	RegisterDevice(nPC400::Instance()->GetC400Str(nPC400::C400_ChannelBoardName).c_str(), MM::GenericDevice, nPC400::Instance()->GetC400Str(nPC400::C400_ChannelBoardName).c_str());
 
 	// initialize the channel 1 device name
-	AddAvailableDeviceName(nPC400::Instance()->GetC400Str(nPC400::C400_CH1DeviceName).c_str(), nPC400::Instance()->GetC400Str(nPC400::C400_CH1DeviceName).c_str());
+	RegisterDevice(nPC400::Instance()->GetC400Str(nPC400::C400_CH1DeviceName).c_str(), MM::StageDevice, nPC400::Instance()->GetC400Str(nPC400::C400_CH1DeviceName).c_str());
 
 	// initialize the channel 2 device name
-	AddAvailableDeviceName(nPC400::Instance()->GetC400Str(nPC400::C400_CH2DeviceName).c_str(), nPC400::Instance()->GetC400Str(nPC400::C400_CH2DeviceName).c_str());
+	RegisterDevice(nPC400::Instance()->GetC400Str(nPC400::C400_CH2DeviceName).c_str(), MM::StageDevice, nPC400::Instance()->GetC400Str(nPC400::C400_CH2DeviceName).c_str());
 
 	// initialize the channel 3 device name
-	AddAvailableDeviceName(nPC400::Instance()->GetC400Str(nPC400::C400_CH3DeviceName).c_str(), nPC400::Instance()->GetC400Str(nPC400::C400_CH3DeviceName).c_str());
+	RegisterDevice(nPC400::Instance()->GetC400Str(nPC400::C400_CH3DeviceName).c_str(), MM::StageDevice, nPC400::Instance()->GetC400Str(nPC400::C400_CH3DeviceName).c_str());
 
 	// initialize the channel 4 device name
-	AddAvailableDeviceName(nPC400::Instance()->GetC400Str(nPC400::C400_CH4DeviceName).c_str(), nPC400::Instance()->GetC400Str(nPC400::C400_CH4DeviceName).c_str());
+	RegisterDevice(nPC400::Instance()->GetC400Str(nPC400::C400_CH4DeviceName).c_str(), MM::StageDevice, nPC400::Instance()->GetC400Str(nPC400::C400_CH4DeviceName).c_str());
 
 	// initialize the channel 5 device name
-	AddAvailableDeviceName(nPC400::Instance()->GetC400Str(nPC400::C400_CH5DeviceName).c_str(), nPC400::Instance()->GetC400Str(nPC400::C400_CH5DeviceName).c_str());
+	RegisterDevice(nPC400::Instance()->GetC400Str(nPC400::C400_CH5DeviceName).c_str(), MM::StageDevice, nPC400::Instance()->GetC400Str(nPC400::C400_CH5DeviceName).c_str());
 
 	// initialize the channel 6 device name
-	AddAvailableDeviceName(nPC400::Instance()->GetC400Str(nPC400::C400_CH6DeviceName).c_str(), nPC400::Instance()->GetC400Str(nPC400::C400_CH6DeviceName).c_str());
+	RegisterDevice(nPC400::Instance()->GetC400Str(nPC400::C400_CH6DeviceName).c_str(), MM::StageDevice, nPC400::Instance()->GetC400Str(nPC400::C400_CH6DeviceName).c_str());
 }
 
 //
@@ -398,7 +397,7 @@ int nPC400::ByteCopy(unsigned char* bDst, const unsigned char* bSrc, int nLength
 void nPC400::Byte2Hex(const unsigned char bByte, char* sHex)
 {
     char sHexDigit[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
-    sHex[2] =  NULL;
+    sHex[2] = '\0';
     sHex[1] = sHexDigit[(int)(bByte & 0xF)];
     sHex[0] = sHexDigit[(int)(bByte / 0x10)];
     return;

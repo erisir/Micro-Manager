@@ -7,18 +7,22 @@ import ij.process.FloatProcessor;
 import ij.process.ImageProcessor;
 import ij.process.LUT;
 import ij.process.ShortProcessor;
-import java.awt.Color;
 
+import java.awt.Color;
 import java.awt.Point;
 
 import mmcorej.CMMCore;
 import mmcorej.TaggedImage;
+
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
+
 import org.micromanager.acquisition.TaggedImageStorageDiskDefault;
 import org.micromanager.api.TaggedImageStorage;
 
 public class ImageUtils {
-   private static Class storageClass_ = TaggedImageStorageDiskDefault.class;
+   private static Class<?> storageClass_ = TaggedImageStorageDiskDefault.class;
 
    public static int BppToImageType(long Bpp) {
       int BppInt = (int) Bpp;
@@ -87,22 +91,27 @@ public class ImageUtils {
             case ImagePlus.GRAY32:
                return new FloatProcessor(w,h, (float[]) imgArray, null);
             case ImagePlus.COLOR_RGB:
+               // Micro-Manager RGB32 images are generally composed of byte
+               // arrays, but ImageJ only takes int arrays.
+               if (imgArray instanceof byte[]) {
+                  imgArray = convertRGB32BytesToInt((byte[]) imgArray);
+               }
                return new ColorProcessor(w, h, (int[]) imgArray);
             default:
                return null;
          }
       }
    }
-
+   
    public static ImageProcessor makeProcessor(TaggedImage taggedImage) {
       final JSONObject tags = taggedImage.tags;
       try {
       return makeProcessor(MDUtils.getIJType(tags), MDUtils.getWidth(tags),
               MDUtils.getHeight(tags), taggedImage.pix);
       } catch (Exception e) {
-         ReportingUtils.logError(e);
+          ReportingUtils.logError(e);
+          return null;
       }
-      return null;
    }
 
    public static ImageProcessor makeProcessor(int type, int w, int h) {
@@ -118,19 +127,84 @@ public class ImageUtils {
          return null;
       }
    }
+   
+   public static ImageProcessor makeMonochromeProcessor(TaggedImage taggedImage) {
+        try {
+            ImageProcessor processor;
+            if (MDUtils.isRGB32(taggedImage)) {
+                ColorProcessor colorProcessor = new ColorProcessor(MDUtils.getWidth(taggedImage.tags), MDUtils.getHeight(taggedImage.tags), convertRGB32BytesToInt((byte []) taggedImage.pix));
+                processor = colorProcessor.convertToByteProcessor();
+            } else {
+                processor = makeProcessor(taggedImage);
+            }
+            return processor;
+        } catch (Exception e) {
+            ReportingUtils.logError(e);
+            return null;
+        }
+   }
 
-   public static ImageProcessor subtractImageProcessors(ImageProcessor proc1, ImageProcessor proc2) {
-      if (proc1 instanceof ByteProcessor) {
-         return subtractByteProcessors((ByteProcessor) proc1, (ByteProcessor) proc2);
-      } else if (proc1 instanceof ShortProcessor) {
-         return subtractShortProcessors((ShortProcessor) proc1, (ShortProcessor) proc2);
-      } 
-      return null;
+
+   public static ImageProcessor subtractImageProcessors(ImageProcessor proc1, ImageProcessor proc2)
+           throws MMException {
+      if ((proc1.getWidth() != proc2.getWidth())
+              || (proc1.getHeight() != proc2.getHeight())) {
+         throw new MMException("Error: Images are of unequal size");
+      }
+      try {
+         if (proc1 instanceof ByteProcessor && proc2 instanceof ByteProcessor) {
+            return subtractByteProcessors((ByteProcessor) proc1, (ByteProcessor) proc2);
+         } else if (proc1 instanceof ShortProcessor && proc2 instanceof ShortProcessor) {
+            return subtractShortProcessors((ShortProcessor) proc1, (ShortProcessor) proc2);
+         } else if (proc1 instanceof ShortProcessor && proc2 instanceof ByteProcessor) {
+            return subtractShortByteProcessors((ShortProcessor) proc1, (ByteProcessor) proc2);
+         } else if (proc1 instanceof ShortProcessor && proc2 instanceof FloatProcessor) {
+            return subtractShortFloatProcessors((ShortProcessor) proc1, (FloatProcessor) proc2);
+         } else if (proc1 instanceof FloatProcessor && proc2 instanceof ByteProcessor) {
+             return subtractFloatProcessors((FloatProcessor) proc1, (ByteProcessor) proc2);
+         } else if (proc1 instanceof FloatProcessor && proc2 instanceof ShortProcessor) {
+             return subtractFloatProcessors((FloatProcessor) proc1, (ShortProcessor) proc2);
+         } else if (proc1 instanceof FloatProcessor) {
+            return subtractFloatProcessors((FloatProcessor) proc1, (FloatProcessor) proc2);
+         } else {
+             throw new MMException("Types of images to be subtracted were not compatible");
+         }
+      } catch (ClassCastException ex) {
+         throw new MMException("Types of images to be subtracted were not compatible");
+      }
+   }
+   
+      public static ImageProcessor subtractFloatProcessors(FloatProcessor proc1, 
+           ByteProcessor proc2) {
+       return new FloatProcessor(proc1.getWidth(), proc1.getHeight(),
+               subtractPixelArrays((float[]) proc1.getPixels(), 
+               (byte[]) proc2.getPixels() ),
+               null);
+   }
+   
+   public static ImageProcessor subtractFloatProcessors(FloatProcessor proc1, 
+           ShortProcessor proc2) {
+       return new FloatProcessor(proc1.getWidth(), proc1.getHeight(),
+               subtractPixelArrays((float[]) proc1.getPixels(), 
+               (short[]) proc2.getPixels() ),
+               null);
+   }
+   
+   public static ImageProcessor subtractFloatProcessors(FloatProcessor proc1, FloatProcessor proc2) {
+       return new FloatProcessor(proc1.getWidth(), proc1.getHeight(),
+               subtractPixelArrays((float[]) proc1.getPixels(), (float[]) proc2.getPixels()),
+               null);
    }
    
    private static ByteProcessor subtractByteProcessors(ByteProcessor proc1, ByteProcessor proc2) {
       return new ByteProcessor(proc1.getWidth(), proc1.getHeight(),
               subtractPixelArrays((byte []) proc1.getPixels(), (byte []) proc2.getPixels()),
+              null);
+   }
+   
+   private static ShortProcessor subtractShortByteProcessors(ShortProcessor proc1, ByteProcessor proc2) {
+      return new ShortProcessor(proc1.getWidth(), proc1.getHeight(),
+              subtractPixelArrays((short []) proc1.getPixels(), (byte []) proc2.getPixels()),
               null);
    }
    
@@ -140,11 +214,19 @@ public class ImageUtils {
               null);
    }
    
+   private static ShortProcessor subtractShortFloatProcessors(ShortProcessor proc1, FloatProcessor proc2) {
+       return new ShortProcessor(proc1.getWidth(), proc1.getHeight(),
+               subtractPixelArrays( (short[]) proc1.getPixels(), (float []) proc2.getPixels() ),
+                null);
+       
+   };
+   
    public static byte[] subtractPixelArrays(byte[] array1, byte[] array2) {
       int l = array1.length;
       byte[] result = new byte[l];
       for (int i=0;i<l;++i) {
-         result[i] = (byte) Math.max(0,array1[i] - array2[i]);
+         result[i] = (byte) Math.max(0, unsignedValue(array1[i]) - 
+                 unsignedValue(array2[i]) );
       }
       return result;
    }
@@ -153,10 +235,55 @@ public class ImageUtils {
       int l = array1.length;
       short[] result = new short[l];
       for (int i=0;i<l;++i) {
-         result[i] = (short) Math.max(0,array1[i] - array2[i]);
+         result[i] = (short) Math.max(0, unsignedValue(array1[i]) - unsignedValue(array2[i]));
       }
       return result;
    }
+   
+   public static short[] subtractPixelArrays(short[] array1, byte[] array2) {
+      int l = array1.length;
+      short[] result = new short[l];
+      for (int i=0;i<l;++i) {
+         result[i] = (short) Math.max(0, unsignedValue(array1[i]) - unsignedValue(array2[i]));
+      }
+      return result;
+   }
+   
+   public static short[] subtractPixelArrays(short[] array1, float[] array2) {
+      int l = array1.length;
+      short[] result = new short[l];
+      for (int i=0; i < l; i++) {
+         result[i] = (short) Math.max (0, unsignedValue(array1[i]) - unsignedValue( (short) array2[i]));
+      }
+      return result;
+   }
+   public static float[] subtractPixelArrays(float[] array1, byte[] array2) {
+      int l = array1.length;
+      float[] result = new float[l];
+      for (int i=0;i<l;++i) {
+         result[i] = array1[i] - unsignedValue(array2[i]);
+      }
+      return result;
+   }
+   
+   public static float[] subtractPixelArrays(float[] array1, short[] array2) {
+      int l = array1.length;
+      float[] result = new float[l];
+      for (int i=0;i<l;++i) {
+         result[i] = array1[i] - unsignedValue(array2[i]);
+      }
+      return result;
+   }
+   
+   public static float[] subtractPixelArrays(float[] array1, float[] array2) {
+      int l = array1.length;
+      float[] result = new float[l];
+      for (int i=0;i<l;++i) {
+         result[i] = array1[i] - array2[i];
+      }
+      return result;
+   }
+   
    
    
    /*
@@ -281,6 +408,16 @@ public class ImageUtils {
          bytes[j++] = 0;
       }
       return bytes;
+   }
+
+   public static int[] convertRGB32BytesToInt(byte[] pixels) {
+      int[] ints = new int[pixels.length/4];
+      for (int i=0; i<ints.length; ++i) {
+         ints[i] =  pixels[4*i]
+                 + (pixels[4*i + 1] << 8)
+                 + (pixels[4*i + 2] << 16);
+      }
+      return ints;
    }
 
    public static byte[] getRGB32PixelsFromColorPanes(byte[][] planes) {
@@ -408,7 +545,7 @@ public class ImageUtils {
       try {
         return (TaggedImageStorage) storageClass_
                  .getConstructor(String.class, Boolean.class, JSONObject.class)
-                 .newInstance(acqPath, new Boolean(newDataSet), summaryMetadata);
+                 .newInstance(acqPath, newDataSet, summaryMetadata);
       } catch (Exception ex) {
          ReportingUtils.logError(ex);
       }
@@ -420,12 +557,14 @@ public class ImageUtils {
       int max;
    }
 
-   private static int unsignedValue(byte b) {
-      return ((0x100 + b) % 0x100);
+   public static int unsignedValue(byte b) {
+      // Sign-extend, then mask
+      return ((int) b) & 0x000000ff;
    }
 
-   private static int unsignedValue(short s) {
-      return ((0x10000 + s) % 0x10000);
+   public static int unsignedValue(short s) {
+      // Sign-extend, then mask
+      return ((int) s) & 0x0000ffff;
    }
 
    public static int getMin(final Object pixels) {
@@ -530,4 +669,32 @@ public class ImageUtils {
       }
       return new TaggedImage(pixels, tags);
    }
+
+   /**
+    * Generate a new TaggedImage off of the provided one, with copied metadata
+    * so that changes elsewhere in the program won't affect this one.
+    */
+   public static TaggedImage copyMetadata(TaggedImage image) {
+      JSONArray names = image.tags.names();
+      String[] keys = new String[names.length()];
+      try {
+         for (int j = 0; j < names.length(); ++j) {
+            keys[j] = names.getString(j);
+         }
+         return new TaggedImage(image.pix, new JSONObject(image.tags, keys));
+      }
+      catch (JSONException e) {
+         ReportingUtils.logError(e, "Unable to duplicate image metadata");
+         return null;
+      }
+   }
+   
+   /*
+   * A utility testing method for displaying an image.
+   */
+   private static void show(String title, ImageProcessor proc) {
+      new ImagePlus(title, proc).show();
+   }
 }
+
+   

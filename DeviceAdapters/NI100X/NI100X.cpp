@@ -28,27 +28,13 @@ const char* g_PropertyVolts = "Volts";
 const char* g_PropertyMinVolts = "MinVolts";
 const char* g_PropertyMaxVolts = "MaxVolts";
 const char* g_PropertyChannel = "IOChannel";
-
-const char* g_PropertyDepthIdx = "DepthIndex";
-const char* g_PropertyListIdx = "ListIndex";
-const char* g_PropertyZ = "Z";
-const char* g_PropertyVD = "VD";
-const char* g_PropertyDepthListSize = "DepthListSize";
-const char* g_DepthControl = "DepthControl";
-const char* g_DepthList = "DepthList";
-
-const char* g_PI_ZStageDeviceName = "PIZStage";
-const char* g_PI_ZStageAxisName = "Axis";
-const char* g_PropertyMaxUm = "MaxZ_um";
-const char* g_PropertyWaitForResponse = "WaitForResponse";
+//used for disabling EOMs temporariliy for laser switching
+const char* g_PropertyDisable = "Block voltage";
 
 const char* g_PropertyDemo = "Demo";
 
 const char* g_Yes = "Yes";
 const char* g_No = "No";
-
-const char* g_PIGCS_ZStageDeviceName = "PIGCSZStage";
-const char* g_PI_ZStageAxisLimitUm = "Limit_um";
 
 // Global state of the digital IO to enable simulation of the shutter device.
 // The virtual shutter device uses this global variable to restore state of the switch
@@ -57,37 +43,15 @@ unsigned g_shutterState = 0;
 
 using namespace std;
 
-set<string> g_analogDevs;
-
-#ifdef WIN32
-   BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-                          DWORD  ul_reason_for_call, 
-                          LPVOID /*lpReserved*/
-		   			 )
-   {
-   	switch (ul_reason_for_call)
-   	{
-   	case DLL_PROCESS_ATTACH:
-   	case DLL_THREAD_ATTACH:
-   	case DLL_THREAD_DETACH:
-   	case DLL_PROCESS_DETACH:
-   		break;
-   	}
-      return TRUE;
-   }
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_DeviceNameDigitalIO, "NI digital IO");
-   AddAvailableDeviceName(g_DeviceNameAnalogIO, "NI analog IO");
-   AddAvailableDeviceName(g_PI_ZStageDeviceName, "PI E-662 Z-stage");
-   AddAvailableDeviceName(g_PIGCS_ZStageDeviceName, "PI GCS Z-stage");
-   //AddAvailableDeviceName(g_DeviceNameShutter);
+   RegisterDevice(g_DeviceNameDigitalIO, MM::StateDevice, "NI digital IO");
+   RegisterDevice(g_DeviceNameAnalogIO, MM::SignalIODevice, "NI analog IO");
+   //RegisterDevice(g_DeviceNameShutter, MM::ShutterDevice, "");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -103,16 +67,6 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
    {
       return new AnalogIO;
    }
-   else if (strcmp(deviceName, g_PI_ZStageDeviceName) == 0)
-   {
-      return new PIZStage;
-   }
-   else if (strcmp(deviceName, g_PIGCS_ZStageDeviceName) == 0)
-   {
-      return new PIGCSZStage;
-   }
-   
-
    return 0;
 }
 
@@ -125,7 +79,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // DigitalIO implementation
 // ~~~~~~~~~~~~~~~~~~~~~~~~
 
-DigitalIO::DigitalIO() : numPos_(16), busy_(false), channel_("undef"), task_(0), state_(0)
+DigitalIO::DigitalIO() : numPos_(16), busy_(false), channel_("undef"), task_(0), open_(false), state_(0)
 {
    InitializeDefaultErrorMessages();
 
@@ -136,7 +90,7 @@ DigitalIO::DigitalIO() : numPos_(16), busy_(false), channel_("undef"), task_(0),
    SetErrorText(ERR_CLOSE_FAILED, "Failed closing the device");
 
    CPropertyAction* pAct = new CPropertyAction (this, &DigitalIO::OnChannel);
-   int nRet = CreateProperty(g_PropertyChannel, "devname", MM::String, false, pAct, true);
+   CreateProperty(g_PropertyChannel, "devname", MM::String, false, pAct, true);
    assert(nRet == DEVICE_OK);
 
 }
@@ -183,6 +137,11 @@ int DigitalIO::Initialize()
    if (nRet != DEVICE_OK)
       return nRet;
 
+   // Gate Closed Position
+   nRet = CreateProperty(MM::g_Keyword_Closed_Position, "0", MM::Integer, false);
+   if (nRet != DEVICE_OK)
+      return nRet;
+
    // set up task
    // -----------
    long niRet = DAQmxCreateTask("", &task_);
@@ -193,7 +152,9 @@ int DigitalIO::Initialize()
    if (niRet != DAQmxSuccess)
       return (int)niRet;
 
-	niRet = DAQmxStartTask(task_);
+   niRet = DAQmxStartTask(task_);
+
+   GetGateOpen(open_);
 
    nRet = UpdateStatus();
    if (nRet != DEVICE_OK)
@@ -226,15 +187,38 @@ int DigitalIO::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    }
    else if (eAct == MM::AfterSet)
    {
-      long s;
-      pProp->Get(s);
-      uInt32 data;
-      int32 written;
-      data = s;
-      long niRet = DAQmxWriteDigitalU32(task_, 1, 1, 10.0, DAQmx_Val_GroupByChannel,&data, &written, NULL);
-      if (niRet != DAQmxSuccess)
-         return (int)niRet;
-      state_ = (int)data;
+      bool gateOpen;
+      GetGateOpen(gateOpen);
+
+      long state;
+      pProp->Get(state);
+
+      if ((state == state_) && (open_ == gateOpen))
+         return DEVICE_OK;
+
+      if (gateOpen) {
+         uInt32 data;
+         int32 written;
+         data = state;
+         long niRet = DAQmxWriteDigitalU32(task_, 1, 1, 10.0, DAQmx_Val_GroupByChannel, &data, &written, NULL);
+         if (niRet != DAQmxSuccess)
+            return (int)niRet;
+            state_ = (int)data;
+      }
+      else {
+         long closed_state;
+         GetProperty(MM::g_Keyword_Closed_Position, closed_state);
+
+         uInt32 data;
+         int32 written;
+         data = closed_state;
+         long niRet = DAQmxWriteDigitalU32(task_, 1, 1, 10.0, DAQmx_Val_GroupByChannel, &data, &written, NULL);
+         if (niRet != DAQmxSuccess)
+            return (int)niRet;
+      }
+
+      open_ = gateOpen;
+      pProp->Set((long)state_);
    }
 
    return DEVICE_OK;
@@ -260,7 +244,7 @@ int DigitalIO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
 // ~~~~~~~~~~~~~~~~~~~~~~~
 
 AnalogIO::AnalogIO() :
-      busy_(false), minV_(0.0), maxV_(5.0), volts_(0.0), gatedVolts_(0.0), encoding_(0),
+      busy_(false), disable_(false), minV_(0.0), maxV_(5.0), volts_(0.0), gatedVolts_(0.0), encoding_(0),
       resolution_(0), channel_("undef"), gateOpen_(true), task_(0), demo_(false)
 {
    InitializeDefaultErrorMessages();
@@ -294,8 +278,6 @@ AnalogIO::AnalogIO() :
    pAct = new CPropertyAction (this, &AnalogIO::OnMaxVolts);
    nRet = CreateProperty(g_PropertyMaxVolts, "5.0", MM::Float, false, pAct, true);
    assert(nRet == DEVICE_OK);
-
-   lists_.resize(2);
 }
 
 AnalogIO::~AnalogIO()
@@ -315,7 +297,6 @@ int AnalogIO::Initialize()
    // -----------------
    char label[MM::MaxStrLength];
    GetLabel(label);
-   g_analogDevs.insert(label);
    
    // Name
    int nRet = CreateProperty(MM::g_Keyword_Name, g_DeviceNameAnalogIO, MM::String, true);
@@ -337,26 +318,14 @@ int AnalogIO::Initialize()
    nRet = SetPropertyLimits(g_PropertyVolts, minV_, maxV_);
    assert(nRet == DEVICE_OK);
 
-   // depth idx
-   CreateProperty(g_PropertyDepthIdx, "-1", MM::Integer, false);
 
-   // list idx
-   pAct = new CPropertyAction (this, &AnalogIO::OnPropertyListIdx);
-   CreateProperty(g_PropertyListIdx, "0", MM::Integer, false, pAct);
-   AddAllowedValue(g_PropertyListIdx, "0");
-   AddAllowedValue(g_PropertyListIdx, "1");
+    //Disable
+    pAct = new CPropertyAction (this, &AnalogIO::OnDisable);
+	nRet = CreateProperty(g_PropertyDisable, "false", MM::String, false, pAct);
+	AddAllowedValue(g_PropertyDisable, "false");
+    AddAllowedValue(g_PropertyDisable, "true");
+    assert(nRet == DEVICE_OK);
 
-   // z-map
-   pAct = new CPropertyAction (this, &AnalogIO::OnZ);
-   CreateProperty(g_PropertyZ, "0.0", MM::Float, false, pAct);
-
-   // VD-map
-   pAct = new CPropertyAction (this, &AnalogIO::OnVD);
-   CreateProperty(g_PropertyVD, "0.0", MM::Float, false, pAct);
-
-   // list size
-   pAct = new CPropertyAction (this, &AnalogIO::OnDepthListSize);
-   CreateProperty(g_PropertyDepthListSize, "0", MM::Integer, false, pAct);
 
    // set up task
    // -----------
@@ -441,6 +410,10 @@ int AnalogIO::ApplyVoltage(double v)
    {
       float64 data[1];
       data[0] = v;
+	  if (disable_)	
+	  {
+		data[0] = 0;
+	  }
       long niRet = DAQmxWriteAnalogF64(task_, 1, 1, 10.0, DAQmx_Val_GroupByChannel, data, NULL, NULL);
       if (niRet != DAQmxSuccess)
       {
@@ -454,97 +427,9 @@ int AnalogIO::ApplyVoltage(double v)
    return DEVICE_OK;
 }
 
-double AnalogIO::GetInterpolatedV(double z, int listIdx)
-{
-   if (lists_[listIdx].zList_.size() == 0)
-      return 0.0;
 
-   if (lists_[listIdx].zList_.size() == 1)
-      return lists_[listIdx].zList_[0];
 
-   // find matching entry in the list
-   // assuming the list is sorted from high to low
-   ostringstream log;
-   for (int i=0; i<(int)lists_[listIdx].zList_.size(); i++)
-   {
-      if (z == lists_[listIdx].zList_[i])
-      {
-         log << "i=" << i << ", v=" << lists_[listIdx].vList_[i];
-         LogMessage(log.str().c_str());
-         return lists_[listIdx].vList_[i];
-      }
-      else if (z > lists_[listIdx].zList_[i])
-      {
-         if (i==0)
-         {
-            log << "max:i=" << i << ", v=" << lists_[listIdx].vList_[0];
-            LogMessage(log.str().c_str());
-            return lists_[listIdx].vList_[0];
-         }
-         else
-         {
-            double zLow = lists_[listIdx].zList_[i];
-            double zHigh = lists_[listIdx].zList_[i-1];
-            double vLow = lists_[listIdx].vList_[i];
-            double vHigh = lists_[listIdx].vList_[i-1];
-            
-            double zFactor;
 
-            if (zHigh == zLow)
-               zFactor = 0.0;
-            else
-               zFactor = (z - zLow)/(zHigh - zLow);
-
-            double vi = vLow + (vHigh - vLow) * zFactor;
-            log << "i=" << i << ", v=" << vi;
-            LogMessage(log.str().c_str());
-
-            return vi;
-         }
-      }
-   }
-   log << "min:i=" << lists_[listIdx].vList_.size() << ", v=" << lists_[listIdx].vList_.back();
-   LogMessage(log.str().c_str());
-   return lists_[listIdx].vList_.back();
-}
-
-int AnalogIO::ApplyDepthControl(double z)
-{
-   long listIdx = GetListIndex();
-   if (lists_[listIdx].zList_.size() > 0)
-   {
-      double v = GetInterpolatedV(z, listIdx);
-      ostringstream os;
-      os << "2P >>>> Applying depth control, list=" << listIdx << ", z=" << z << ", v=" << v;
-      LogMessage(os.str());
-      return SetSignal(v);
-   }
-   return DEVICE_OK;
-}
-
-int AnalogIO::ApplyDepthControl(double z, int list)
-{
-   if (list >= (int)lists_.size() || list < 0)
-      return ERR_WRONG_DEPTH_LIST;
-
-   if (lists_[list].zList_.size() > 0)
-   {
-      double v = GetInterpolatedV(z, list);
-      ostringstream os;
-      os << "2P >>>> Applying depth control, list=" << list << ", z=" << z << ", v=" << v;
-      LogMessage(os.str());
-      return SetSignal(v);
-   }
-   return DEVICE_OK;
-}
-long AnalogIO::GetListIndex()
-{
-   long listIdx(0);
-   int ret = GetProperty(g_PropertyListIdx, listIdx);
-   assert(ret == DEVICE_OK);
-   assert(listIdx < lists_.size());
-   return listIdx;
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Action handlers
@@ -597,6 +482,23 @@ int AnalogIO::OnMaxVolts(MM::PropertyBase* pProp, MM::ActionType eAct)
    return DEVICE_OK;
 }
 
+int AnalogIO::OnDisable(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set( (disable_ ? "true" : "false"));
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		string temp;
+		pProp->Get(temp);
+		disable_ = (temp == "true");
+		ApplyVoltage(gatedVolts_);
+	}
+
+	return DEVICE_OK;
+}
+
 int AnalogIO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
    if (eAct == MM::BeforeGet)
@@ -606,75 +508,6 @@ int AnalogIO::OnChannel(MM::PropertyBase* pProp, MM::ActionType eAct)
    else if (eAct == MM::AfterSet)
    {
       pProp->Get(channel_);
-   }
-
-   return DEVICE_OK;
-}
-
-int AnalogIO::OnZ(MM::PropertyBase* pProp, MM::ActionType eAct)
-{
-   long idx(0);
-   int ret = GetProperty(g_PropertyDepthIdx, idx);
-   assert(ret == DEVICE_OK);
-
-   long listIdx = GetListIndex();
-
-   if (idx >= (long)lists_[listIdx].zList_.size())
-      return ERR_DEPTH_IDX_OUT_OF_RANGE;
-
-   if (eAct == MM::BeforeGet)
-   {
-      if (idx >= 0)
-         pProp->Set(lists_[listIdx].zList_[idx]);
-   }
-   else if (eAct == MM::AfterSet)
-   {
-      if (idx >=0 )
-      pProp->Get(lists_[listIdx].zList_[idx]);
-   }
-
-   return DEVICE_OK;
-}
-
-int AnalogIO::OnVD(MM::PropertyBase* pProp, MM::ActionType eAct)
-{
-   long idx(0);
-   int ret = GetProperty(g_PropertyDepthIdx, idx);
-   assert(ret == DEVICE_OK);
-
-   long listIdx = GetListIndex();
-   
-   if (idx >= (long)lists_[listIdx].vList_.size())
-      return ERR_DEPTH_IDX_OUT_OF_RANGE;
-
-   if (eAct == MM::BeforeGet)
-   {
-      if (idx >= 0)
-         pProp->Set(lists_[listIdx].vList_[idx]);
-   }
-   else if (eAct == MM::AfterSet)
-   {
-      if (idx >= 0)
-         pProp->Get(lists_[listIdx].vList_[idx]);
-   }
-
-   return DEVICE_OK;
-}
-
-int AnalogIO::OnDepthListSize(MM::PropertyBase* pProp, MM::ActionType eAct)
-{
-   long listIdx = GetListIndex();
-
-   if (eAct == MM::BeforeGet)
-   {
-      pProp->Set((long)lists_[listIdx].zList_.size());
-   }
-   else if (eAct == MM::AfterSet)
-   {
-      long sz;
-      pProp->Get(sz);
-      lists_[listIdx].zList_.resize(sz);
-      lists_[listIdx].vList_.resize(sz);
    }
 
    return DEVICE_OK;
@@ -694,31 +527,6 @@ int AnalogIO::OnDemo(MM::PropertyBase* pProp, MM::ActionType eAct)
          demo_ = true;
       else
          demo_ = false;
-   }
-
-   return DEVICE_OK;
-}
-
-int AnalogIO::OnPropertyListIdx(MM::PropertyBase* pProp, MM::ActionType eAct)
-{
-   if (eAct == MM::AfterSet)
-   {
-      //MM::Stage* pStage = GetCoreCallback()->GetFocusDevice(this);
-      //if (pStage)
-      //{
-      //   char value[MM::MaxStrLength];
-      //   int ret = pStage->GetProperty(g_DepthControl, value);
-      //   if (ret == DEVICE_OK)
-      //   {
-      //      if (strcmp(value, g_Yes) == 0)
-      //      {
-      //         double pos;
-      //         ret = pStage->GetPositionUm(pos);
-      //         if (ret == DEVICE_OK)
-      //            ApplyDepthControl(pos);
-      //      }
-      //   }
-      //}
    }
 
    return DEVICE_OK;

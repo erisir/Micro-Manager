@@ -111,7 +111,6 @@ private:
     int StartDAC_[MAX_DACHANNELS];
     int StartTTL_;
     int StopTTL_;
-    int TTLposition_;
     bool busy_;
     int MaxChannels_;
     int MaxDAChannels_;
@@ -237,7 +236,7 @@ public:
     int StopDASequence() {return DEVICE_OK;}
     int LoadDASequence(std::vector<double> voltages) const {return DEVICE_OK;} 
     int ClearDASequence() {return DEVICE_OK;}
-    int AddToDASequence(double voltage) {return DEVICE_OK;}
+    int AddToDASequence(double /*voltage*/) {return DEVICE_OK;}
     int SendDASequence() {return DEVICE_OK;}
 
     
@@ -252,8 +251,8 @@ private:
     double maxV_;
     double volts_;
     double gatedVolts_;
-    int DACPort_;
-    int maxChannel_;
+    unsigned DACPort_;
+    unsigned maxChannel_;
     bool busy_;
     bool gateOpen_;
 };
@@ -276,7 +275,7 @@ public:
      // DA API
      int SetGateOpen(bool open);
      int GetGateOpen(bool& open) {open = gateOpen_; return DEVICE_OK;};
-     int SetSignal(double volts) {return DEVICE_UNSUPPORTED_COMMAND;};
+     int SetSignal(double /*volts*/) {return DEVICE_UNSUPPORTED_COMMAND;};
      int GetSignal(double& volts);
      int GetLimits(double& minVolts, double& maxVolts) {minVolts = minV_; maxVolts = maxV_; return DEVICE_OK;};
      
@@ -292,9 +291,9 @@ public:
      int GetDASequenceMaxLength(long& nrEvents) const  {nrEvents = 0; return DEVICE_OK;}
      int StartDASequence() const {return DEVICE_OK;} 
      int StopDASequence() const {return DEVICE_OK;}
-     int LoadDASequence(std::vector<double> voltages) const {return DEVICE_OK;}
+     int LoadDASequence(std::vector<double> /*voltages*/) const {return DEVICE_OK;}
      int ClearDASequence() {return DEVICE_OK;}
-     int AddToDASequence(double voltage) {return DEVICE_OK;}
+     int AddToDASequence(double /*voltage*/) {return DEVICE_OK;}
      int SendDASequence() const {return DEVICE_OK;}
 
      
@@ -307,8 +306,8 @@ private:
      double maxV_;
      double volts_;
      double gatedVolts_;
-     int ADCPort_;
-     int maxChannel_;
+     unsigned ADCPort_;
+     unsigned maxChannel_;
      bool busy_;
      bool gateOpen_;
 };

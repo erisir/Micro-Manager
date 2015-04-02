@@ -31,7 +31,6 @@
 #include <string>
 #include <math.h>
 #include "../../MMDevice/ModuleInterface.h"
-#include "../../MMCore/Error.h"
 #include <sstream>
 
 const char* DEVICE_NAME = "VLTStradus";
@@ -40,7 +39,7 @@ const char* DEVICE_NAME = "VLTStradus";
 //Required Micro-Manager API Functions&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(DEVICE_NAME, "VLTStradus");
+   RegisterDevice(DEVICE_NAME, MM::ShutterDevice, "VLTStradus");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -66,7 +65,6 @@ Stradus::Stradus() :
    port_("Undefined"),
    initialized_(false),
    busy_(false),
-   answerTimeoutMs_(1000),
    power_(1.00),
    pulPwr_(1),
    laserOn_("Undefined"),

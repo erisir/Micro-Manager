@@ -3,7 +3,7 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Prior ProScan controller adapter
+// DESCRIPTION:   Prior ProScan and OptiScan controller adapter
 // COPYRIGHT:     University of California, San Francisco, 2006
 // LICENSE:       This file is distributed under the BSD license.
 //                License text is included with the source distribution.
@@ -18,7 +18,7 @@
 //
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 06/01/2006
 //
-// CVS:           $Id$
+// CVS:           $Id: Prior.cpp 13358 2014-05-09 02:48:15Z mark $
 //
 
 #ifdef WIN32
@@ -56,20 +56,20 @@ const char* g_TTL3Name="TTL-3";
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_Shutter1Name, "Pro Scan shutter 1");
-   AddAvailableDeviceName(g_Shutter2Name, "Pro Scan shutter 2");
-   AddAvailableDeviceName(g_Shutter3Name, "Pro Scan shutter 3");
-   AddAvailableDeviceName(g_LumenName, "Lumen 200Pro lamp shutter");
-   AddAvailableDeviceName(g_Wheel1Name, "Pro Scan filter wheel 1");
-   AddAvailableDeviceName(g_Wheel2Name, "Pro Scan filter wheel 2");
-   AddAvailableDeviceName(g_Wheel3Name, "Pro Scan filter wheel 3");
-   AddAvailableDeviceName(g_ZStageDeviceName, "Add-on Z-stage");
-   AddAvailableDeviceName(g_NanoStageDeviceName, "NanoScanZ");
-   AddAvailableDeviceName(g_XYStageDeviceName, "XY Stage");
-   AddAvailableDeviceName(g_TTL0Name, "Pro Scan TTL 0");
-   AddAvailableDeviceName(g_TTL1Name, "Pro Scan TTL 1");
-   AddAvailableDeviceName(g_TTL2Name, "Pro Scan TTL 2");
-   AddAvailableDeviceName(g_TTL3Name, "Pro Scan TTL 3");
+   RegisterDevice(g_Shutter1Name, MM::ShutterDevice, "Pro Scan shutter 1");
+   RegisterDevice(g_Shutter2Name, MM::ShutterDevice, "Pro Scan shutter 2");
+   RegisterDevice(g_Shutter3Name, MM::ShutterDevice, "Pro Scan shutter 3");
+   RegisterDevice(g_LumenName, MM::ShutterDevice, "Lumen 200Pro lamp shutter");
+   RegisterDevice(g_Wheel1Name, MM::StateDevice, "Pro Scan filter wheel 1");
+   RegisterDevice(g_Wheel2Name, MM::StateDevice, "Pro Scan filter wheel 2");
+   RegisterDevice(g_Wheel3Name, MM::StateDevice, "Pro Scan filter wheel 3");
+   RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "Add-on Z-stage");
+   RegisterDevice(g_NanoStageDeviceName, MM::StageDevice, "NanoScanZ");
+   RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "XY Stage");
+   RegisterDevice(g_TTL0Name, MM::ShutterDevice, "Pro Scan TTL 0");
+   RegisterDevice(g_TTL1Name, MM::ShutterDevice, "Pro Scan TTL 1");
+   RegisterDevice(g_TTL2Name, MM::ShutterDevice, "Pro Scan TTL 2");
+   RegisterDevice(g_TTL3Name, MM::ShutterDevice, "Pro Scan TTL 3");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -139,12 +139,12 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
    }
    else if (strcmp(deviceName, g_TTL2Name) == 0)
    {
-      TTLShutter* s = new TTLShutter(g_TTL2Name, 0);
+      TTLShutter* s = new TTLShutter(g_TTL2Name, 2);
       return s;
    }
    else if (strcmp(deviceName, g_TTL3Name) == 0)
    {
-      TTLShutter* s = new TTLShutter(g_TTL3Name, 0);
+      TTLShutter* s = new TTLShutter(g_TTL3Name, 3);
       return s;
    }
 
@@ -725,13 +725,7 @@ XYStage::XYStage() :
    initialized_(false), 
    port_("Undefined"), 
    stepSizeXUm_(0.0), 
-   stepSizeYUm_(0.0), 
-   answerTimeoutMs_(1000),
-   originX_(0),
-   originY_(0),
-   mirrorX_(false),
-   mirrorY_(false)
-
+   stepSizeYUm_(0.0)
 {
    InitializeDefaultErrorMessages();
 
@@ -776,8 +770,41 @@ int XYStage::Initialize()
    ret = GetSerialAnswer(port_.c_str(), "\r", answer);
    if (ret != DEVICE_OK)
       return false;
-   
-   
+
+   // Some individual stages start up with the SAS, SCS, SMS, SAZ, SCZ, SMZ
+   // parameters set to > 100 (the maximum stated in the manual). We may allow
+   // higher values in the future, but for now, set everything > 100 to 100
+   // before we set up the properties, to prevent range check errors.
+   {
+      std::vector<std::string> cmds;
+      cmds.push_back("SMS");
+      cmds.push_back("SAS");
+      if (HasCommand("SCS"))
+         cmds.push_back("SCS");
+      for (std::vector<std::string>::const_iterator it = cmds.begin(), end = cmds.end(); it != end; ++it)
+      {
+         const std::string cmd = *it;
+         std::string answer;
+
+         int ret = SendSerialCommand(port_.c_str(), cmd.c_str(), "\r");
+         if (ret != DEVICE_OK)
+            return ret;
+         ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+         if (ret != DEVICE_OK)
+            return ret;
+         int value = atoi(answer.c_str());
+         if (value > 100)
+         {
+            ret = SendSerialCommand(port_.c_str(), (cmd + ",100").c_str(), "\r");
+            if (ret != DEVICE_OK)
+               return ret;
+            ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+            if (ret != DEVICE_OK)
+               return ret;
+         }
+      }
+   }
+
    // set stage step size and resolution
    double resX, resY;
    ret = GetResolution(resX, resY);
@@ -806,18 +833,19 @@ int XYStage::Initialize()
    // Max Speed
    pAct = new CPropertyAction (this, &XYStage::OnMaxSpeed);
    CreateProperty("MaxSpeed", "20", MM::Integer, false, pAct);
-   SetPropertyLimits("MaxSpeed", 1, 250);
+   SetPropertyLimits("MaxSpeed", 1, 100);
 
    // Acceleration
    pAct = new CPropertyAction (this, &XYStage::OnAcceleration);
    CreateProperty("Acceleration", "20", MM::Integer, false, pAct);
-   SetPropertyLimits("Acceleration", 1, 150);
+   // XXX The limits on the OptiScan II is actually 4-100.
+   SetPropertyLimits("Acceleration", 1, 100);
 
    // SCurve
-   if (HasCommand("SCS")) { // OptoScan II does not have the SCS command
+   if (HasCommand("SCS")) { // OptiScan II does not have the SCS command
       pAct = new CPropertyAction (this, &XYStage::OnSCurve);
       CreateProperty("SCurve", "20", MM::Integer, false, pAct);
-      SetPropertyLimits("SCurve", 1, 400);
+      SetPropertyLimits("SCurve", 1, 100);
    }
 
    ret = UpdateStatus();
@@ -1151,7 +1179,7 @@ int XYStage::OnMaxSpeed(MM::PropertyBase* pProp, MM::ActionType eAct)
          return ret;
 
       int maxSpeed = atoi(answer.c_str());
-      if (maxSpeed < 1 || maxSpeed > 250)
+      if (maxSpeed < 1 || maxSpeed > 100)
          return  ERR_UNRECOGNIZED_ANSWER;
 
       pProp->Set((long)maxSpeed);
@@ -1216,7 +1244,7 @@ int XYStage::OnAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct)
          return ret;
 
       int acceleration = atoi(answer.c_str());
-      if (acceleration < 1 || acceleration > 150)
+      if (acceleration < 1 || acceleration > 100)
          return  ERR_UNRECOGNIZED_ANSWER;
 
       pProp->Set((long)acceleration);
@@ -1281,7 +1309,7 @@ int XYStage::OnSCurve(MM::PropertyBase* pProp, MM::ActionType eAct)
          return ret;
 
       int sCurve = atoi(answer.c_str());
-      if (sCurve < 1 || sCurve > 400)
+      if (sCurve < 1 || sCurve > 100)
          return  ERR_UNRECOGNIZED_ANSWER;
 
       pProp->Set((long)sCurve);
@@ -1473,6 +1501,42 @@ void ZStage::GetName(char* Name) const
 
 int ZStage::Initialize()
 {
+   // Some individual stages start up with the SAS, SCS, SMS, SAZ, SCZ, SMZ
+   // parameters set to > 100 (the maximum stated in the manual). We may allow
+   // higher values in the future, but for now, set everything > 100 to 100
+   // before we set up the properties, to prevent range check errors.
+   {
+      std::vector<std::string> cmds;
+      if (HasCommand("SMZ"))
+         cmds.push_back("SMZ");
+      if (HasCommand("SAZ"))
+         cmds.push_back("SAZ");
+      if (HasCommand("SCZ"))
+         cmds.push_back("SCZ");
+      for (std::vector<std::string>::const_iterator it = cmds.begin(), end = cmds.end(); it != end; ++it)
+      {
+         const std::string cmd = *it;
+         std::string answer;
+
+         int ret = SendSerialCommand(port_.c_str(), cmd.c_str(), "\r");
+         if (ret != DEVICE_OK)
+            return ret;
+         ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+         if (ret != DEVICE_OK)
+            return ret;
+         int value = atoi(answer.c_str());
+         if (value > 100)
+         {
+            ret = SendSerialCommand(port_.c_str(), (cmd + ",100").c_str(), "\r");
+            if (ret != DEVICE_OK)
+               return ret;
+            ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+            if (ret != DEVICE_OK)
+               return ret;
+         }
+      }
+   }
+
    // set stage step size and resolution
    double res;
    int ret = GetResolution(res);
@@ -1491,6 +1555,29 @@ int ZStage::Initialize()
    ret = GetPositionSteps(curSteps_);
    if (ret != DEVICE_OK)
       return ret;
+
+   CPropertyAction* pAct;
+   // Max Speed
+   if (HasCommand("SMZ")) {
+	   pAct = new CPropertyAction (this, &ZStage::OnMaxSpeed);
+	   CreateProperty("MaxSpeed", "20", MM::Integer, false, pAct);
+	   SetPropertyLimits("MaxSpeed", 1, 100);
+   }
+
+   // Acceleration
+   if (HasCommand("SAZ")) {
+	   pAct = new CPropertyAction (this, &ZStage::OnAcceleration);
+	   CreateProperty("Acceleration", "20", MM::Integer, false, pAct);
+	   // XXX The limits on the OptiScan II is actually 4-100.
+	   SetPropertyLimits("Acceleration", 1, 100);
+   }
+
+   // SCurve
+   if (HasCommand("SCZ")) {
+      pAct = new CPropertyAction (this, &ZStage::OnSCurve);
+      CreateProperty("SCurve", "20", MM::Integer, false, pAct);
+      SetPropertyLimits("SCurve", 1, 100);
+   }
 
    ret = UpdateStatus();
    if (ret != DEVICE_OK)
@@ -1700,6 +1787,222 @@ int ZStage::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 
    return DEVICE_OK;
 }
+
+/**
+ * Gets and sets the maximum speed with which the Prior Z-stage travels
+ */
+int ZStage::OnMaxSpeed(MM::PropertyBase* pProp, MM::ActionType eAct) 
+{
+   int ret = ClearPort(*this, *GetCoreCallback(), port_);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   if (eAct == MM::BeforeGet) 
+   {
+      // send command
+      ret = SendSerialCommand(port_.c_str(), "SMZ", "\r");
+      if (ret != DEVICE_OK)
+         return ret;
+
+      // block/wait for acknowledge, or until we time out;
+      std::string answer;
+      ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      int maxSpeed = atoi(answer.c_str());
+      if (maxSpeed < 1 || maxSpeed > 100)
+         return  ERR_UNRECOGNIZED_ANSWER;
+
+      pProp->Set((long)maxSpeed);
+
+   } 
+   else if (eAct == MM::AfterSet) 
+   {
+      long maxSpeed;
+      pProp->Get(maxSpeed);
+
+      std::ostringstream os;
+      os << "SMZ," <<  maxSpeed;
+
+      // send command
+      ret = SendSerialCommand(port_.c_str(), os.str().c_str(), "\r");
+      if (ret != DEVICE_OK)
+         return ret;
+
+      // block/wait for acknowledge, or until we time out;
+      std::string answer;
+      ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,1).compare("0") == 0)
+      {
+         return DEVICE_OK;
+      }
+      else if (answer.substr(0, 1).compare("E") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(2).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+
+   }
+
+   return DEVICE_OK;
+}
+
+
+/**
+ * Gets and sets the Acceleration of the Prior Z-stage travels
+ */
+int ZStage::OnAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct) 
+{
+   int ret = ClearPort(*this, *GetCoreCallback(), port_);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   if (eAct == MM::BeforeGet) 
+   {
+      // send command
+      ret = SendSerialCommand(port_.c_str(), "SAZ", "\r");
+      if (ret != DEVICE_OK)
+         return ret;
+
+      // block/wait for acknowledge, or until we time out;
+      std::string answer;
+      ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      int acceleration = atoi(answer.c_str());
+      if (acceleration < 1 || acceleration > 100)
+         return  ERR_UNRECOGNIZED_ANSWER;
+
+      pProp->Set((long)acceleration);
+
+   } 
+   else if (eAct == MM::AfterSet) 
+   {
+      long acceleration;
+      pProp->Get(acceleration);
+
+      std::ostringstream os;
+      os << "SAZ," <<  acceleration;
+
+      // send command
+      ret = SendSerialCommand(port_.c_str(), os.str().c_str(), "\r");
+      if (ret != DEVICE_OK)
+         return ret;
+
+      // block/wait for acknowledge, or until we time out;
+      std::string answer;
+      ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,1).compare("0") == 0)
+      {
+         return DEVICE_OK;
+      }
+      else if (answer.substr(0, 1).compare("E") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(2).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+
+   }
+
+   return DEVICE_OK;
+}
+
+
+/**
+ * Gets and sets the SCurve of the Prior Z-stage
+ */
+int ZStage::OnSCurve(MM::PropertyBase* pProp, MM::ActionType eAct) 
+{
+   int ret = ClearPort(*this, *GetCoreCallback(), port_);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   if (eAct == MM::BeforeGet) 
+   {
+      // send command
+      ret = SendSerialCommand(port_.c_str(), "SCZ", "\r");
+      if (ret != DEVICE_OK)
+         return ret;
+
+      // block/wait for acknowledge, or until we time out;
+      std::string answer;
+      ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      int sCurve = atoi(answer.c_str());
+      if (sCurve < 1 || sCurve > 100)
+         return  ERR_UNRECOGNIZED_ANSWER;
+
+      pProp->Set((long)sCurve);
+
+   } 
+   else if (eAct == MM::AfterSet) 
+   {
+      long sCurve;
+      pProp->Get(sCurve);
+
+      std::ostringstream os;
+      os << "SCZ," <<  sCurve;
+
+      // send command
+      ret = SendSerialCommand(port_.c_str(), os.str().c_str(), "\r");
+      if (ret != DEVICE_OK)
+         return ret;
+
+      // block/wait for acknowledge, or until we time out;
+      std::string answer;
+      ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+      if (ret != DEVICE_OK)
+         return ret;
+
+      if (answer.substr(0,1).compare("0") == 0)
+      {
+         return DEVICE_OK;
+      }
+      else if (answer.substr(0, 1).compare("E") == 0 && answer.length() > 2)
+      {
+         int errNo = atoi(answer.substr(2).c_str());
+         return ERR_OFFSET + errNo;
+      }
+      return ERR_UNRECOGNIZED_ANSWER;
+
+   }
+
+   return DEVICE_OK;
+}
+
+
+
+bool ZStage::HasCommand(std::string command)
+{
+   int ret = SendSerialCommand(port_.c_str(), command.c_str(), "\r");
+   if (ret != DEVICE_OK)
+      return false;
+
+   // block/wait for acknowledge, or until we time out;
+   std::string answer;
+   ret = GetSerialAnswer(port_.c_str(), "\r", answer);
+   if (ret != DEVICE_OK)
+      return false;
+
+   if (answer.substr(0, 1).compare("E") == 0 && answer.length() > 2)
+   {
+      return false;
+   }
+   return true;
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // NanoZStage

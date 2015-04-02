@@ -5,9 +5,8 @@
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   The interface to the MM core services. 
 //              
-// COPYRIGHT:     University of California, San Francisco, 2006
+// COPYRIGHT:     University of California, San Francisco, 2006-2014
 //                100X Imaging Inc, www.100ximaging.com, 2008
-//                All Rights reserved
 //
 // LICENSE:       This library is free software; you can redistribute it and/or
 //                modify it under the terms of the GNU Lesser General Public
@@ -27,8 +26,6 @@
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
 // AUTHOR:        Nenad Amodaj, nenad@amodaj.com, 06/07/2005
-// 
-// REVISIONS:     see MMCore.h
 //
 // NOTES:                   
 //                Public methods follow slightly different naming conventions than
@@ -39,35 +36,34 @@
 //                The alternative (lowercase function names) convention is used
 //                because all public methods will most likely appear in other
 //                programming environments (Java or Python).
-//
-// CVS:           $Id$
-//
 
 
+#include "../MMDevice/DeviceThreads.h"
+#include "../MMDevice/DeviceUtils.h"
+#include "../MMDevice/ImageMetadata.h"
+#include "../MMDevice/ModuleInterface.h"
 #include "CircularBuffer.h"
-#include "Compressor.h"
-#include "Configuration.h"
 #include "ConfigGroup.h"
+#include "Configuration.h"
 #include "CoreCallback.h"
 #include "CoreProperty.h"
 #include "CoreUtils.h"
-#include "FastLogger.h"
-
+#include "DeviceManager.h"
+#include "Devices/DeviceInstances.h"
 #include "Host.h"
+#include "LogManager.h"
 #include "MMCore.h"
 #include "MMEventCallback.h"
-#include "../MMDevice/DeviceUtils.h"
-#include "../MMDevice/DeviceThreads.h"
-#include "../MMDevice/ModuleInterface.h"
-#include "../MMDevice/ImageMetadata.h"
-#include <assert.h>
-#include <sstream>
+#include "PluginManager.h"
+
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 #include <algorithm>
+#include <assert.h>
+#include <fstream>
+#include <set>
+#include <sstream>
 #include <vector>
-#include <ostream>
-
-#include "boost/date_time/posix_time/posix_time.hpp"
-
 
 
 #ifndef _WINDOWS
@@ -82,19 +78,35 @@
 
 using namespace std;
 
-// constants
-#ifdef linux
-const char* g_logFileName = "/tmp/CoreLog";
-#else
-const char* g_logFileName = "CoreLog";
-#endif
+/*
+ * Important! Read this before changing this file:
+ *
+ * The following (major, minor, patch) triplet is the MMCore API version. Since
+ * 3.0.0, this is maintained according to the rules outlined at
+ * http://semver.org/ . Briefely,
+ *
+ * - Incremant the major version when making backward-incompatible changes
+ *   (changes that will require any existing code to be modified, or that may
+ *   change behavior).
+ * - Increment the minor version when adding methods or functionality without
+ *   breaking backward-compatibility.
+ * - Incremant the patch version when fixing incorrect behavior in a
+ *   backward-compatible manner.
+ *
+ * There is no need to increment the patch number when making changes that do
+ * not change behavior (such as internal refactoring).
+ *
+ * There is no particular correspondence between the Core API version number
+ * and the device/module interface version numbers or the MMStudio application
+ * version number (each version is incremented independently of each other).
+ *
+ * This applies to all classes exposed through the SWIG layer (i.e. the whole
+ * of the public API of the Core), not just CMMCore.
+ */
+const int MMCore_versionMajor = 7;
+const int MMCore_versionMinor = 0;
+const int MMCore_versionPatch = 2;
 
-const char* g_CoreName = "MMCore";
-
-// version info
-const int MMCore_versionMajor = 2;
-const int MMCore_versionMinor = 3;
-const int MMCore_versionBuild = 2;
 
 ///////////////////////////////////////////////////////////////////////////////
 // CMMcore class
@@ -106,159 +118,35 @@ const int MMCore_versionBuild = 2;
  * devices at this point.
  */
 CMMCore::CMMCore() :
-   camera_(0), everSnapped_(false), shutter_(0), focusStage_(0), xyStage_(0), autoFocus_(0), slm_(0), galvo_(0), imageProcessor_(0), pollingIntervalMs_(10), timeoutMs_(5000),
-   autoShutter_(true), callback_(0), configGroups_(0), properties_(0), externalCallback_(0), pixelSizeGroup_(0), cbuf_(0), pPostedErrorsLock_(NULL)
+   logManager_(new mm::LogManager()),
+   appLogger_(logManager_->NewLogger("App")),
+   coreLogger_(logManager_->NewLogger("Core")),
+   everSnapped_(false),
+   pollingIntervalMs_(10),
+   timeoutMs_(5000),
+   autoShutter_(true),
+   callback_(0),
+   configGroups_(0),
+   properties_(0),
+   externalCallback_(0),
+   pixelSizeGroup_(0),
+   cbuf_(0),
+   pluginManager_(new CPluginManager()),
+   deviceManager_(new mm::DeviceManager()),
+   pPostedErrorsLock_(NULL)
 {
    configGroups_ = new ConfigGroupCollection();
    pixelSizeGroup_ = new PixelSizeConfigGroup();
    pPostedErrorsLock_ = new MMThreadLock();
-   logger_ = new FastLogger();
 
-   // build list of error strings
-   errorText_[MMERR_OK] = "No errors.";
-   errorText_[MMERR_GENERIC] = "Core error occurred.";
-   errorText_[MMERR_DEVICE_GENERIC] = "Device error encountered.";
-   errorText_[MMERR_NoDevice] = "Device not defined or initialized.";
-   errorText_[MMERR_SetPropertyFailed] = "Property does not exist, or value not allowed.";
-   errorText_[MMERR_LoadLibraryFailed] = "Unable to load library: file not accessible or corrupted.";
-   errorText_[MMERR_LibraryFunctionNotFound] =
-      "Unable to identify expected interface: the library is not comaptible or corrupted.";
-   errorText_[MMERR_CreateNotFound] =
-      "Unable to identify CreateDevice function: the library is not comaptible or corrupted.";
-   errorText_[MMERR_DeleteNotFound] =
-      "Unable to identify DeleteDevice function: the library is not comaptible or corrupted.";
-   errorText_[MMERR_CreateFailed] = "DeviceCreate function failed.";
-   errorText_[MMERR_DeleteFailed] = "DeviceDelete function failed.";
-   errorText_[MMERR_UnknownModule] = "Current device can't be unloaded: using unknown library.";
-   errorText_[MMERR_UnexpectedDevice] = "Unexpected device encountered.";
-   errorText_[MMERR_ModuleVersionMismatch] = "Module version mismatch.";
-   errorText_[MMERR_DeviceVersionMismatch] = "Device interface version mismatch.";
-   errorText_[MMERR_DeviceUnloadFailed] = "Requested device seems fine, but the current one failed to unload.";
-   errorText_[MMERR_CameraNotAvailable] = "Camera not loaded or initialized.";
-   errorText_[MMERR_InvalidStateDevice] = "Unsupported API. This device is not a state device";
-   errorText_[MMERR_NoConfiguration] = "Configuration not defined";
-   errorText_[MMERR_InvalidPropertyBlock] = "Property block not defined";
-   errorText_[MMERR_UnhandledException] = "Internal inconsistency: unknown system exception encountered";
-   errorText_[MMERR_DevicePollingTimeout] = "Device timed out";
-   errorText_[MMERR_InvalidShutterDevice] = "Unsupported interface. This device is not a shutter.";
-   errorText_[MMERR_DuplicateLabel] = "Specified device label already in use.";
-   errorText_[MMERR_InvalidSerialDevice] = "Unsupported interface. The specified device is not a serial port.";
-   errorText_[MMERR_InvalidSpecificDevice] = "Unsupported interface. Device is not of the correct type.";
-   errorText_[MMERR_InvalidLabel] = "Can't find the device with the specified label.";
-   errorText_[MMERR_FileOpenFailed] = "File open failed.";
-   errorText_[MMERR_InvalidCFGEntry] = "Invalid configuration file line encountered. Wrong number of tokens for the current context.";
-   errorText_[MMERR_InvalidContents] = "Reserved character(s) encountered in the value or name string.";
-   errorText_[MMERR_InvalidCoreProperty] = "Unrecognized core property.";
-   errorText_[MMERR_InvalidCoreValue] = "Core property is read-only or the requested value is not allowed.";
-   errorText_[MMERR_NoConfigGroup] = "Configuration group not defined";
-   errorText_[MMERR_DuplicateConfigGroup] = "Group name already in use.";
-   errorText_[MMERR_CameraBufferReadFailed] = "Camera image buffer read failed.";
-   errorText_[MMERR_CircularBufferFailedToInitialize] = "Failed to initialize circular buffer - memory requirements not adequate.";
-   errorText_[MMERR_CircularBufferEmpty] = "Circular buffer is empty.";
-   errorText_[MMERR_ContFocusNotAvailable] = "Auto-focus focus device not defined.";
-   errorText_[MMERR_BadConfigName] = "Configuration name contains illegale characters (/\\*!')";
-   errorText_[MMERR_NotAllowedDuringSequenceAcquisition] = "This operation can not be executed while sequence acquisition is runnning.";
-   errorText_[MMERR_OutOfMemory] = "Out of memory.";
-	errorText_[MMERR_InvalidImageSequence] = "Issue snapImage before getImage.";
-   errorText_[MMERR_NullPointerException] = "Null Pointer Exception.";
-   errorText_[MMERR_CreatePeripheralFailed] = "Hub failed to create specified peripheral device.";
+   InitializeErrorMessages();
 
-   initializeLogging();
-   CORE_LOG("-------->>\n");
-   CORE_LOG2("Core session started on %D by %s on %s\n", getUserId().c_str(), getHostName().c_str());
-   enableDebugLog(false);
+   callback_ = new CoreCallback(this);
 
-	try
-	{
-		callback_ = new CoreCallback(this);
-		cbuf_ = new CircularBuffer(10); // allocate 10MB initially
+   const unsigned seqBufMegabytes = (sizeof(void*) > 4) ? 250 : 25;
+   cbuf_ = new CircularBuffer(seqBufMegabytes);
 
-		// build the core property collection
-		properties_ = new CorePropertyCollection(this);
-		
-		if( (NULL == callback_) || (NULL == cbuf_) || ( NULL == properties_)  )
-		{
-			CORE_LOG("Error in the core constructor\n initial allocations failed\n");
-		}
-
-		// set-up core properties
-		try
-		{
-
-			// Initialize
-			CoreProperty propInit("0", false);
-			propInit.AddAllowedValue("0");
-			propInit.AddAllowedValue("1");
-			properties_->Add(MM::g_Keyword_CoreInitialize, propInit);
-
-			// Auto shutter
-			CoreProperty propAutoShutter("1", false);
-			propAutoShutter.AddAllowedValue("0");
-			propAutoShutter.AddAllowedValue("1");
-			properties_->Add(MM::g_Keyword_CoreAutoShutter, propAutoShutter);
-
-			// Camera device
-			CoreProperty propCamera;
-			properties_->Add(MM::g_Keyword_CoreCamera, propCamera);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreCamera, "");
-
-			// Shutter device
-			CoreProperty propShutter;
-			properties_->Add(MM::g_Keyword_CoreShutter, propShutter);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreShutter, "");
-
-			// Focus device
-			CoreProperty propFocus;
-			properties_->Add(MM::g_Keyword_CoreFocus, propFocus);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreFocus, "");
-
-			// XYStage device
-			CoreProperty propXYStage;
-			properties_->Add(MM::g_Keyword_CoreXYStage, propXYStage);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreXYStage, "");
-
-			// Auto-focus device
-			CoreProperty propAutoFocus;
-			properties_->Add(MM::g_Keyword_CoreAutoFocus, propAutoFocus);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreAutoFocus, "");
-
-			// Processor device
-			CoreProperty propImageProc;
-			properties_->Add(MM::g_Keyword_CoreImageProcessor, propImageProc);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreImageProcessor, "");
-
-			// SLM device
-			CoreProperty propSLM;
-			properties_->Add(MM::g_Keyword_CoreSLM, propSLM);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreSLM, "");
-
-			// SLM device
-			CoreProperty propGalvo;
-			properties_->Add(MM::g_Keyword_CoreGalvo, propGalvo);
-         properties_->AddAllowedValue(MM::g_Keyword_CoreGalvo, "");
-
-			// channel group
-			CoreProperty propChannelGroup;
-			properties_->Add(MM::g_Keyword_CoreChannelGroup, propChannelGroup);
-			properties_->AddAllowedValue(MM::g_Keyword_CoreChannelGroup, "");
-
-			// Time after which we give up on checking the Busy flag status
-			CoreProperty propBusyTimeoutMs;
-			properties_->Add(MM::g_Keyword_CoreTimeoutMs, propBusyTimeoutMs);
-
-         properties_->Refresh();
-		}
-		catch(CMMError& err)
-		{
-			// trap exceptions and just log the message
-			CORE_LOG1("Error in the core constructor\n%s\n", err.getMsg().c_str());
-		}
-	}
-	catch(bad_alloc& memex)
-	{
-      // trap exceptions and just log the message
-      CORE_LOG1("Error in the core constructor\n%s\n", memex.what() );
-	}
+   CreateCoreProperties();
 }
 
 /**
@@ -267,33 +155,48 @@ CMMCore::CMMCore() :
  */
 CMMCore::~CMMCore()
 {
-   try {
+   try
+   {
+      // TODO We should attempt to continue cleanup beyond the first device
+      // that throws an error.
       reset();
-   } catch (...) {
-      CORE_LOG("Exception occurred in MMCore destructor.\n");
-      ; // don't let any exceptions leak through
    }
-   CORE_LOG("Core session ended on %D\n");
+   catch (...)
+   {
+      LOG_ERROR(coreLogger_) << "Exception caught in CMMCore destructor.";
+   }
 
-   pluginManager_.DeleteModuleLocks();
-
-   delete logger_;
    delete callback_;
    delete configGroups_;
    delete properties_;
    delete cbuf_;
    delete pixelSizeGroup_;
    delete pPostedErrorsLock_;
+
+   LOG_INFO(coreLogger_) << "Core session ended";
 }
 
 /**
- * Delete an existing log file and start a new one.
+ * Set the primary Core log file.
+ *
+ * @param filename The log filename. If empty or null, the primary log file is
+ * disabled.
  */
-void CMMCore::clearLog()
+void CMMCore::setPrimaryLogFile(const char* filename, bool truncate) throw (CMMError)
 {
-   getLoggerInstance()->Reset();
-   CORE_LOG("-------->>\n");
-   CORE_LOG2("\nLog cleared and re-started on %D by %s on %s\n", getUserId().c_str(), getHostName().c_str());
+   std::string filenameStr;
+   if (filename)
+      filenameStr = filename;
+
+   logManager_->SetPrimaryLogFilename(filenameStr, truncate);
+}
+
+/**
+ * Return the name of the primary Core log file.
+ */
+std::string CMMCore::getPrimaryLogFile() const
+{
+   return logManager_->GetPrimaryLogFilename();
 }
 
 /**
@@ -301,7 +204,7 @@ void CMMCore::clearLog()
  */
 void CMMCore::logMessage(const char* msg)
 {
-   CORE_LOG1("> %s\n", msg);
+   appLogger_(mm::logging::LogLevelInfo, msg);
 }
 
 
@@ -310,13 +213,9 @@ void CMMCore::logMessage(const char* msg)
  */
 void CMMCore::logMessage(const char* msg, bool debugOnly)
 {
-  if (debugOnly) {
-    CORE_DEBUG1("> %s\n", msg);
-  } else {
-    CORE_LOG1("> %s\n", msg);
-  }
+   appLogger_(debugOnly ? mm::logging::LogLevelDebug :
+         mm::logging::LogLevelInfo, msg);
 }
-
 
 
 /**
@@ -325,10 +224,13 @@ void CMMCore::logMessage(const char* msg, bool debugOnly)
  */
 void CMMCore::enableDebugLog(bool enable)
 {
-   debugLog_ = enable;
-   getLoggerInstance()->SetPriorityLevel(debugLog_?IMMLogger::debug:IMMLogger::info);
+   logManager_->SetPrimaryLogLevel(enable ? mm::logging::LogLevelTrace :
+         mm::logging::LogLevelInfo);
+}
 
-   CORE_LOG1("Debug logging %s\n", enable ? "enabled" : "disabled");
+bool CMMCore::debugLogEnabled()
+{
+   return (logManager_->GetPrimaryLogLevel() < mm::logging::LogLevelInfo);
 }
 
 /**
@@ -337,8 +239,57 @@ void CMMCore::enableDebugLog(bool enable)
  */
 void CMMCore::enableStderrLog(bool enable)
 {
-   getLoggerInstance()->EnableLogToStderr(enable);
+   logManager_->SetUseStdErr(enable);
 }
+
+bool CMMCore::stderrLogEnabled()
+{
+   return logManager_->IsUsingStdErr();
+}
+
+
+/**
+ * Start capturing logging output into an additional file.
+ *
+ * @param filename The filename to which the log will be captured
+ * @param enableDebug Whether to include debug logging (regardless of whether
+ * debug logging is enabled for the primary log).
+ * @param truncate If false, append to the file.
+ * @param synchronous If true, enable synchronous logging for this file
+ * (logging calls will not return until the output is written to the file,
+ * facilitating the debugging of crashes in some cases, but with a performance
+ * cost).
+ * @returns A handle required when calling stopSecondaryLogFile().
+ */
+int CMMCore::startSecondaryLogFile(const char* filename, bool enableDebug,
+      bool truncate, bool synchronous) throw (CMMError)
+{
+   if (!filename)
+      throw CMMError("Filename is null");
+
+   using namespace mm::logging;
+   typedef mm::LogManager::LogFileHandle LogFileHandle;
+
+   LogFileHandle handle = logManager_->AddSecondaryLogFile(
+            (enableDebug ? LogLevelTrace : LogLevelInfo),
+            filename, truncate,
+            (synchronous ? SinkModeSynchronous : SinkModeAsynchronous));
+   return static_cast<int>(handle);
+}
+
+
+/**
+ * Stop capturing logging output into an additional file.
+ *
+ * @param handle The secondary log handle returned by startSecondaryLogFile().
+ */
+void CMMCore::stopSecondaryLogFile(int handle) throw (CMMError)
+{
+   typedef mm::LogManager::LogFileHandle LogFileHandle;
+   LogFileHandle h = static_cast<LogFileHandle>(handle);
+   logManager_->RemoveSecondaryLogFile(h);
+}
+
 
 /*!
  Displays current user name.
@@ -380,7 +331,7 @@ string CMMCore::getVersionInfo() const
 {
    ostringstream txt;
    string debug;
-   txt << "MMCore version " << MMCore_versionMajor << "." << MMCore_versionMinor << "." << MMCore_versionBuild;
+   txt << "MMCore version " << MMCore_versionMajor << "." << MMCore_versionMinor << "." << MMCore_versionPatch;
    #ifdef _DEBUG
    txt << " (debug)";
    #endif
@@ -390,51 +341,59 @@ string CMMCore::getVersionInfo() const
 /**
  * Get available devices from the specified device library.
  */
-vector<string> CMMCore::getAvailableDevices(const char* library) throw (CMMError)
+std::vector<std::string>
+CMMCore::getAvailableDevices(const char* moduleName) throw (CMMError)
 {
-   try
-   {
-      return CPluginManager::GetAvailableDevices(library);
-   }
-   catch (CMMError& /*e*/)
-   {
-      // logError("core", e.getMsg().c_str());
-      throw;
-   }
-}
-/**
- * Get descriptions for available devices from the specified library.
- */
-vector<string> CMMCore::getAvailableDeviceDescriptions(const char* library) throw (CMMError)
-{
-   try
-   {
-      return CPluginManager::GetAvailableDeviceDescriptions(library);
-   }
-   catch (CMMError& e)
-   {
-      logError("core", e.getMsg().c_str());
-      throw;
-   }
-}
-/**
- * Get type information for available devices from the specified library.
- */
-vector<long> CMMCore::getAvailableDeviceTypes(const char* library) throw (CMMError)
-{
-   try
-   {
-      return CPluginManager::GetAvailableDeviceTypes(library);
-   }
-   catch (CMMError& e)
-   {
-      logError("core", e.getMsg().c_str());
-      throw;
-   }
+   boost::shared_ptr<LoadedDeviceAdapter> module =
+      pluginManager_->GetDeviceAdapter(moduleName);
+   return module->GetAvailableDeviceNames();
 }
 
 /**
- * Displays the module and device interface versions.
+ * Get descriptions for available devices from the specified library.
+ */
+std::vector<std::string>
+CMMCore::getAvailableDeviceDescriptions(const char* moduleName) throw (CMMError)
+{
+   // XXX It is a little silly that we return the list of descriptions, rather
+   // than provide access to the description of each device.
+   boost::shared_ptr<LoadedDeviceAdapter> module =
+      pluginManager_->GetDeviceAdapter(moduleName);
+   std::vector<std::string> names = module->GetAvailableDeviceNames();
+   std::vector<std::string> descriptions;
+   descriptions.reserve(names.size());
+   for (std::vector<std::string>::const_iterator
+         it = names.begin(), end = names.end(); it != end; ++it)
+   {
+      descriptions.push_back(module->GetDeviceDescription(*it));
+   }
+   return descriptions;
+}
+
+/**
+ * Get type information for available devices from the specified library.
+ */
+std::vector<long>
+CMMCore::getAvailableDeviceTypes(const char* moduleName) throw (CMMError)
+{
+   // XXX It is a little silly that we return the list of types, rather than
+   // provide access to the type of each device.
+   boost::shared_ptr<LoadedDeviceAdapter> module =
+      pluginManager_->GetDeviceAdapter(moduleName);
+   std::vector<std::string> names = module->GetAvailableDeviceNames();
+   std::vector<long> types;
+   types.reserve(names.size());
+   for (std::vector<std::string>::const_iterator
+         it = names.begin(), end = names.end(); it != end; ++it)
+   {
+      MM::DeviceType devType = module->GetAdvertisedDeviceType(*it);
+      types.push_back(static_cast<long>(devType));
+   }
+   return types;
+}
+
+/**
+ * Returns the module and device interface versions.
  */
 string CMMCore::getAPIVersionInfo() const
 {
@@ -450,21 +409,38 @@ string CMMCore::getAPIVersionInfo() const
 Configuration CMMCore::getSystemState()
 {
    Configuration config;
-   vector<string> devices = pluginManager_.GetDeviceList();
-   vector<string>::const_iterator i;
-   for (i=devices.begin(); i!=devices.end(); i++)
+   vector<string> devices = deviceManager_->GetDeviceList();
+   for (vector<string>::const_iterator i = devices.begin(), end = devices.end(); i != end; ++i)
    {
-      MM::Device* pDev = getDevice(i->c_str());
-      for (unsigned j=0; j<pDev->GetNumberOfProperties(); j++)
+      boost::shared_ptr<DeviceInstance> pDev = deviceManager_->GetDevice(*i);
+      mm::DeviceModuleLockGuard guard(pDev);
+      std::vector<std::string> propertyNames = pDev->GetPropertyNames();
+      for (std::vector<std::string>::const_iterator it = propertyNames.begin(), end = propertyNames.end();
+            it != end; ++it)
       {
-         char name[MM::MaxStrLength]="";
-         char val[MM::MaxStrLength]="";
-         bool readOnly;
-         pDev->GetPropertyName(j, name);
-         pDev->GetPropertyReadOnly(name, readOnly);
-         pDev->GetProperty(name, val);
-         config.addSetting(PropertySetting(i->c_str(), name, val, readOnly));
-     }   
+         std::string val;
+         try
+         {
+            val = pDev->GetProperty(*it);
+         }
+         catch (const CMMError&)
+         {
+            // XXX BUG This should not be ignored, but the interface does not
+            // allow throwing from this function. Keeping old behavior for now.
+         }
+
+         bool readOnly = false;
+         try
+         {
+            readOnly = pDev->GetPropertyReadOnly(it->c_str());
+         }
+         catch (const CMMError&)
+         {
+            // XXX BUG This should not be ignored, but the interface does not
+            // allow throwing from this function. Keeping old behavior for now.
+         }
+         config.addSetting(PropertySetting(i->c_str(), it->c_str(), val.c_str(), readOnly));
+      }
    }
 
    // add core properties
@@ -486,6 +462,7 @@ Configuration CMMCore::getSystemState()
  */
 Configuration CMMCore::getSystemStateCache() const
 {
+   MMThreadGuard scg(stateCacheLock_);
    return stateCache_;
 }
 
@@ -496,6 +473,7 @@ Configuration CMMCore::getSystemStateCache() const
 Configuration CMMCore::getConfigState(const char* group, const char* config) throw (CMMError)
 {
    Configuration cfgData = getConfigData(group, config);
+
    Configuration state;
    for (size_t i=0; i < cfgData.size(); i++)
    {
@@ -532,22 +510,44 @@ Configuration CMMCore::getConfigGroupStateFromCache(const char* group) throw (CM
  */
 Configuration CMMCore::getConfigGroupState(const char* group, bool fromCache) throw (CMMError)
 {
+   CheckConfigGroupName(group);
 
-   vector<string> configs = configGroups_->GetAvailableConfigs(group);
+   std::vector<std::string> allPresets =
+      configGroups_->GetAvailableConfigs(group);
+
    Configuration state;
-   for (size_t i=0; i<configs.size(); i++) {
-      Configuration cfgData = getConfigData(group, configs[i].c_str());
-      for (size_t i=0; i < cfgData.size(); i++)
+
+   // Loop over every property that appears in every preset, and collect the
+   // value (from cache or from devices).
+   for (std::vector<std::string>::const_iterator
+         it = allPresets.begin(), end = allPresets.end(); it != end; ++it)
+   {
+      Configuration preset = getConfigData(group, it->c_str());
+
+      for (size_t i = 0; i < preset.size(); i++)
       {
-         PropertySetting cs = cfgData.getSetting(i); // config setting
-         if (!state.isPropertyIncluded(cs.getDeviceLabel().c_str(), cs.getPropertyName().c_str()))
+         PropertySetting cs = preset.getSetting(i);
+         std::string deviceLabel = cs.getDeviceLabel();
+         std::string propertyName = cs.getPropertyName();
+
+         // Skip properties that we have already added.
+         if (!state.isPropertyIncluded(deviceLabel.c_str(),
+                  propertyName.c_str()))
          {
-            string value = "";
+            std::string value;
             if (fromCache)
-               value = getPropertyFromCache(cs.getDeviceLabel().c_str(), cs.getPropertyName().c_str());
+            {
+               value = getPropertyFromCache(deviceLabel.c_str(),
+                     propertyName.c_str());
+            }
             else
-               value = getProperty(cs.getDeviceLabel().c_str(), cs.getPropertyName().c_str());
-            PropertySetting ss(cs.getDeviceLabel().c_str(), cs.getPropertyName().c_str(), value.c_str()); // state setting
+            {
+               value = getProperty(deviceLabel.c_str(),
+                     propertyName.c_str());
+            }
+
+            PropertySetting ss(deviceLabel.c_str(), propertyName.c_str(),
+                  value.c_str());
             state.addSetting(ss);
          }
       }
@@ -574,122 +574,185 @@ void CMMCore::setSystemState(const Configuration& conf)
          {
             setProperty(s.getDeviceLabel().c_str(), s.getPropertyName().c_str(), s.getPropertyValue().c_str());
          }
-         catch (CMMError& err)
+         catch (CMMError&)
          {
-            CORE_LOG3("Property setting failed: %s-%s-%s\n",
-            s.getDeviceLabel().c_str(), s.getPropertyName().c_str(), s.getPropertyValue().c_str());
-            CORE_LOG1("%s\n", err.getMsg().c_str());
+            // Do not give up yet.
          }
       }
    }
+   // TODO Should throw if any of the property setting failed.
 
    updateSystemStateCache();
 }
 
 /**
- * Add a list of paths to the search path of the plugin manager.
+ * Return the current device adapter search paths.
+ */
+std::vector<std::string> CMMCore::getDeviceAdapterSearchPaths()
+{
+   return pluginManager_->GetSearchPaths();
+}
+
+/**
+ * Set the device adapter search paths.
  *
- * We need to make sure that the drivers discovered with getDeviceLibraries()
- * can actually be loaded. This is only possible if we require the search
- * path to be set in the plugin manager, and force the plugin manager respect
- * this setting for both discovery and loading drivers.
+ * Upon subsequent attempts to load device adapters, these paths (and only
+ * these paths) will be searched. Calling this function has no effect on device
+ * adapters that have already been loaded.
  *
- * @param path    a list of search paths in a single string
+ * If you want to simply add to the list of paths, you must first retrieve the
+ * current paths by calling getDeviceAdapterSearchPaths().
+ *
+ * @param paths   the device adapter search paths
+ */
+void CMMCore::setDeviceAdapterSearchPaths(const std::vector<std::string>& paths)
+{
+   pluginManager_->SetSearchPaths(paths.begin(), paths.end());
+}
+
+/**
+ * Return the names of discoverable device adapters.
+ *
+ * Note that this list is constructed based on filename matching in the current
+ * search paths. This method does not check whether the files are valid and
+ * compatible device adapters.
+ */
+std::vector<std::string> CMMCore::getDeviceAdapterNames() throw (CMMError)
+{
+   return pluginManager_->GetAvailableDeviceAdapters();
+}
+
+/**
+ * Add a list of paths to the legacy device adapter search path list.
+ *
+ * Do not use in new code. This adds to a global (static) fallback list that is
+ * only searched when a device adapter is not located in any of the directories
+ * set by setDeviceAdapterSearchPaths(). The list is initially empty.
+ *
+ * @deprecated Use the non-static setDeviceAdapterSearchPaths() instead.
+ *
+ * @param path   a list of search paths in a single string
  */
 void CMMCore::addSearchPath(const char *path)
 {
-   CPluginManager::AddSearchPath(string(path));
+   if (!path)
+      return;
+
+   CPluginManager::AddLegacyFallbackSearchPath(path);
 }
 
 /**
  * Returns a list of library names available in the search path.
+ *
+ * Do not use in new code. For backward compatibility, this method returns the
+ * list of device adapters availbable in the default search path(s) and the
+ * paths added via addSearchPath(). For obvious reasons (since this method is
+ * static), it will not return device adapters found in the search paths set by
+ * setDeviceAdapterSearchPaths(). Thus, this method will only work as expected
+ * when called from legacy code that does not make use of
+ * setDeviceAdapterSearchPaths().
+ *
+ * @deprecated Use the non-static getDeviceAdapterNames() instead.
  */
 vector<string> CMMCore::getDeviceLibraries() throw (CMMError)
 {
-   return CPluginManager::GetModules();
+   return CPluginManager::GetModulesInLegacyFallbackSearchPaths();
 }
 
 /**
  * Loads a device from the plugin library.
  * @param label    assigned name for the device during the core session
- * @param library  the name of the plugin library (dll). The name should be supplied without the
- *                 extension and path since the naming convention and locations are platform
- *                 dependent
- * @param device   the name of the device. The name must correspond to one of the names recognized
+ * @param moduleName  the name of the device adapter module (short name, not full file name)
+ * @param deviceName   the name of the device. The name must correspond to one of the names recognized
  *                 by the specific plugin library.
  */
-void CMMCore::loadDevice(const char* label, const char* library, const char* device) throw (CMMError)
+void CMMCore::loadDevice(const char* label, const char* moduleName, const char* deviceName) throw (CMMError)
 {
+   CheckDeviceLabel(label);
+   if (!moduleName)
+      throw CMMError("Null device adapter name");
+   if (!deviceName)
+      throw CMMError("Null device name");
+
+   // Logger for logging from device adapter code
+   mm::logging::Logger deviceLogger =
+      logManager_->NewLogger("dev:" + std::string(label));
+   // Logger for logging related to the device, by us the Core
+   mm::logging::Logger coreLogger =
+      logManager_->NewLogger("Core:dev:" + std::string(label));
+
+   LOG_DEBUG(coreLogger_) << "Will load device " << deviceName <<
+      " from " << moduleName;
 
    try
    {
-      MM::Device* pDevice = pluginManager_.LoadDevice(label, library, device);
-      CORE_LOG3("Device %s loaded from %s and labeled as %s\n", device, library, label);
+      boost::shared_ptr<LoadedDeviceAdapter> module =
+         pluginManager_->GetDeviceAdapter(moduleName);
+      boost::shared_ptr<DeviceInstance> pDevice =
+         deviceManager_->LoadDevice(module, deviceName, label, this,
+               deviceLogger, coreLogger);
       pDevice->SetCallback(callback_);
-      assignDefaultRole(pDevice);
    }
-   catch (CMMError& err)
+   catch (const CMMError& e)
    {
-      // augment the error message with the core text
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      logError("MMCore::loadDevice", err.getMsg().c_str());
-      throw;
+      throw CMMError("Failed to load device " + ToQuotedString(deviceName) +
+            " from adapter module " + ToQuotedString(moduleName),
+            e);
    }
+
+   LOG_INFO(coreLogger_) << "Did load device " << deviceName <<
+      " from " << moduleName << "; label = " << label;
 }
 
-void CMMCore::assignDefaultRole(MM::Device* pDevice)
+void CMMCore::assignDefaultRole(boost::shared_ptr<DeviceInstance> pDevice)
 {
    // default special roles for particular devices
    // The roles which are assigned at the load time will make sense for a simple
    // configuration. More complicated configurations will typically override default settings.
-   char label[MM::MaxStrLength];
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   pDevice->GetLabel(label);
+   mm::DeviceModuleLockGuard guard(pDevice);
+   const std::string label(pDevice->GetLabel());
+
    switch(pDevice->GetType())
    {
       case MM::CameraDevice:
-         /* >>> Linux build asserts false here - apparently rtti does not work accross DLL!?
-         camera_ = dynamic_cast<MM::Camera*>(pDevice);
-         assert(camera_);
-         */
-         camera_ = static_cast<MM::Camera*>(pDevice);
-         CORE_LOG1("Device %s set as default camera.\n", label);
-      break;
-
-      case MM::StateDevice:
-         // nothing to do for now
-      break;
+         currentCameraDevice_ =
+            boost::static_pointer_cast<CameraInstance>(pDevice);
+         LOG_INFO(coreLogger_) << "Default camera set to " << label;
+         break;
 
       case MM::ShutterDevice:
-         shutter_ = static_cast<MM::Shutter*>(pDevice);
-         //assignImageSynchro(label);
-         CORE_LOG1("Device %s set as default shutter.\n", label);
-      break;
+         currentShutterDevice_ =
+            boost::static_pointer_cast<ShutterInstance>(pDevice);
+         LOG_INFO(coreLogger_) << "Default shutter set to " << label;
+         break;
 
       case MM::XYStageDevice:
-         xyStage_ = static_cast<MM::XYStage*>(pDevice);
-         CORE_LOG1("Device %s set as default xyStage.\n", label);
-      break;
+         currentXYStageDevice_ =
+            boost::static_pointer_cast<XYStageInstance>(pDevice);
+         LOG_INFO(coreLogger_) << "Default xy stage set to " << label;
+         break;
 
       case MM::AutoFocusDevice:
-         autoFocus_ = static_cast<MM::AutoFocus*>(pDevice);
-         CORE_LOG1("Device %s set as default auto-focus.\n", label);
-      break;
+         currentAutofocusDevice_ =
+            boost::static_pointer_cast<AutoFocusInstance>(pDevice);
+         LOG_INFO(coreLogger_) << "Default autofocus set to " << label;
+         break;
 
       case MM::SLMDevice:
-         slm_ = static_cast<MM::SLM*>(pDevice);
-         CORE_LOG1("Device %s set as default SLM.\n", label);
-      break;
+         currentSLMDevice_ =
+            boost::static_pointer_cast<SLMInstance>(pDevice);
+         LOG_INFO(coreLogger_) << "Default SLM set to " << label;
+         break;
 
       case MM::GalvoDevice:
-         galvo_ = static_cast<MM::Galvo*>(pDevice);
-         CORE_LOG1("Device %s set as default Galvo.\n", label);
-      break;
+         currentGalvoDevice_ =
+            boost::static_pointer_cast<GalvoInstance>(pDevice);
+         LOG_INFO(coreLogger_) << "Default galvo set to " << label;
+         break;
 
       default:
          // no action on unrecognized device
-         //CORE_LOG1("%s: unknown device type\n", label);
-     break;
+         break;
    }
 }
 
@@ -699,53 +762,15 @@ void CMMCore::assignDefaultRole(MM::Device* pDevice)
 void CMMCore::unloadDevice(const char* label///< the name of the device to unload
                            ) throw (CMMError)
 {
-   MM::Device* pDevice = getDevice(label);
-   
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+
    try {
-   
-      switch(pDevice->GetType())
-      {
-         case MM::CameraDevice:
-            camera_ = 0;
-            CORE_LOG("default camera unloaded.\n");
-         break;
-
-         case MM::StateDevice:
-            // nothing to do for now
-         break;
-
-         case MM::ShutterDevice:
-            shutter_ = 0;
-            CORE_LOG("default shutter unloaded.\n");
-         break;
-
-         case MM::XYStageDevice:
-            xyStage_ = 0;
-            CORE_LOG("default xyStage unloaded.\n");
-         break;
-
-         case MM::AutoFocusDevice:
-            autoFocus_ = 0;
-            CORE_LOG("default auto-focus unloaded.\n");
-         break;
-
-         case MM::SLMDevice:
-            slm_ = 0;
-            CORE_LOG("default SLM unloaded.\n");
-         break;
-
-         default:
-            // no action on unrecognized device
-         break;
-      }
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      pluginManager_.UnloadDevice(pDevice);
-        
-      
+      mm::DeviceModuleLockGuard guard(pDevice);
+      LOG_DEBUG(coreLogger_) << "Will unload device " << label;
+      deviceManager_->UnloadDevice(pDevice);
+      LOG_DEBUG(coreLogger_) << "Did unload device " << label;
    }
    catch (CMMError& err) {
-      // augment the error message with the core text
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
       logError("MMCore::unloadDevice", err.getMsg().c_str());
       throw; 
    }
@@ -758,42 +783,32 @@ void CMMCore::unloadDevice(const char* label///< the name of the device to unloa
 void CMMCore::unloadAllDevices() throw (CMMError)
 {
    try {
-
-      // clear all roles
-      camera_ = 0;
-      shutter_ = 0;
-      focusStage_ = 0;
-      xyStage_ = 0;
-      autoFocus_ = 0;
-      imageProcessor_ = 0;
-      slm_ = 0;
-
-      // unload modules
-      pluginManager_.UnloadAllDevices();
-      CORE_LOG("All devices unloaded.\n");
-      imageSynchro_.clear();
-      
-
-      // clear configurations
-      CConfigMap::const_iterator it;
-      for (it = configs_.begin(); it != configs_.end(); it++)
-      {
-         delete it->second;
-      }
-      configs_.clear();
-
       configGroups_->Clear();
 
       //selected channel group is no longer valid
       //channelGroup_ = "":
-	   properties_->Refresh();
+
+      // clear pixel size configurations
+      if (!pixelSizeGroup_->IsEmpty())
+      {
+         std::vector<std::string> pixelSizes = pixelSizeGroup_->GetAvailable();
+         for (std::vector<std::string>::iterator it = pixelSizes.begin();
+               it != pixelSizes.end(); it++)
+         {
+            pixelSizeGroup_->Delete((*it).c_str());
+         }
+      }
+
+      LOG_DEBUG(coreLogger_) << "Will unload all devices";
+      deviceManager_->UnloadAllDevices();
+      LOG_INFO(coreLogger_) << "Did unload all devices";
    
-     // clear equipment definitions ???
-	  // TODO
+	   properties_->Refresh();
+
+      // TODO
+      // clear equipment definitions ???
    }
    catch (CMMError& err) {
-      // augment the error message with the core text
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
       logError("MMCore::unloadAllDevices", err.getMsg().c_str());
       throw; 
    }
@@ -833,15 +848,9 @@ void CMMCore::reset() throw (CMMError)
       delete i->second;
    propBlocks_.clear();
 
-   // clear configurations
-   CConfigMap::const_iterator j;
-   for (j = configs_.begin(); j != configs_.end(); j++)
-      delete j->second;
-   configs_.clear();
-
    properties_->Refresh();
 
-   CORE_LOG("System reset at %D.\n");
+   LOG_INFO(coreLogger_) << "System reset";
 }
 
 
@@ -852,29 +861,28 @@ void CMMCore::reset() throw (CMMError)
  */
 void CMMCore::initializeAllDevices() throw (CMMError)
 {
-   vector<string> devices = pluginManager_.GetDeviceList();
-   CORE_LOG1("Starting initialization sequence for %d devices...\n", devices.size());
+   vector<string> devices = deviceManager_->GetDeviceList();
+   LOG_INFO(coreLogger_) << "Will initialize " << devices.size() << " devices";
 
    for (size_t i=0; i<devices.size(); i++)
    {
-      MM::Device* pDevice;
+      boost::shared_ptr<DeviceInstance> pDevice;
       try {
-         pDevice = pluginManager_.GetDevice(devices[i].c_str());
+         pDevice = deviceManager_->GetDevice(devices[i]);
       }
       catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         logError(devices[i].c_str(), err.getMsg().c_str(), __FILE__, __LINE__);
+         logError(devices[i].c_str(), err.getMsg().c_str());
          throw;
       }
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      int nRet = pDevice->Initialize();
-      if (nRet != DEVICE_OK)
-      {
-         logError(devices[i].c_str(), getDeviceErrorText(nRet, pDevice).c_str(), __FILE__, __LINE__);
-         throw CMMError(getDeviceErrorText(nRet, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-      }
-      CORE_LOG1("Device %s initialized.\n", devices[i].c_str());
+      mm::DeviceModuleLockGuard guard(pDevice);
+      LOG_INFO(coreLogger_) << "Will initialize device " << devices[i];
+      pDevice->Initialize();
+      LOG_INFO(coreLogger_) << "Did initialize device " << devices[i];
+
+      assignDefaultRole(pDevice);
    }
+
+   LOG_INFO(coreLogger_) << "Finished initializing " << devices.size() << " devices";
 
    updateCoreProperties();
 }
@@ -895,6 +903,8 @@ void CMMCore::updateCoreProperties() throw (CMMError)
 
 void CMMCore::updateCoreProperty(const char* propName, MM::DeviceType devType) throw (CMMError)
 {
+   CheckPropertyName(propName);
+
    vector<string> devices = getLoadedDevicesOfType(devType);
    devices.push_back(""); // add empty value
    properties_->ClearAllowedValues(propName);
@@ -910,19 +920,15 @@ void CMMCore::updateCoreProperty(const char* propName, MM::DeviceType devType) t
 void CMMCore::initializeDevice(const char* label ///< the device to initialize
                                ) throw (CMMError)
 {
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
 
-   int nRet = pDevice->Initialize();
-   if (nRet != DEVICE_OK)
-   {
-      logError(label, getDeviceErrorText(nRet, pDevice).c_str(), __FILE__, __LINE__);
-      throw CMMError(getDeviceErrorText(nRet, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+
+   LOG_INFO(coreLogger_) << "Will initialize device " << label;
+   pDevice->Initialize();
+   LOG_INFO(coreLogger_) << "Did initialize device " << label;
    
    updateCoreProperties();
-
-   CORE_LOG1("Device %s initialized.\n", label);
 }
 
 
@@ -932,8 +938,13 @@ void CMMCore::initializeDevice(const char* label ///< the device to initialize
  */
 void CMMCore::updateSystemStateCache()
 {
-   stateCache_ = getSystemState();
-   CORE_LOG("System state cache updated.\n");
+   LOG_DEBUG(coreLogger_) << "Will update system state cache";
+   Configuration wk = getSystemState();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_ = wk;
+   }
+   LOG_INFO(coreLogger_) << "Did update system state cache";
 }
 
 /**
@@ -941,11 +952,11 @@ void CMMCore::updateSystemStateCache()
  */
 MM::DeviceType CMMCore::getDeviceType(const char* label) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
       return MM::CoreDevice;
 
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   mm::DeviceModuleLockGuard guard(pDevice);
    return pDevice->GetType();
 }
 
@@ -955,46 +966,43 @@ MM::DeviceType CMMCore::getDeviceType(const char* label) throw (CMMError)
  */
 std::string CMMCore::getDeviceLibrary(const char* label) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
       return "";
    
-   MM::Device* pDevice = getDevice(label);
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   char moduleName[MM::MaxStrLength];
-   pDevice->GetModuleName(moduleName);
-   return string(moduleName);
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetAdapterModule()->GetName();
 }
 
 /**
- * Unload a library with a particular name. Experimental.
+ * Forcefully unload a library. Experimental. Don't use.
  */
 void CMMCore::unloadLibrary(const char* moduleName) throw (CMMError)
 {
+  	if (moduleName == 0)
+      throw CMMError(errorText_[MMERR_NullPointerException],  MMERR_NullPointerException);
+
    try {
-      vector<string> devices = pluginManager_.GetDeviceList();
+      vector<string> devices = deviceManager_->GetDeviceList();
       vector<string>::reverse_iterator it;
       for (it=devices.rbegin(); it != devices.rend(); it++)
       {
-         MM::Device* pDev = pluginManager_.GetDevice((*it).c_str());
-		 MMThreadGuard guard(pluginManager_.getModuleLock(pDev));
+         boost::shared_ptr<DeviceInstance> pDev = deviceManager_->GetDevice(*it);
+         mm::DeviceModuleLockGuard guard(pDev);
 
-         char deviceLabel[MM::MaxStrLength] = "";
-         char deviceModuleName[MM::MaxStrLength] = "";
-         pDev->GetLabel(deviceLabel);
-         pDev->GetModuleName(deviceModuleName);
-         if (0 == strcmp(moduleName, deviceModuleName))
+         if (pDev->GetAdapterModule()->GetName() == moduleName)
          {
             try {
-               unloadDevice(deviceLabel);
+               unloadDevice(pDev->GetLabel().c_str());
             } catch (CMMError& /*e*/) {} // ignore error; device may already have been unloaded
          }
       }
-      pluginManager_.UnloadPluginLibrary(moduleName);
+      pluginManager_->UnloadPluginLibrary(moduleName);
    }
    catch (CMMError& /* err */)
    {
-      logError(moduleName, "Library updating failed.", __FILE__, __LINE__);
+      logError(moduleName, "Library updating failed.");
       throw;
    }
 }
@@ -1006,15 +1014,12 @@ void CMMCore::unloadLibrary(const char* moduleName) throw (CMMError)
  */
 std::string CMMCore::getDeviceName(const char* label) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
       return "Core";
-   
-   MM::Device* pDevice = getDevice(label);
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   char name[MM::MaxStrLength];
-   pDevice->GetName(name);
-   return string(name);
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetName();
 }
 
 /**
@@ -1022,14 +1027,12 @@ std::string CMMCore::getDeviceName(const char* label) throw (CMMError)
  */
 std::string CMMCore::getParentLabel(const char* label) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
+      // XXX Should be a throw
       return "";
-   
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   char id[MM::MaxStrLength];
-   pDevice->GetParentID(id);
-   return string(id);
+   boost::shared_ptr<DeviceInstance> device = deviceManager_->GetDevice(label);
+   mm::DeviceModuleLockGuard guard(device);
+   return device->GetParentID();
 }
 
 /**
@@ -1037,11 +1040,20 @@ std::string CMMCore::getParentLabel(const char* label) throw (CMMError)
  */ 
 void CMMCore::setParentLabel(const char* label, const char* parentLabel) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
+      // XXX Should be a throw
       return; // core can't have parent ID
-   
-   MM::Device* pDev = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDev));
+   boost::shared_ptr<DeviceInstance> pDev = deviceManager_->GetDevice(label);
+   if (parentLabel && std::string(parentLabel).empty()) {
+      // Empty label is acceptable, meaning no parent
+   }
+   else {
+      // Note that the parent device is not checked for existence
+      // XXX Should we require that the parent device exist?
+      CheckDeviceLabel(parentLabel);
+   }
+
+   mm::DeviceModuleLockGuard guard(pDev);
    pDev->SetParentID(parentLabel);
 }
 
@@ -1051,15 +1063,13 @@ void CMMCore::setParentLabel(const char* label, const char* parentLabel) throw (
  * "Description" is determined by the library and is immutable.
  */
 std::string CMMCore::getDeviceDescription(const char* label) throw (CMMError)
-{
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+{	
+   if (IsCoreDeviceLabel(label))
       return "Core device";
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
    
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   char name[MM::MaxStrLength];
-   pDevice->GetDescription(name);
-   return string(name);
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetDescription();
 }
 
 
@@ -1076,13 +1086,11 @@ std::string CMMCore::getDeviceDescription(const char* label) throw (CMMError)
  */
 double CMMCore::getDeviceDelayMs(const char* label) throw (CMMError)
 {
-
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return 0.0;
-   }
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+
+   mm::DeviceModuleLockGuard guard(pDevice);
    return pDevice->GetDelayMs();
 }
 
@@ -1096,11 +1104,11 @@ double CMMCore::getDeviceDelayMs(const char* label) throw (CMMError)
  */
 void CMMCore::setDeviceDelayMs(const char* label, double delayMs) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
       return; // ignore
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
 
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   mm::DeviceModuleLockGuard guard(pDevice);
    pDevice->SetDelayMs(delayMs);
 }
 
@@ -1112,12 +1120,11 @@ void CMMCore::setDeviceDelayMs(const char* label, double delayMs) throw (CMMErro
  */
 bool CMMCore::usesDeviceDelay(const char* label) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return false;
-   }
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+
+   mm::DeviceModuleLockGuard guard(pDevice);
    return pDevice->UsesDelay();
 }
 
@@ -1128,8 +1135,11 @@ bool CMMCore::usesDeviceDelay(const char* label) throw (CMMError)
  */
 bool CMMCore::deviceBusy(const char* label) throw (CMMError)
 {
-   MM::Device* pDevice = getDevice(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   if (IsCoreDeviceLabel(label))
+      return false;
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+
+   mm::DeviceModuleLockGuard guard(pDevice);
    return pDevice->Busy();
 }
 
@@ -1151,10 +1161,10 @@ void CMMCore::sleep(double intervalMs) const
  */
 void CMMCore::waitForDevice(const char* label) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
       return; // core property commands always block - no need to poll
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
 
-   MM::Device* pDevice = getDevice(label);
    waitForDevice(pDevice);
 }
 
@@ -1163,28 +1173,29 @@ void CMMCore::waitForDevice(const char* label) throw (CMMError)
  * Waits (blocks the calling thread) until the specified device becomes
  * @param device   the device label
  */
-void CMMCore::waitForDevice(MM::Device* pDev) throw (CMMError)
+void CMMCore::waitForDevice(boost::shared_ptr<DeviceInstance> pDev) throw (CMMError)
 {
-   CORE_DEBUG1("Waiting for device %s...\n", pluginManager_.GetDeviceLabel(*pDev).c_str());
+   LOG_DEBUG(coreLogger_) << "Waiting for device " << pDev->GetLabel() << "...";
 
    MM::TimeoutMs timeout(GetMMTimeNow(),timeoutMs_);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDev));
+   mm::DeviceModuleLockGuard guard(pDev);
    
    while (pDev->Busy())
    {
       if (timeout.expired(GetMMTimeNow()))
       {
-         string label = pluginManager_.GetDeviceLabel(*pDev);
+         string label = pDev->GetLabel();
          std::ostringstream mez;
          mez << "wait timed out after " << timeoutMs_ << " ms. ";
-         logError(label.c_str(), mez.str().c_str(), __FILE__, __LINE__);
-         throw CMMError(label.c_str(), getCoreErrorText(MMERR_DevicePollingTimeout).c_str(), MMERR_DevicePollingTimeout);
+         logError(label.c_str(), mez.str().c_str());
+         throw CMMError("Wait for device " + ToQuotedString(label) + " timed out after " +
+               ToString(timeoutMs_) + "ms",
+               MMERR_DevicePollingTimeout);
       }
 
-     //CORE_DEBUG("Polling...\n");
      sleep(pollingIntervalMs_);
    }
-   CORE_DEBUG("Finished waiting.\n");
+   LOG_DEBUG(coreLogger_) << "Finished waiting for device " << pDev->GetLabel();
 }
 /**
  * Checks the busy status of the entire system. The system will report busy if any
@@ -1215,13 +1226,13 @@ void CMMCore::waitForSystem() throw (CMMError)
  */
 bool CMMCore::deviceTypeBusy(MM::DeviceType devType) throw (CMMError)
 {
-   vector<string> devices = pluginManager_.GetDeviceList(devType);
+   vector<string> devices = deviceManager_->GetDeviceList(devType);
    for (size_t i=0; i<devices.size(); i++)
    {
       try {
-         MM::Device* pDevice;
-         pDevice = pluginManager_.GetDevice(devices[i].c_str());
-         MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+         boost::shared_ptr<DeviceInstance> pDevice =
+            deviceManager_->GetDevice(devices[i]);
+         mm::DeviceModuleLockGuard guard(pDevice);
          if (pDevice->Busy())
             return true;
       }
@@ -1240,7 +1251,7 @@ bool CMMCore::deviceTypeBusy(MM::DeviceType devType) throw (CMMError)
  */
 void CMMCore::waitForDeviceType(MM::DeviceType devType) throw (CMMError)
 {
-   vector<string> devices = pluginManager_.GetDeviceList(devType);
+   vector<string> devices = deviceManager_->GetDeviceList(devType);
    for (size_t i=0; i<devices.size(); i++)
       waitForDevice(devices[i].c_str());
 }
@@ -1252,6 +1263,8 @@ void CMMCore::waitForDeviceType(MM::DeviceType devType) throw (CMMError)
  */
 void CMMCore::waitForConfig(const char* group, const char* configName) throw (CMMError)
 {
+   CheckConfigGroupName(group);
+   CheckConfigPresetName(configName);
 
    Configuration cfg = getConfigData(group, configName);
    try {
@@ -1268,10 +1281,15 @@ void CMMCore::waitForConfig(const char* group, const char* configName) throw (CM
  */
 void CMMCore::waitForImageSynchro() throw (CMMError)
 {
-   for (size_t i=0; i<imageSynchro_.size(); i++)
+   for (std::vector< boost::weak_ptr<DeviceInstance> >::iterator
+         it = imageSynchroDevices_.begin(), end = imageSynchroDevices_.end();
+         it != end; ++it)
    {
-      // poll the device until it stops...
-      waitForDevice(imageSynchro_[i]);
+      boost::shared_ptr<DeviceInstance> device = it->lock();
+      if (device)
+      {
+         waitForDevice(device);
+      }
    }
 }
 
@@ -1282,21 +1300,29 @@ void CMMCore::waitForImageSynchro() throw (CMMError)
  */
 void CMMCore::setPosition(const char* label, double position) throw (CMMError)
 {
-   // TODO: insert system lock
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
 
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(label);
-   CORE_DEBUG2("attempt to set %s  to %.5g um\n", label, position);
+   LOG_DEBUG(coreLogger_) << "Will start absolute move of " << label <<
+      " to position " << std::fixed << std::setprecision(5) << position <<
+      " um";
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   mm::DeviceModuleLockGuard guard(pStage);
    int ret = pStage->SetPositionUm(position);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pStage).c_str());
+      logError(pStage->GetName().c_str(), getDeviceErrorText(ret, pStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
    }
-
+}
+/**
+ * Sets the position of the stage in microns. Uses the current Z positioner
+ * (focus) device.
+ * @param position  the desired stage position, in microns
+ */
+void CMMCore::setPosition(double position) throw (CMMError)
+{
+    setPosition(getFocusDevice().c_str(), position);
 }
 
 /**
@@ -1306,19 +1332,30 @@ void CMMCore::setPosition(const char* label, double position) throw (CMMError)
  */
 void CMMCore::setRelativePosition(const char* label, double d) throw (CMMError)
 {
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
 
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(label);
-   CORE_DEBUG2("attempt to move %s relative %.5g um\n", label, d);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   LOG_DEBUG(coreLogger_) << "Will start relative move of " << label <<
+      " by offset " << std::fixed << std::setprecision(5) << d << " um";
+
+   mm::DeviceModuleLockGuard guard(pStage);
 
    int ret = pStage->SetRelativePositionUm(d);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pStage).c_str());
+      logError(pStage->GetName().c_str(), getDeviceErrorText(ret, pStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
    }
+}
+
+/**
+ * Sets the relative position of the stage in microns. Uses the current Z
+ * positioner (focus) device.
+ * @param d        the amount to move the stage, in microns (positive or negative)
+ */
+void CMMCore::setRelativePosition(double d) throw (CMMError)
+{
+    setRelativePosition(getFocusDevice().c_str(), d);
 }
 
 /**
@@ -1328,18 +1365,28 @@ void CMMCore::setRelativePosition(const char* label, double d) throw (CMMError)
  */
 double CMMCore::getPosition(const char* label) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    double pos;
    int ret = pStage->GetPositionUm(pos);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pStage).c_str());
+      logError(pStage->GetName().c_str(), getDeviceErrorText(ret, pStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
    }
    return pos;
+}
+
+/**
+ * Returns the current position of the stage in microns. Uses the current
+ * Z positioner (focus) device.
+ * @return the position in microns
+ */
+double CMMCore::getPosition() throw (CMMError)
+{
+    return getPosition(getFocusDevice().c_str());
 }
 
 /**
@@ -1348,20 +1395,33 @@ double CMMCore::getPosition(const char* label) throw (CMMError)
  * @param x      the X axis position in microns
  * @param y      the Y axis position in microns
  */
-void CMMCore::setXYPosition(const char* deviceName, double x, double y) throw (CMMError)
+void CMMCore::setXYPosition(const char* label, double x, double y) throw (CMMError)
 {
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
 
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+   LOG_DEBUG(coreLogger_) << "Will start absolute move of " << label <<
+      " to position (" << std::fixed << std::setprecision(3) << x << ", " <<
+      y << ") um";
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    int ret = pXYStage->SetPositionUm(x, y);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pXYStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(pXYStage->GetName().c_str(), getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
-   CORE_DEBUG3("%s set to %g.3 %g.3 um\n", deviceName, x, y);
+}
+
+/**
+ * Sets the position of the XY stage in microns. Uses the current XY stage
+ * device.
+ * @param x      the X axis position in microns
+ * @param y      the Y axis position in microns
+ */
+void CMMCore::setXYPosition(double x, double y) throw (CMMError)
+{
+    setXYPosition(getXYStageDevice().c_str(), x, y);
 }
 
 /**
@@ -1370,58 +1430,81 @@ void CMMCore::setXYPosition(const char* deviceName, double x, double y) throw (C
  * @param dx     the distance to move in X (positive or negative)
  * @param dy     the distance to move in Y (positive or negative)
  */
-void CMMCore::setRelativeXYPosition(const char* deviceName, double dx, double dy) throw (CMMError)
+void CMMCore::setRelativeXYPosition(const char* label, double dx, double dy) throw (CMMError)
 {
-   CORE_DEBUG3("Attempt relative move of %s to %g ,  %g um\n", deviceName, dx, dy);
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
 
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+   LOG_DEBUG(coreLogger_) << "Will start relative move of " << label <<
+      " by (" << std::fixed << std::setprecision(3) << dx << ", " << dy <<
+      ") um";
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    int ret = pXYStage->SetRelativePositionUm(dx, dy);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pXYStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(pXYStage->GetName().c_str(), getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
 }
 
 /**
+ * Sets the relative position of the XY stage in microns. Uses the current
+ * XY stage device.
+ * @param dx     the distance to move in X (positive or negative)
+ * @param dy     the distance to move in Y (positive or negative)
+ */
+void CMMCore::setRelativeXYPosition(double dx, double dy) throw (CMMError) {
+    setRelativeXYPosition(getXYStageDevice().c_str(), dx, dy);
+}
+
+/**
  * Obtains the current position of the XY stage in microns.
- * @param deviceName   the stage device label
+ * @param label   the stage device label
  * @param x            a return parameter yielding the X position in microns
  * @param y            a return parameter yielding the Y position in microns
  */
-void CMMCore::getXYPosition(const char* deviceName, double& x, double& y) throw (CMMError)
+void CMMCore::getXYPosition(const char* label, double& x, double& y) throw (CMMError)
 {
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    int ret = pXYStage->GetPositionUm(x, y);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pXYStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(pXYStage->GetName().c_str(), getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
+}
+
+/**
+ * Obtains the current position of the XY stage in microns. Uses the current
+ * XY stage device.
+ * @param x            a return parameter yielding the X position in microns
+ * @param y            a return parameter yielding the Y position in microns
+ */
+void CMMCore::getXYPosition(double& x, double& y) throw (CMMError)
+{
+    getXYPosition(getXYStageDevice().c_str(), x, y);
 }
 
 /**
  * Obtains the current position of the X axis of the XY stage in microns.
  * @return    the x position 
- * @param  deviceName   the stage device label
+ * @param  label   the stage device label
  */
-double CMMCore::getXPosition(const char* deviceName) throw (CMMError)
+double CMMCore::getXPosition(const char* label) throw (CMMError)
 {
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    double x, y;
    int ret = pXYStage->GetPositionUm(x, y);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pXYStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(pXYStage->GetName().c_str(), getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
 
@@ -1429,21 +1512,32 @@ double CMMCore::getXPosition(const char* deviceName) throw (CMMError)
 }
 
 /**
+ * Obtains the current position of the X axis of the XY stage in microns. Uses
+ * the current XY stage device.
+ * @return    the x position 
+ * @param  label   the stage device label
+ */
+double CMMCore::getXPosition() throw (CMMError)
+{
+    return getXPosition(getXYStageDevice().c_str());
+}
+
+/**
  * Obtains the current position of the Y axis of the XY stage in microns.
  * @return   the y position 
- * @param   deviceName   the stage device label
+ * @param   label   the stage device label
  */
-double CMMCore::getYPosition(const char* deviceName) throw (CMMError)
+double CMMCore::getYPosition(const char* label) throw (CMMError)
 {
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    double x, y;
    int ret = pXYStage->GetPositionUm(x, y);
    if (ret != DEVICE_OK)
    {
-      char name[MM::MaxStrLength];
-      pXYStage->GetName(name);
-      logError(name, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(pXYStage->GetName().c_str(), getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
 
@@ -1451,128 +1545,180 @@ double CMMCore::getYPosition(const char* deviceName) throw (CMMError)
 }
 
 /**
- * stop the XY stage motors
- * @param deviceName    the stage device label
+ * Obtains the current position of the Y axis of the XY stage in microns. Uses
+ * the current XY stage device.
+ * @return    the y position 
+ * @param  label   the stage device label
  */
-void CMMCore::stop(const char* deviceName) throw (CMMError)
+double CMMCore::getYPosition() throw (CMMError)
 {
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+    return getYPosition(getXYStageDevice().c_str());
+}
+
+/**
+ * stop the XY stage motors
+ * @param label    the stage device label
+ */
+void CMMCore::stop(const char* label) throw (CMMError)
+{
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    int ret = pXYStage->Stop();
    if (ret != DEVICE_OK)
    {
-      logError(deviceName, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(label, getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
-   CORE_LOG1("Device %s stopped!\n", deviceName);
+   LOG_DEBUG(coreLogger_) << "Stopped xy stage " << label;
 }
 
 /**
  * Calibrates and homes the XY stage.
- * @param deviceName    the stage device label
+ * @param label    the stage device label
  */
-void CMMCore::home(const char* deviceName) throw (CMMError)
+void CMMCore::home(const char* label) throw (CMMError)
 {
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   LOG_DEBUG(coreLogger_) << "Will home xy stage " << label;
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    int ret = pXYStage->Home();
    if (ret != DEVICE_OK)
    {
-      logError(deviceName, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(label, getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
-   CORE_LOG1("Stage %s moved to the HOME position.\n", deviceName);
+
+   LOG_DEBUG(coreLogger_) << "Did home xy stage " << label;
 }
 
-// go home for focus stage
-void CMMCore::homeFocus(const char* deviceName) throw (CMMError) {
-	MM::Stage* pStage = getSpecificDevice<MM::Stage>(deviceName);
-	MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
-	int ret = pStage->Home();
-	if (ret != DEVICE_OK) {
-		logError(deviceName, getDeviceErrorText(ret, pStage).c_str());
-		throw CMMError(getDeviceErrorText(ret, pStage).c_str(),
-				MMERR_DEVICE_GENERIC);
-	}
-	CORE_LOG1("Stage %s moved to the HOME position.\n", deviceName);
-}
-
-// go home for xy stage
-void CMMCore::homeXY(const char* deviceLabel) throw (CMMError) {
-	home(deviceLabel);
-}
-
-//jizhen, 4/12/2007
 /**
  * zero the current XY position.
- * @param deviceName    the stage device label
+ * @param label    the stage device label
  */
-void CMMCore::setOriginXY(const char* deviceName) throw (CMMError)
+void CMMCore::setOriginXY(const char* label) throw (CMMError)
 {
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
    int ret = pXYStage->SetOrigin();
    if (ret != DEVICE_OK)
    {
-      logError(deviceName, getDeviceErrorText(ret, pXYStage).c_str());
+      logError(label, getDeviceErrorText(ret, pXYStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
    }
-   CORE_LOG1("Stage %s's current position was zeroed.\n", deviceName);
+
+   LOG_DEBUG(coreLogger_) << "Zeroed xy stage " << label << " at current position";
+}
+
+/**
+ * zero the current XY position. Uses the current XY stage device.
+ */
+void CMMCore::setOriginXY() throw (CMMError)
+{
+    setOriginXY(getXYStageDevice().c_str());
 }
 
 /**
  * zero the current stage position.
- * @param deviceName    the stage device label
+ * @param label    the stage device label
  */
-void CMMCore::setOrigin(const char* deviceName) throw (CMMError)
+void CMMCore::setOrigin(const char* label) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    int ret = pStage->SetOrigin();
    if (ret != DEVICE_OK)
    {
-      logError(deviceName, getDeviceErrorText(ret, pStage).c_str());
+      logError(label, getDeviceErrorText(ret, pStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
    }
-   CORE_LOG1("Stage %s's current position was zeroed.\n", deviceName);
+
+   LOG_DEBUG(coreLogger_) << "Zeroed stage " << label << " at current position";
+}
+
+/**
+ * zero the current stage position. Uses the current Z positioner (focus)
+ * device.
+ */
+void CMMCore::setOrigin() throw (CMMError)
+{
+    setOrigin(getFocusDevice().c_str());
 }
 
 /**
  * Zero the stage at a particular position (in microns)
- * @param deviceName    the stage device label
+ * @param label    the stage device label
  * @param d             the position in the old coordinate (in microns)
  */
-void CMMCore::setAdapterOrigin(const char* deviceName, double d) throw (CMMError)
+void CMMCore::setAdapterOrigin(const char* label, double d) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    int ret = pStage->SetAdapterOriginUm(d);
    if (ret != DEVICE_OK)
    {
-      logError(deviceName, getDeviceErrorText(ret, pStage).c_str());
+      logError(label, getDeviceErrorText(ret, pStage).c_str());
       throw CMMError(getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
    }
-   CORE_LOG2("Stage %s's position %.2f um was set to 0.\n", deviceName, d);
+
+   LOG_DEBUG(coreLogger_) << "Zeroed stage " << label << " at position " <<
+      std::fixed << std::setprecision(5) << d << " um";
+}
+
+/**
+ * Zero the stage at a particular position (in microns). Uses the current Z
+ * positioner (focus) device.
+ * @param d             the position in the old coordinate (in microns)
+ */
+void CMMCore::setAdapterOrigin(double d) throw (CMMError)
+{
+    setAdapterOrigin(getFocusDevice().c_str(), d);
+}
+
+/**
+ * Reset a particular x,y position to be the origin of the XY stage's coordinate system
+ * @param label    the XY stage device label
+ * @param x             the x position in the old coordinate system
+ * @param y             the y position in the old coordinate system
+ */
+void CMMCore::setAdapterOriginXY(const char* label, double x, double y) throw (CMMError)
+{
+   boost::shared_ptr<XYStageInstance> pXYStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pXYStage);
+   int ret = pXYStage->SetAdapterOriginUm(x, y);
+   if (ret != DEVICE_OK)
+   {
+      logError(label, getDeviceErrorText(ret, pXYStage).c_str());
+      throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
+   }
+
+   LOG_DEBUG(coreLogger_) << "Zeroed xy stage " << label <<
+      " at position (" << std::fixed << std::setprecision(3) << x << ", " <<
+      y << ") um";
 }
 
 
 /**
- * Reset a parcitular x,y position to be the origin of the XY stage's coordinate system
- * @param deviceName    the XY stage device label
+ * Reset a particular x,y position to be the origin of the XY stage's 
+ * coordinate system. Uses the current XY stage device.
  * @param x             the x position in the old coordinate system
  * @param y             the y position in the old coordinate system
  */
-void CMMCore::setAdapterOriginXY(const char* deviceName, double x, double y) throw (CMMError)
+void CMMCore::setAdapterOriginXY(double x, double y) throw (CMMError)
 {
-   MM::XYStage* pXYStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pXYStage));
-   int ret = pXYStage->SetAdapterOriginUm(x, y);
-   if (ret != DEVICE_OK)
-   {
-      logError(deviceName, getDeviceErrorText(ret, pXYStage).c_str());
-      throw CMMError(getDeviceErrorText(ret, pXYStage).c_str(), MMERR_DEVICE_GENERIC);
-   }
-   CORE_LOG3("Stage %s's current position was set as %.2f,%.2f um.\n", deviceName, x, y);
+    setAdapterOriginXY(getXYStageDevice().c_str(), x, y);
 }
 
 
@@ -1583,14 +1729,15 @@ void CMMCore::setAdapterOriginXY(const char* deviceName, double x, double y) thr
  */
 bool CMMCore::isExposureSequenceable(const char* cameraLabel) throw (CMMError)
 {
+   boost::shared_ptr<CameraInstance> pCamera =
+      deviceManager_->GetDeviceOfType<CameraInstance>(cameraLabel);
 
-   MM::Camera* pCamera = getSpecificDevice<MM::Camera>(cameraLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCamera));
+   mm::DeviceModuleLockGuard guard(pCamera);
 
    bool isSequenceable;
    int ret = pCamera->IsExposureSequenceable(isSequenceable);
    if (ret != DEVICE_OK)
-      throw CMMError(cameraLabel, getDeviceErrorText(ret, pCamera).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pCamera));
 
    return isSequenceable;
 }
@@ -1603,13 +1750,14 @@ bool CMMCore::isExposureSequenceable(const char* cameraLabel) throw (CMMError)
  */
 void CMMCore::startExposureSequence(const char* cameraLabel) throw (CMMError)
 {
-   MM::Camera* pCamera = getSpecificDevice<MM::Camera>(cameraLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCamera));
+   boost::shared_ptr<CameraInstance> pCamera =
+      deviceManager_->GetDeviceOfType<CameraInstance>(cameraLabel);
+
+   mm::DeviceModuleLockGuard guard(pCamera);
 
    int ret = pCamera->StartExposureSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(cameraLabel, getDeviceErrorText(ret, pCamera).c_str(), MMERR_DEVICE_GENERIC);
-   
+      throw CMMError(getDeviceErrorText(ret, pCamera));
 }
 
 /**
@@ -1619,12 +1767,14 @@ void CMMCore::startExposureSequence(const char* cameraLabel) throw (CMMError)
  */
 void CMMCore::stopExposureSequence(const char* cameraLabel) throw (CMMError)
 {
-   MM::Camera* pCamera = getSpecificDevice<MM::Camera>(cameraLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCamera));
+   boost::shared_ptr<CameraInstance> pCamera =
+      deviceManager_->GetDeviceOfType<CameraInstance>(cameraLabel);
+
+   mm::DeviceModuleLockGuard guard(pCamera);
 
    int ret = pCamera->StopExposureSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(cameraLabel, getDeviceErrorText(ret, pCamera).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pCamera));
 }
 
 /**
@@ -1634,13 +1784,14 @@ void CMMCore::stopExposureSequence(const char* cameraLabel) throw (CMMError)
  */
 long CMMCore::getExposureSequenceMaxLength(const char* cameraLabel) throw (CMMError)
 {
+   boost::shared_ptr<CameraInstance> pCamera =
+      deviceManager_->GetDeviceOfType<CameraInstance>(cameraLabel);
 
-   MM::Camera* pCamera = getSpecificDevice<MM::Camera>(cameraLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCamera));
+   mm::DeviceModuleLockGuard guard(pCamera);
    long length;
    int ret = pCamera->GetExposureSequenceMaxLength(length);
    if (ret != DEVICE_OK)
-      throw CMMError(cameraLabel, getDeviceErrorText(ret, pCamera).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pCamera));
 
    return length;
 }
@@ -1653,48 +1804,53 @@ long CMMCore::getExposureSequenceMaxLength(const char* cameraLabel) throw (CMMEr
  */
 void CMMCore::loadExposureSequence(const char* cameraLabel, std::vector<double> exposureTime_ms) throw (CMMError)
 {
-   MM::Camera* pCamera = getSpecificDevice<MM::Camera>(cameraLabel);
-   long maxLength = getExposureSequenceMaxLength(cameraLabel);
+   boost::shared_ptr<CameraInstance> pCamera =
+      deviceManager_->GetDeviceOfType<CameraInstance>(cameraLabel);
+
+   unsigned long maxLength = getExposureSequenceMaxLength(cameraLabel);
    if (exposureTime_ms.size() > maxLength) {
-      throw CMMError(cameraLabel, getDeviceErrorText(DEVICE_SEQUENCE_TOO_LARGE, pCamera).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError("The length of the requested exposure sequence (" + ToString(exposureTime_ms.size()) +
+            ") exceeds the maximum allowed (" + ToString(maxLength) +
+            ") by the camera " + ToQuotedString(cameraLabel));
    }
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCamera));
+   mm::DeviceModuleLockGuard guard(pCamera);
    
    int ret;
    ret = pCamera->ClearExposureSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(cameraLabel, getDeviceErrorText(ret, pCamera).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pCamera));
 
    std::vector<double>::iterator it;
    for ( it=exposureTime_ms.begin() ; it < exposureTime_ms.end(); it++ )
    {
       ret = pCamera->AddToExposureSequence(*it);
       if (ret != DEVICE_OK)
-         throw CMMError(cameraLabel, getDeviceErrorText(ret, pCamera).c_str(), MMERR_DEVICE_GENERIC);
+         throw CMMError(getDeviceErrorText(ret, pCamera));
    }
 
    ret = pCamera->SendExposureSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(cameraLabel, getDeviceErrorText(ret, pCamera).c_str(), MMERR_DEVICE_GENERIC);
-  
+      throw CMMError(getDeviceErrorText(ret, pCamera));
 }
 
 
 /**
  * Queries stage if it can be used in a sequence
- * @param deviceName   the stage device label
+ * @param label   the stage device label
  * @return   true if the stage can be sequenced
  */
-bool CMMCore::isStageSequenceable(const char* deviceName) throw (CMMError)
+bool CMMCore::isStageSequenceable(const char* label) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
 
    bool isSequenceable;
    int ret = pStage->IsStageSequenceable(isSequenceable);
    if (ret != DEVICE_OK)
-      throw CMMError(deviceName, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pStage));
 
    return isSequenceable;
    
@@ -1707,13 +1863,14 @@ bool CMMCore::isStageSequenceable(const char* deviceName) throw (CMMError)
  */
 void CMMCore::startStageSequence(const char* label) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
 
    int ret = pStage->StartStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
-   
+      throw CMMError(getDeviceErrorText(ret, pStage));
 }
 
 /**
@@ -1723,13 +1880,14 @@ void CMMCore::startStageSequence(const char* label) throw (CMMError)
  */
 void CMMCore::stopStageSequence(const char* label) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
 
    int ret = pStage->StopStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
-
+      throw CMMError(getDeviceErrorText(ret, pStage));
 }
 
 /**
@@ -1740,12 +1898,14 @@ void CMMCore::stopStageSequence(const char* label) throw (CMMError)
  */
 long CMMCore::getStageSequenceMaxLength(const char* label) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    long length;
    int ret = pStage->GetStageSequenceMaxLength(length);
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pStage));
 
    return length;
 }
@@ -1758,41 +1918,44 @@ long CMMCore::getStageSequenceMaxLength(const char* label) throw (CMMError)
  */
 void CMMCore::loadStageSequence(const char* label, std::vector<double> positionSequence) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    
    int ret;
    ret = pStage->ClearStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pStage));
 
    std::vector<double>::iterator it;
    for ( it=positionSequence.begin() ; it < positionSequence.end(); it++ )
    {
       ret = pStage->AddToStageSequence(*it);
       if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+         throw CMMError(getDeviceErrorText(ret, pStage));
    }
 
    ret = pStage->SendStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
-  
+      throw CMMError(getDeviceErrorText(ret, pStage));
 }
 
 /**
  * Queries XY stage if it can be used in a sequence
- * @param deviceName    the XY stage device label
+ * @param label    the XY stage device label
  */
-bool CMMCore::isXYStageSequenceable(const char* deviceName) throw (CMMError)
+bool CMMCore::isXYStageSequenceable(const char* label) throw (CMMError)
 {
-   MM::XYStage* pStage = getSpecificDevice<MM::XYStage>(deviceName);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<XYStageInstance> pStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
 
    bool isSequenceable;
    int ret = pStage->IsXYStageSequenceable(isSequenceable);
    if (ret != DEVICE_OK)
-      throw CMMError(deviceName, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pStage));
 
    return isSequenceable;
    
@@ -1806,14 +1969,14 @@ bool CMMCore::isXYStageSequenceable(const char* deviceName) throw (CMMError)
  */
 void CMMCore::startXYStageSequence(const char* label) throw (CMMError)
 {
+   boost::shared_ptr<XYStageInstance> pStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
 
-   MM::XYStage* pStage = getSpecificDevice<MM::XYStage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   mm::DeviceModuleLockGuard guard(pStage);
 
    int ret = pStage->StartXYStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
-   
+      throw CMMError(getDeviceErrorText(ret, pStage));
 }
 
 /**
@@ -1823,12 +1986,14 @@ void CMMCore::startXYStageSequence(const char* label) throw (CMMError)
  */
 void CMMCore::stopXYStageSequence(const char* label) throw (CMMError)
 {
-   MM::XYStage* pStage = getSpecificDevice<MM::XYStage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<XYStageInstance> pStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
 
    int ret = pStage->StopXYStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pStage));
 }
 
 /**
@@ -1839,12 +2004,14 @@ void CMMCore::stopXYStageSequence(const char* label) throw (CMMError)
  */
 long CMMCore::getXYStageSequenceMaxLength(const char* label) throw (CMMError)
 {
-   MM::XYStage* pStage = getSpecificDevice<MM::XYStage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<XYStageInstance> pStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    long length;
    int ret = pStage->GetXYStageSequenceMaxLength(length);
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pStage));
 
    return length;
 }
@@ -1861,13 +2028,15 @@ void CMMCore::loadXYStageSequence(const char* label,
                                   std::vector<double> xSequence,
                                   std::vector<double> ySequence) throw (CMMError)
 {
-   MM::XYStage* pStage = getSpecificDevice<MM::XYStage>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<XYStageInstance> pStage =
+      deviceManager_->GetDeviceOfType<XYStageInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    
    int ret;
    ret = pStage->ClearXYStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pStage));
 
    std::vector<double>::iterator itx, ity;
    for ( itx=xSequence.begin(), ity=ySequence.begin() ;
@@ -1875,13 +2044,12 @@ void CMMCore::loadXYStageSequence(const char* label,
    {
       ret = pStage->AddToXYStageSequence(*itx, *ity);
       if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
+         throw CMMError(getDeviceErrorText(ret, pStage));
    }
 
    ret = pStage->SendXYStageSequence();
    if (ret != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(ret, pStage).c_str(), MMERR_DEVICE_GENERIC);
-  
+      throw CMMError(getDeviceErrorText(ret, pStage));
 }
 
 
@@ -1891,16 +2059,17 @@ void CMMCore::loadXYStageSequence(const char* label,
  */
 void CMMCore::snapImage() throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      if(camera_->IsCapturing())
+      if(camera->IsCapturing())
       {
          throw CMMError(getCoreErrorText(
             MMERR_NotAllowedDuringSequenceAcquisition).c_str()
             ,MMERR_NotAllowedDuringSequenceAcquisition);
       }
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
+      mm::DeviceModuleLockGuard guard(camera);
 
       int ret = DEVICE_OK;
       try {
@@ -1909,50 +2078,83 @@ void CMMCore::snapImage() throw (CMMError)
          waitForImageSynchro();
 
          // open the shutter
-         if (shutter_ && autoShutter_)
+         boost::shared_ptr<ShutterInstance> shutter =
+            currentShutterDevice_.lock();
+         if (autoShutter_ && shutter)
          {
-            int sret = shutter_->SetOpen(true);
+            int sret = shutter->SetOpen(true);
             if (DEVICE_OK != sret)
             {
-               logError("CMMCore::snapImage", getDeviceErrorText(sret, shutter_).c_str(), __FILE__, __LINE__);
-               throw CMMError(getDeviceErrorText(sret, shutter_).c_str(), MMERR_DEVICE_GENERIC);
+               logError("CMMCore::snapImage", getDeviceErrorText(sret, shutter).c_str());
+               throw CMMError(getDeviceErrorText(sret, shutter).c_str(), MMERR_DEVICE_GENERIC);
             }               
-            waitForDevice(shutter_);
+            waitForDevice(shutter);
          }
-         ret = camera_->SnapImage();
+
+         LOG_DEBUG(coreLogger_) << "Will snap image from current camera";
+         ret = camera->SnapImage();
+         if (ret == DEVICE_OK)
+         {
+            LOG_DEBUG(coreLogger_) << "Did snap image from current camera";
+         }
+         else
+         {
+            LOG_ERROR(coreLogger_) << "Failed to snap image from current camera";
+         }
 
 			everSnapped_ = true;
+
          // close the shutter
-         if (shutter_ && autoShutter_)
+         if (autoShutter_ && shutter)
          {
-            int sret  = shutter_->SetOpen(false);
+            int sret  = shutter->SetOpen(false);
             if (DEVICE_OK != sret)
             {
-               logError("CMMCore::snapImage", getDeviceErrorText(sret, shutter_).c_str(), __FILE__, __LINE__);
-               throw CMMError(getDeviceErrorText(sret, shutter_).c_str(), MMERR_DEVICE_GENERIC);
+               logError("CMMCore::snapImage", getDeviceErrorText(sret, shutter).c_str());
+               throw CMMError(getDeviceErrorText(sret, shutter).c_str(), MMERR_DEVICE_GENERIC);
             }
-            waitForDevice(shutter_);
+            waitForDevice(shutter);
          }
 		}catch( CMMError& e){
 			throw e;
 		}
 		catch (...) {
-         logError("CMMCore::snapImage", getCoreErrorText(MMERR_UnhandledException).c_str(), __FILE__, __LINE__);
+         logError("CMMCore::snapImage", getCoreErrorText(MMERR_UnhandledException).c_str());
          throw CMMError(getCoreErrorText(MMERR_UnhandledException).c_str(), MMERR_UnhandledException);
       }
 
       if (ret != DEVICE_OK)
       {
-         logError("CMMCore::snapImage", getDeviceErrorText(ret, camera_).c_str(), __FILE__, __LINE__);
-         throw CMMError(getDeviceErrorText(ret, camera_).c_str(), MMERR_DEVICE_GENERIC);
+         logError("CMMCore::snapImage", getDeviceErrorText(ret, camera).c_str());
+         throw CMMError(getDeviceErrorText(ret, camera).c_str(), MMERR_DEVICE_GENERIC);
       }
-
-      CORE_DEBUG("Image acquired at %D\n");
    }
    else
+   {
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
+   }
 }
 
+
+// Predicate used by assignImageSynchro() and removeImageSynchro()
+namespace
+{
+   class DeviceWeakPtrInvalidOrMatches
+   {
+      boost::shared_ptr<DeviceInstance> theDevice_;
+   public:
+      explicit DeviceWeakPtrInvalidOrMatches(
+            boost::shared_ptr<DeviceInstance> theDevice) :
+         theDevice_(theDevice)
+      {}
+
+      bool operator()(const boost::weak_ptr<DeviceInstance>& ptr)
+      {
+         boost::shared_ptr<DeviceInstance> aDevice = ptr.lock();
+         return (!aDevice || aDevice == theDevice_);
+      }
+   };
+} // anonymous namespace
 
 /**
  * Add device to the image-synchro list. Image acquistion waits for all devices
@@ -1961,8 +2163,14 @@ void CMMCore::snapImage() throw (CMMError)
  */
 void CMMCore::assignImageSynchro(const char* label) throw (CMMError)
 {
-   imageSynchro_.push_back(getDevice(label));
-   CORE_LOG1("Image acquisition synchronized with %s\n", label);
+   boost::shared_ptr<DeviceInstance> device = deviceManager_->GetDevice(label);
+
+   imageSynchroDevices_.erase(std::remove_if(imageSynchroDevices_.begin(),
+            imageSynchroDevices_.end(), DeviceWeakPtrInvalidOrMatches(device)),
+         imageSynchroDevices_.end());
+
+   imageSynchroDevices_.push_back(device);
+   LOG_DEBUG(coreLogger_) << "Added " << label << " to image-synchro list";
 }
 
 /**
@@ -1971,16 +2179,11 @@ void CMMCore::assignImageSynchro(const char* label) throw (CMMError)
  */
 void CMMCore::removeImageSynchro(const char* label) throw (CMMError)
 {
-   MM::Device* dev = getDevice(label);
-   vector<MM::Device*>::iterator it = find(imageSynchro_.begin(), imageSynchro_.end(), dev);
-   if(it != imageSynchro_.end())
-   {
-      imageSynchro_.erase(it);
-      CORE_LOG1("Device %s removed from the image synchro list.\n", label);
-   }
-   else
-      CORE_DEBUG1("Device %s requested for removal was not in the image synchro list.\n", label);
-      //throw CMMError(getCoreErrorText(MMERR_NotInImageSynchro).c_str(), MMERR_NotInImageSynchro);
+   boost::shared_ptr<DeviceInstance> device = deviceManager_->GetDevice(label);
+   imageSynchroDevices_.erase(std::remove_if(imageSynchroDevices_.begin(),
+            imageSynchroDevices_.end(), DeviceWeakPtrInvalidOrMatches(device)),
+         imageSynchroDevices_.end());
+   LOG_DEBUG(coreLogger_) << "Removed " << label << " from image-synchro list";
 }
 
 /**
@@ -1988,8 +2191,8 @@ void CMMCore::removeImageSynchro(const char* label) throw (CMMError)
  */
 void CMMCore::removeImageSynchroAll()
 {
-   imageSynchro_.clear();
-   CORE_LOG("Image synchro cleared. No devices are synchronized with the camera.\n");
+   imageSynchroDevices_.clear();
+   LOG_DEBUG(coreLogger_) << "Cleared image-synchro list";
 }
 
 /**
@@ -2001,8 +2204,11 @@ void CMMCore::setAutoShutter(bool state)
 {
    properties_->Set(MM::g_Keyword_CoreAutoShutter, state ? "1" : "0");
    autoShutter_ = state;
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreAutoShutter, state ? "1" : "0"));
-   CORE_LOG1("Auto shutter %s.\n", state ? "ON" : "OFF");
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreAutoShutter, state ? "1" : "0"));
+   }
+   LOG_DEBUG(coreLogger_) << "Autoshutter turned " << (state ? "on" : "off");
 }
 
 /**
@@ -2014,47 +2220,74 @@ bool CMMCore::getAutoShutter()
 }
 
 /**
- * Opens or closes the currently selected shutter.
- * @param  state     the desired state of the shutter (true for open)
- */
-void CMMCore::setShutterOpen(bool state) throw (CMMError)
+* Opens or closes the specified shutter.
+* @param  state     the desired state of the shutter (true for open)
+*/
+void CMMCore::setShutterOpen(const char* shutterLabel, bool state) throw (CMMError)
 {
-   if (shutter_)
+   boost::shared_ptr<ShutterInstance> pShutter =
+      deviceManager_->GetDeviceOfType<ShutterInstance>(shutterLabel);
+   if (pShutter)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(shutter_));
-      int ret = shutter_->SetOpen(state);
+      mm::DeviceModuleLockGuard guard(pShutter);
+      int ret = pShutter->SetOpen(state);
       if (ret != DEVICE_OK)
       {
-         logError("CMMCore::setShutterOpen()", getDeviceErrorText(ret, shutter_).c_str());
-         throw CMMError(getDeviceErrorText(ret, shutter_).c_str(), MMERR_DEVICE_GENERIC);
+         logError("CMMCore::setShutterOpen()", getDeviceErrorText(ret, pShutter).c_str());
+         throw CMMError(getDeviceErrorText(ret, pShutter).c_str(), MMERR_DEVICE_GENERIC);
       }
 
-      if (shutter_->HasProperty(MM::g_Keyword_State))
+      if (pShutter->HasProperty(MM::g_Keyword_State))
       {
-         char shutterName[MM::MaxStrLength];
-         shutter_->GetLabel(shutterName);
-         stateCache_.addSetting(PropertySetting(shutterName, MM::g_Keyword_State, CDeviceUtils::ConvertToString(state)));
+         {
+            MMThreadGuard scg(stateCacheLock_);
+            stateCache_.addSetting(PropertySetting(shutterLabel, MM::g_Keyword_State, CDeviceUtils::ConvertToString(state)));
+         }
       }
    }
 }
 
 /**
- * Returns the state of the currently selected shutter.
+ * Opens or closes the currently selected (default) shutter.
+ * @param  state     the desired state of the shutter (true for open)
  */
-bool CMMCore::getShutterOpen() throw (CMMError)
+void CMMCore::setShutterOpen(bool state) throw (CMMError)
 {
+   std::string shutterLabel = getShutterDevice();
+   if (shutterLabel.empty()) return;
+   setShutterOpen(shutterLabel.c_str(), state);
+}
+
+/**
+ * Returns the state of the specified shutter.
+ * @param  shutterLabel   the name of the shutter
+ */
+bool CMMCore::getShutterOpen(const char* shutterLabel) throw (CMMError)
+{
+   boost::shared_ptr<ShutterInstance> pShutter =
+      deviceManager_->GetDeviceOfType<ShutterInstance>(shutterLabel);
    bool state = true; // default open
-   if (shutter_)
+   if (pShutter)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(shutter_));
-      int ret = shutter_->GetOpen(state);
+      mm::DeviceModuleLockGuard guard(pShutter);
+      int ret = pShutter->GetOpen(state);
       if (ret != DEVICE_OK)
       {
-         logError("CMMCore::getShutterOpen()", getDeviceErrorText(ret, shutter_).c_str());
-         throw CMMError(getDeviceErrorText(ret, shutter_).c_str(), MMERR_DEVICE_GENERIC);
+         logError("CMMCore::getShutterOpen()", getDeviceErrorText(ret, pShutter).c_str());
+         throw CMMError(getDeviceErrorText(ret, pShutter).c_str(), MMERR_DEVICE_GENERIC);
       }
    }
    return state;
+}
+
+/**
+ * Returns the state of the currently selected (default) shutter.
+ */
+bool CMMCore::getShutterOpen() throw (CMMError)
+{
+   std::string shutterLabel = getShutterDevice();
+   if (shutterLabel.empty()) return true;
+   return getShutterOpen(shutterLabel.c_str());
 }
 
 /**
@@ -2071,7 +2304,8 @@ bool CMMCore::getShutterOpen() throw (CMMError)
  */
 void* CMMCore::getImage() throw (CMMError)
 {
-   if (!camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
    else
    {
@@ -2096,12 +2330,14 @@ void* CMMCore::getImage() throw (CMMError)
 
       void* pBuf(0);
       try {
-         MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-         pBuf = const_cast<unsigned char*> (camera_->GetImageBuffer());
+         mm::DeviceModuleLockGuard guard(camera);
+         pBuf = const_cast<unsigned char*> (camera->GetImageBuffer());
 		
-      	if (imageProcessor_)
+         boost::shared_ptr<ImageProcessorInstance> imageProcessor =
+            currentImageProcessor_.lock();
+         if (imageProcessor)
 	      {
-            imageProcessor_->Process((unsigned char*)pBuf, camera_->GetImageWidth(),  camera_->GetImageHeight(), camera_->GetImageBytesPerPixel() );
+            imageProcessor->Process((unsigned char*)pBuf, camera->GetImageWidth(),  camera->GetImageHeight(), camera->GetImageBytesPerPixel() );
 	      }
 		} catch( CMMError& e){
 			throw e;
@@ -2134,18 +2370,21 @@ void* CMMCore::getImage() throw (CMMError)
  */
 void* CMMCore::getImage(unsigned channelNr) throw (CMMError)
 {
-   if (!camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
    else
    {
       void* pBuf(0);
       try {
-         MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-         pBuf = const_cast<unsigned char*> (camera_->GetImageBuffer(channelNr));
+         mm::DeviceModuleLockGuard guard(camera);
+         pBuf = const_cast<unsigned char*> (camera->GetImageBuffer(channelNr));
 		
-      	if (imageProcessor_)
+         boost::shared_ptr<ImageProcessorInstance> imageProcessor =
+            currentImageProcessor_.lock();
+         if (imageProcessor)
 	      {
-            imageProcessor_->Process((unsigned char*)pBuf, camera_->GetImageWidth(),  camera_->GetImageHeight(), camera_->GetImageBytesPerPixel() );
+            imageProcessor->Process((unsigned char*)pBuf, camera->GetImageWidth(),  camera->GetImageHeight(), camera->GetImageBytesPerPixel() );
 	      }
 		} catch( CMMError& e){
 			throw e;
@@ -2171,14 +2410,15 @@ void* CMMCore::getImage(unsigned channelNr) throw (CMMError)
 */
 long CMMCore::getImageBufferSize()
 {
-	if (camera_) {
-		MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-		return camera_->GetImageBufferSize();
-	}
-	else
-	{
-		return 0;
-	}
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera) {
+      mm::DeviceModuleLockGuard guard(camera);
+      return camera->GetImageBufferSize();
+   }
+   else
+   {
+      return 0;
+   }
 }
 
 /**
@@ -2197,9 +2437,10 @@ void CMMCore::startSequenceAcquisition(long numImages, double intervalMs, bool s
       postedErrors_.clear();
    }
 
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      if(camera_->IsCapturing())
+      if(camera->IsCapturing())
       {
          throw CMMError(getCoreErrorText(
             MMERR_NotAllowedDuringSequenceAcquisition).c_str()
@@ -2208,16 +2449,18 @@ void CMMCore::startSequenceAcquisition(long numImages, double intervalMs, bool s
 
 		try
 		{
-			if (!cbuf_->Initialize(camera_->GetNumberOfChannels(), 1, camera_->GetImageWidth(), camera_->GetImageHeight(), camera_->GetImageBytesPerPixel()))
+			if (!cbuf_->Initialize(camera->GetNumberOfChannels(), 1, camera->GetImageWidth(), camera->GetImageHeight(), camera->GetImageBytesPerPixel()))
 			{
-				logError(getDeviceName(camera_).c_str(), getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str());
+				logError(getDeviceName(camera).c_str(), getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str());
 				throw CMMError(getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str(), MMERR_CircularBufferFailedToInitialize);
 			}
 			cbuf_->Clear();
-            MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-			int nRet = camera_->StartSequenceAcquisition(numImages, intervalMs, stopOnOverflow);
+         mm::DeviceModuleLockGuard guard(camera);
+
+         LOG_DEBUG(coreLogger_) << "Will start sequence acquisition from default camera";
+			int nRet = camera->StartSequenceAcquisition(numImages, intervalMs, stopOnOverflow);
 			if (nRet != DEVICE_OK)
-				throw CMMError(getDeviceErrorText(nRet, camera_).c_str(), MMERR_DEVICE_GENERIC);
+				throw CMMError(getDeviceErrorText(nRet, camera).c_str(), MMERR_DEVICE_GENERIC);
 		}
 		catch( bad_alloc& ex)
 		{
@@ -2228,10 +2471,10 @@ void CMMCore::startSequenceAcquisition(long numImages, double intervalMs, bool s
    }
    else
    {
-      logError(getDeviceName(camera_).c_str(), getCoreErrorText(MMERR_CameraNotAvailable).c_str());
+      logError(getDeviceName(camera).c_str(), getCoreErrorText(MMERR_CameraNotAvailable).c_str());
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
    }
-   CORE_DEBUG("Sequence acquisition started.");
+   LOG_DEBUG(coreLogger_) << "Did start sequence acquisition from default camera";
 }
 
 /**
@@ -2242,17 +2485,22 @@ void CMMCore::startSequenceAcquisition(long numImages, double intervalMs, bool s
  */
 void CMMCore::startSequenceAcquisition(const char* label, long numImages, double intervalMs, bool stopOnOverflow) throw (CMMError)
 {
-   MM::Camera* pCam = getSpecificDevice<MM::Camera>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCam));
+   boost::shared_ptr<CameraInstance> pCam =
+      deviceManager_->GetDeviceOfType<CameraInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pCam);
    if(pCam->IsCapturing())
       throw CMMError(getCoreErrorText(MMERR_NotAllowedDuringSequenceAcquisition).c_str(), 
                      MMERR_NotAllowedDuringSequenceAcquisition);
    
+   LOG_DEBUG(coreLogger_) <<
+      "Will start sequence acquisition from camera " << label;
    int nRet = pCam->StartSequenceAcquisition(numImages, intervalMs, stopOnOverflow);
    if (nRet != DEVICE_OK)
       throw CMMError(getDeviceErrorText(nRet, pCam).c_str(), MMERR_DEVICE_GENERIC);
 
-   CORE_DEBUG1("Sequence acquisition started on %s.\n", label);
+   LOG_DEBUG(coreLogger_) <<
+      "Did start sequence acquisition from camera " << label;
 }
 
 /**
@@ -2261,17 +2509,22 @@ void CMMCore::startSequenceAcquisition(const char* label, long numImages, double
  */
 void CMMCore::prepareSequenceAcquisition(const char* label) throw (CMMError)
 {
-   MM::Camera* pCam = getSpecificDevice<MM::Camera>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCam));
+   boost::shared_ptr<CameraInstance> pCam =
+      deviceManager_->GetDeviceOfType<CameraInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pCam);
    if(pCam->IsCapturing())
       throw CMMError(getCoreErrorText(MMERR_NotAllowedDuringSequenceAcquisition).c_str(), 
                      MMERR_NotAllowedDuringSequenceAcquisition);
    
+   LOG_DEBUG(coreLogger_) << "Will prepare camera " << label <<
+      " for sequence acquisition";
    int nRet = pCam->PrepareSequenceAcqusition();
    if (nRet != DEVICE_OK)
       throw CMMError(getDeviceErrorText(nRet, pCam).c_str(), MMERR_DEVICE_GENERIC);
 
-   CORE_DEBUG1("Sequence acquisition prepared on %s.\n", label);
+   LOG_DEBUG(coreLogger_) << "Did prepare camera " << label <<
+      " for sequence acquisition";
 }
 
 
@@ -2280,22 +2533,23 @@ void CMMCore::prepareSequenceAcquisition(const char* label) throw (CMMError)
  */
 void CMMCore::initializeCircularBuffer() throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      if (!cbuf_->Initialize(camera_->GetNumberOfChannels(), 1, camera_->GetImageWidth(), camera_->GetImageHeight(), camera_->GetImageBytesPerPixel()))
+      mm::DeviceModuleLockGuard guard(camera);
+      if (!cbuf_->Initialize(camera->GetNumberOfChannels(), 1, camera->GetImageWidth(), camera->GetImageHeight(), camera->GetImageBytesPerPixel()))
       {
-         logError(getDeviceName(camera_).c_str(), getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str());
+         logError(getDeviceName(camera).c_str(), getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str());
          throw CMMError(getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str(), MMERR_CircularBufferFailedToInitialize);
       }
       cbuf_->Clear();
    }
    else
    {
-      logError(getDeviceName(camera_).c_str(), getCoreErrorText(MMERR_CameraNotAvailable).c_str());
+      logError(getDeviceName(camera).c_str(), getCoreErrorText(MMERR_CameraNotAvailable).c_str());
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
    }
-   CORE_DEBUG("Circular buffer intitialized based on the current camera.\n");
+   LOG_DEBUG(coreLogger_) << "Circular buffer initialized based on current camera";
 }
 
 /**
@@ -2304,16 +2558,19 @@ void CMMCore::initializeCircularBuffer() throw (CMMError)
  */
 void CMMCore::stopSequenceAcquisition(const char* label) throw (CMMError)
 {
-   MM::Camera* pCam = getSpecificDevice<MM::Camera>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCam));
+   boost::shared_ptr<CameraInstance> pCam =
+      deviceManager_->GetDeviceOfType<CameraInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pCam);
+   LOG_DEBUG(coreLogger_) << "Will stop sequence acquisition from camera " << label;
    int nRet = pCam->StopSequenceAcquisition();
    if (nRet != DEVICE_OK)
    {
-      logError(getDeviceName(camera_).c_str(), getDeviceErrorText(nRet, camera_).c_str());
-      throw CMMError(getDeviceErrorText(nRet, camera_).c_str(), MMERR_DEVICE_GENERIC);
+      logError(label, getDeviceErrorText(nRet, pCam).c_str());
+      throw CMMError(getDeviceErrorText(nRet, pCam).c_str(), MMERR_DEVICE_GENERIC);
    }
 
-   CORE_DEBUG1("Sequence acquisition stopped on %.\n", label);
+   LOG_DEBUG(coreLogger_) << "Did stop sequence acquisition from camera " << label;
 }
 
 /**
@@ -2322,32 +2579,34 @@ void CMMCore::stopSequenceAcquisition(const char* label) throw (CMMError)
  */
 void CMMCore::startContinuousSequenceAcquisition(double intervalMs) throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      if(camera_->IsCapturing())
+      mm::DeviceModuleLockGuard guard(camera);
+      if(camera->IsCapturing())
       {
          throw CMMError(getCoreErrorText(
             MMERR_NotAllowedDuringSequenceAcquisition).c_str()
             ,MMERR_NotAllowedDuringSequenceAcquisition);
       }
 
-      if (!cbuf_->Initialize(camera_->GetNumberOfChannels(), 1, camera_->GetImageWidth(), camera_->GetImageHeight(), camera_->GetImageBytesPerPixel()))
+      if (!cbuf_->Initialize(camera->GetNumberOfChannels(), 1, camera->GetImageWidth(), camera->GetImageHeight(), camera->GetImageBytesPerPixel()))
       {
-         logError(getDeviceName(camera_).c_str(), getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str());
+         logError(getDeviceName(camera).c_str(), getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str());
          throw CMMError(getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str(), MMERR_CircularBufferFailedToInitialize);
       }
       cbuf_->Clear();
-      int nRet = camera_->StartSequenceAcquisition(intervalMs);
+      LOG_DEBUG(coreLogger_) << "Will start continuous sequence acquisition from current camera";
+      int nRet = camera->StartSequenceAcquisition(intervalMs);
       if (nRet != DEVICE_OK)
-         throw CMMError(getDeviceErrorText(nRet, camera_).c_str(), MMERR_DEVICE_GENERIC);
+         throw CMMError(getDeviceErrorText(nRet, camera).c_str(), MMERR_DEVICE_GENERIC);
    }
    else
    {
       logError("no camera available", getCoreErrorText(MMERR_CameraNotAvailable).c_str());
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
    }
-   CORE_DEBUG("Sequence acquisition started.");
+   LOG_DEBUG(coreLogger_) << "Did start continuous sequence acquisition from current camera";
 }
 
 /**
@@ -2355,14 +2614,16 @@ void CMMCore::startContinuousSequenceAcquisition(double intervalMs) throw (CMMEr
  */
 void CMMCore::stopSequenceAcquisition() throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      int nRet = camera_->StopSequenceAcquisition();
+      mm::DeviceModuleLockGuard guard(camera);
+      LOG_DEBUG(coreLogger_) << "Will stop sequence acquisition from current camera";
+      int nRet = camera->StopSequenceAcquisition();
       if (nRet != DEVICE_OK)
       {
-         logError(getDeviceName(camera_).c_str(), getDeviceErrorText(nRet, camera_).c_str());
-         throw CMMError(getDeviceErrorText(nRet, camera_).c_str(), MMERR_DEVICE_GENERIC);
+         logError(getDeviceName(camera).c_str(), getDeviceErrorText(nRet, camera).c_str());
+         throw CMMError(getDeviceErrorText(nRet, camera).c_str(), MMERR_DEVICE_GENERIC);
       }
    }
    else
@@ -2371,7 +2632,7 @@ void CMMCore::stopSequenceAcquisition() throw (CMMError)
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
    }
 
-   CORE_DEBUG("Sequence acquisition stopped.");
+   LOG_DEBUG(coreLogger_) << "Did stop sequence acquisition from current camera";
 }
 
 /**
@@ -2380,10 +2641,11 @@ void CMMCore::stopSequenceAcquisition() throw (CMMError)
  */
 bool CMMCore::isSequenceRunning() throw ()
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-       MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-	    return camera_->IsCapturing();
+      mm::DeviceModuleLockGuard guard(camera);
+	    return camera->IsCapturing();
    }
    else
    {
@@ -2397,8 +2659,10 @@ bool CMMCore::isSequenceRunning() throw ()
  */
 bool CMMCore::isSequenceRunning(const char* label) throw (CMMError)
 {
-   MM::Camera* pCam = getSpecificDevice<MM::Camera>(label);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pCam));
+   boost::shared_ptr<CameraInstance> pCam =
+      deviceManager_->GetDeviceOfType<CameraInstance>(label);
+
+   mm::DeviceModuleLockGuard guard(pCam);
    return pCam->IsCapturing();
 };
 
@@ -2501,10 +2765,10 @@ void* CMMCore::popNextImageMD(Metadata& md) throw (CMMError)
 }
 
 /**
- * Removes all images from the circular buffer
- * It will rarely be needed to call this directly since starting a sequence
- * acquisition will call this function.  However, clearig the circular buffer
- * before requesting images from it can help avoid showing stale images
+ * Removes all images from the circular buffer.
+ *
+ * It is rarely necessary to call this directly since starting a sequence
+ * acquisition or changing the ROI will always clear the buffer.
  */
 void CMMCore::clearCircularBuffer() throw (CMMError)
 {
@@ -2518,12 +2782,15 @@ void CMMCore::setCircularBufferMemoryFootprint(unsigned sizeMB ///< n megabytes
                                                ) throw (CMMError)
 {
    delete cbuf_; // discard old buffer
+   LOG_DEBUG(coreLogger_) << "Will set circular buffer size to " <<
+      sizeMB << " MB";
 	try
 	{
 		cbuf_ = new CircularBuffer(sizeMB);
 	}
 	catch(bad_alloc& ex)
 	{
+      // This is an out-of-memory error before even allocating the buffers.
 		ostringstream messs;
 		messs << getCoreErrorText(MMERR_OutOfMemory).c_str() << " " << ex.what() << endl;
 		throw CMMError(messs.str().c_str() , MMERR_OutOfMemory);
@@ -2535,14 +2802,16 @@ void CMMCore::setCircularBufferMemoryFootprint(unsigned sizeMB ///< n megabytes
 	{
 
 		// attempt to initialize based on the current camera settings
-		if (camera_)
+      boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+      if (camera)
 		{
-   	        MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-			if (!cbuf_->Initialize(camera_->GetNumberOfChannels(), 1, camera_->GetImageWidth(), camera_->GetImageHeight(), camera_->GetImageBytesPerPixel()))
+         mm::DeviceModuleLockGuard guard(camera);
+         if (!cbuf_->Initialize(camera->GetNumberOfChannels(), 1, camera->GetImageWidth(), camera->GetImageHeight(), camera->GetImageBytesPerPixel()))
 				throw CMMError(getCoreErrorText(MMERR_CircularBufferFailedToInitialize).c_str(), MMERR_CircularBufferFailedToInitialize);
 		}
 
-		CORE_DEBUG1("Circular buffer set to %d MB.\n", sizeMB);
+      LOG_DEBUG(coreLogger_) << "Did set circular buffer size to " <<
+         sizeMB << " MB";
 	}
 	catch(bad_alloc& ex)
 	{
@@ -2550,29 +2819,44 @@ void CMMCore::setCircularBufferMemoryFootprint(unsigned sizeMB ///< n megabytes
 		messs << getCoreErrorText(MMERR_OutOfMemory).c_str() << " " << ex.what() << endl;
 		throw CMMError(messs.str().c_str() , MMERR_OutOfMemory);
 	}
-	if (NULL == cbuf_) throw CMMError(getCoreErrorText(MMERR_OutOfMemory).c_str(), MMERR_OutOfMemory);
+	if (NULL == cbuf_)
+      throw CMMError(getCoreErrorText(MMERR_OutOfMemory).c_str(), MMERR_OutOfMemory);
+}
 
-
+unsigned CMMCore::getCircularBufferMemoryFootprint()
+{
+   if (cbuf_)
+   {
+      return cbuf_->GetMemorySizeMB();
+   }
+   return 0;
 }
 
 long CMMCore::getRemainingImageCount()
 {
-   return cbuf_->GetRemainingImageCount();
+   if (cbuf_)
+   {
+      return cbuf_->GetRemainingImageCount();
+   }
+   return 0;
 }
 
 long CMMCore::getBufferTotalCapacity()
 {
-   return cbuf_->GetSize();
+   if (cbuf_)
+   {
+      return cbuf_->GetSize();
+   }
+   return 0;
 }
 
 long CMMCore::getBufferFreeCapacity()
 {
-   return cbuf_->GetFreeSize();
-}
-
-double CMMCore::getBufferIntervalMs() const
-{
-   return cbuf_->GetAverageIntervalMs();
+   if (cbuf_)
+   {
+      return cbuf_->GetFreeSize();
+   }
+   return 0;
 }
 
 bool CMMCore::isBufferOverflowed() const
@@ -2586,18 +2870,12 @@ bool CMMCore::isBufferOverflowed() const
  */
 string CMMCore::getCameraDevice()
 {
-   string deviceName;
-   if (camera_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*camera_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconsistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
+   {
+      return camera->GetLabel();
+   }
+   return std::string();
 }
 
 /**
@@ -2606,18 +2884,12 @@ string CMMCore::getCameraDevice()
  */
 string CMMCore::getShutterDevice()
 {
-   string deviceName;
-   if (shutter_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*shutter_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<ShutterInstance> shutter = currentShutterDevice_.lock();
+   if (shutter)
+   {
+      return shutter->GetLabel();
+   }
+   return std::string();
 }
 
 /**
@@ -2626,18 +2898,12 @@ string CMMCore::getShutterDevice()
  */
 string CMMCore::getFocusDevice()
 {
-   string deviceName;
-   if (focusStage_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*focusStage_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<StageInstance> focus = currentFocusDevice_.lock();
+   if (focus)
+   {
+      return focus->GetLabel();
+   }
+   return std::string();
 }
 
 /**
@@ -2645,18 +2911,12 @@ string CMMCore::getFocusDevice()
  */
 string CMMCore::getXYStageDevice()
 {
-   string deviceName;
-   if (xyStage_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*xyStage_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<XYStageInstance> xyStage = currentXYStageDevice_.lock();
+   if (xyStage)
+   {
+      return xyStage->GetLabel();
+   }
+   return std::string();
 }
 
 /**
@@ -2664,18 +2924,13 @@ string CMMCore::getXYStageDevice()
  */
 string CMMCore::getAutoFocusDevice()
 {
-   string deviceName;
-   if (autoFocus_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*autoFocus_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
+   {
+      return autofocus->GetLabel();
+   }
+   return std::string();
 }
 
 /**
@@ -2685,16 +2940,21 @@ void CMMCore::setAutoFocusDevice(const char* autofocusLabel) throw (CMMError)
 {
    if (autofocusLabel && strlen(autofocusLabel)>0)
    {
-      autoFocus_ = getSpecificDevice<MM::AutoFocus>(autofocusLabel);
-      CORE_LOG1("Auto-focus device set to %s\n", autofocusLabel);
+      currentAutofocusDevice_ =
+         deviceManager_->GetDeviceOfType<AutoFocusInstance>(autofocusLabel);
+      LOG_INFO(coreLogger_) << "Default autofocus set to " << autofocusLabel;
    }
    else
    {
-      autoFocus_ = 0;
-      CORE_LOG("Auto-focus device removed.\n");
+      currentAutofocusDevice_.reset();
+      LOG_INFO(coreLogger_) << "Default autofocus unset";
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreAutoFocus, getAutoFocusDevice().c_str()));
+   std::string newAutofocusLabel = getAutoFocusDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreAutoFocus, newAutofocusLabel.c_str()));
+   }
 }
 
 /**
@@ -2702,18 +2962,13 @@ void CMMCore::setAutoFocusDevice(const char* autofocusLabel) throw (CMMError)
  */
 string CMMCore::getImageProcessorDevice()
 {
-   string deviceName;
-   if (imageProcessor_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*imageProcessor_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<ImageProcessorInstance> imageProcessor =
+      currentImageProcessor_.lock();
+   if (imageProcessor)
+   {
+      return imageProcessor->GetLabel();
+   }
+   return std::string();
 }
 
 /**
@@ -2722,18 +2977,12 @@ string CMMCore::getImageProcessorDevice()
  */
 string CMMCore::getSLMDevice()
 {
-   string deviceName;
-   if (slm_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*slm_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconsistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<SLMInstance> slm = currentSLMDevice_.lock();
+   if (slm)
+   {
+      return slm->GetLabel();
+   }
+   return std::string();
 }
 
 /**
@@ -2742,18 +2991,12 @@ string CMMCore::getSLMDevice()
  */
 string CMMCore::getGalvoDevice()
 {
-   string deviceName;
-   if (galvo_)
-      try {
-         deviceName = pluginManager_.GetDeviceLabel(*galvo_);
-      }
-      catch (CMMError& err)
-      {
-         // trap the error and ignore it in this case.
-         // This happens only if the system is in the inconsistent internal state
-         CORE_DEBUG1("Internal error: plugin manager does not recognize device reference. %s\n", err.getMsg().c_str());
-      }
-   return deviceName;
+   boost::shared_ptr<GalvoInstance> galvos = currentGalvoDevice_.lock();
+   if (galvos)
+   {
+      return galvos->GetLabel();
+   }
+   return std::string();
 }
 
 
@@ -2764,16 +3007,21 @@ void CMMCore::setImageProcessorDevice(const char* procLabel) throw (CMMError)
 {
    if (procLabel && strlen(procLabel)>0)
    {
-      imageProcessor_ = getSpecificDevice<MM::ImageProcessor>(procLabel);
-      CORE_LOG1("Image processor device set to %s\n", procLabel);
+      currentImageProcessor_ =
+         deviceManager_->GetDeviceOfType<ImageProcessorInstance>(procLabel);
+      LOG_INFO(coreLogger_) << "Default image processor set to " << procLabel;
    }
    else
    {
-      imageProcessor_ = 0;
-      CORE_LOG("Image processor device removed.\n");
+      currentImageProcessor_.reset();
+      LOG_INFO(coreLogger_) << "Default image processor unset";
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreImageProcessor, getImageProcessorDevice().c_str()));
+   std::string newProcLabel = getImageProcessorDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreImageProcessor, newProcLabel.c_str()));
+   }
 }
 
 /**
@@ -2783,16 +3031,21 @@ void CMMCore::setSLMDevice(const char* slmLabel) throw (CMMError)
 {
    if (slmLabel && strlen(slmLabel)>0)
    {
-      slm_ = getSpecificDevice<MM::SLM>(slmLabel);
-      CORE_LOG1("Image processor device set to %s\n", slmLabel);
+      currentSLMDevice_ =
+         deviceManager_->GetDeviceOfType<SLMInstance>(slmLabel);
+      LOG_INFO(coreLogger_) << "Default SLM set to " << slmLabel;
    }
    else
    {
-      slm_ = 0;
-      CORE_LOG("Image processor device removed.\n");
+      currentSLMDevice_.reset();
+      LOG_INFO(coreLogger_) << "Default SLM unset";
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreSLM, getSLMDevice().c_str()));
+   std::string newSLMLabel = getSLMDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreSLM, newSLMLabel.c_str()));
+   }
 }
 
 
@@ -2803,16 +3056,21 @@ void CMMCore::setGalvoDevice(const char* galvoLabel) throw (CMMError)
 {
    if (galvoLabel && strlen(galvoLabel)>0)
    {
-      galvo_ = getSpecificDevice<MM::Galvo>(galvoLabel);
-      CORE_LOG1("Image processor device set to %s\n", galvoLabel);
+      currentGalvoDevice_ =
+         deviceManager_->GetDeviceOfType<GalvoInstance>(galvoLabel);
+      LOG_INFO(coreLogger_) << "Default galvo set to " << galvoLabel;
    }
    else
    {
-      galvo_ = 0;
-      CORE_LOG("Image processor device removed.\n");
+      currentGalvoDevice_.reset();
+      LOG_INFO(coreLogger_) << "Default galvo unset";
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreGalvo, getGalvoDevice().c_str()));
+   std::string newGalvoLabel = getGalvoDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreGalvo, newGalvoLabel.c_str()));
+   }
 }
 
 /**
@@ -2823,14 +3081,18 @@ void CMMCore::setChannelGroup(const char* chGroup) throw (CMMError)
    if (chGroup && strlen(chGroup)>0)
    {
       channelGroup_ = chGroup;
-      CORE_LOG1("Channel group set to %s\n", chGroup);
+      LOG_INFO(coreLogger_) << "Channel group set to " << chGroup;
    }
    else
    {
       channelGroup_.clear();
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreChannelGroup, getChannelGroup().c_str()));
+   std::string newChGroup = getChannelGroup();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreChannelGroup, newChGroup.c_str()));
+   }
 }
 
 /**
@@ -2848,42 +3110,47 @@ string CMMCore::getChannelGroup()
  */
 void CMMCore::setShutterDevice(const char* shutterLabel) throw (CMMError)
 {
+   if (!shutterLabel || strlen(shutterLabel) > 0) // Allow empty label
+      CheckDeviceLabel(shutterLabel);
+
    // Nothing to do if this is the current shutter device:
    if (getShutterDevice().compare(shutterLabel) == 0)
       return;
 
    // To avoid confusion close the current shutter:
-   bool shutterOpen = false;
-   if (shutter_) {
-      shutterOpen = getShutterOpen();
-      if (shutterOpen)
-         setShutterOpen(false);
+   bool shutterWasOpen = false;
+   boost::shared_ptr<ShutterInstance> oldShutter =
+      currentShutterDevice_.lock();
+   if (oldShutter)
+   {
+      shutterWasOpen = getShutterOpen(oldShutter->GetLabel().c_str());
+      if (shutterWasOpen)
+      {
+         setShutterOpen(oldShutter->GetLabel().c_str(), false);
+      }
    }
 
-   if (shutterLabel && strlen(shutterLabel)>0)
+   if (strlen(shutterLabel) > 0)
    {
-      // Nothing to do if this is the current shutter device:
-      if (getShutterDevice().compare(shutterLabel) == 0)
-         return;
+      currentShutterDevice_ =
+         deviceManager_->GetDeviceOfType<ShutterInstance>(shutterLabel);
 
-      shutter_ = getSpecificDevice<MM::Shutter>(shutterLabel);
-      // if old shutter was open, open the new one
-      if (shutterOpen)
+      if (shutterWasOpen)
          setShutterOpen(true);
-      //assignImageSynchro(shutterLabel);
-      CORE_LOG1("Shutter device set to %s\n", shutterLabel);
+
+      LOG_INFO(coreLogger_) << "Default shutter set to " << shutterLabel;
    }
    else
    {
-      if (shutter_)
-      {
-         removeImageSynchro(pluginManager_.GetDeviceLabel(*shutter_).c_str());
-      }
-      shutter_ = 0;
-      CORE_LOG("Shutter device removed.\n");
+      currentShutterDevice_.reset();
+      LOG_INFO(coreLogger_) << "Default shutter unset";
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreShutter, getShutterDevice().c_str()));
+   std::string newShutterLabel = getShutterDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreShutter, newShutterLabel.c_str()));
+   }
 }
 
 /**
@@ -2894,16 +3161,21 @@ void CMMCore::setFocusDevice(const char* focusLabel) throw (CMMError)
 {
    if (focusLabel && strlen(focusLabel)>0)
    {
-      focusStage_ = getSpecificDevice<MM::Stage>(focusLabel);
-      CORE_LOG1("Focus device set to %s\n", focusLabel);
+      currentFocusDevice_ =
+         deviceManager_->GetDeviceOfType<StageInstance>(focusLabel);
+      LOG_INFO(coreLogger_) << "Default stage set to " << focusLabel;
    }
    else
    {
-      focusStage_ = 0;
-      CORE_LOG("Focus device removed.\n");
+      currentFocusDevice_.reset();
+      LOG_INFO(coreLogger_) << "Default stage unset";
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreFocus, getFocusDevice().c_str()));
+   std::string newFocusLabel = getFocusDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreFocus, newFocusLabel.c_str()));
+   }
 }
 
 /**
@@ -2913,15 +3185,20 @@ void CMMCore::setXYStageDevice(const char* xyDeviceLabel) throw (CMMError)
 {
    if (xyDeviceLabel && strlen(xyDeviceLabel)>0)
    {
-      xyStage_ = getSpecificDevice<MM::XYStage>(xyDeviceLabel);
-      CORE_LOG1("XYStage device set to %s\n", xyDeviceLabel);
+      currentXYStageDevice_ =
+         deviceManager_->GetDeviceOfType<XYStageInstance>(xyDeviceLabel);
+      LOG_INFO(coreLogger_) << "Default xy stage set to " << xyDeviceLabel;
    }
    else
    {
-      xyStage_ = 0;
-      CORE_LOG("XYDevice device removed.\n");
+      currentXYStageDevice_.reset();
+      LOG_INFO(coreLogger_) << "Default xy stage unset";
    }
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreXYStage, getXYStageDevice().c_str()));
+   std::string newXYStageLabel = getXYStageDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreXYStage, newXYStageLabel.c_str()));
+   }
 }
 
 /**
@@ -2932,16 +3209,21 @@ void CMMCore::setCameraDevice(const char* cameraLabel) throw (CMMError)
 {
    if (cameraLabel && strlen(cameraLabel) > 0)
    {
-      camera_ = getSpecificDevice<MM::Camera>(cameraLabel);
-      CORE_LOG1("Camera device set to %s\n", cameraLabel);
+      currentCameraDevice_ =
+         deviceManager_->GetDeviceOfType<CameraInstance>(cameraLabel);
+      LOG_INFO(coreLogger_) << "Default camera set to " << cameraLabel;
    }
    else
    {
-      camera_ = 0;
-      CORE_LOG("Camera device removed.\n");
+      currentCameraDevice_.reset();
+      LOG_INFO(coreLogger_) << "Default camera unset";
    }
    properties_->Refresh(); // TODO: more efficient
-   stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreCamera, getCameraDevice().c_str()));
+   std::string newCameraLabel = getCameraDevice();
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, MM::g_Keyword_CoreCamera, newCameraLabel.c_str()));
+   }
 }
 
 /**
@@ -2952,32 +3234,14 @@ void CMMCore::setCameraDevice(const char* cameraLabel) throw (CMMError)
  */
 vector<string> CMMCore::getDevicePropertyNames(const char* label) throw (CMMError)
 {
-   vector<string> propList;
+   if (IsCoreDeviceLabel(label))
+      return properties_->GetNames();
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
 
-   // in case we requested Core device
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
    {
-      propList = properties_->GetNames();
-      return propList;
+      mm::DeviceModuleLockGuard guard(pDevice);
+      return pDevice->GetPropertyNames();
    }
-
-   // regular devices
-   try {
-      MM::Device* pDevice = pluginManager_.GetDevice(label);
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      for (unsigned i=0; i<pDevice->GetNumberOfProperties(); i++)
-      {
-         char Name[MM::MaxStrLength];
-         pDevice->GetPropertyName(i, Name);
-         propList.push_back(string(Name));
-      }   
-   }
-   catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      throw;
-   }
-
-   return propList;
 }
 
 /**
@@ -2986,7 +3250,7 @@ vector<string> CMMCore::getDevicePropertyNames(const char* label) throw (CMMErro
  */
 vector<string> CMMCore::getLoadedDevices() const
 {
-  vector<string> deviceList = pluginManager_.GetDeviceList();
+  vector<string> deviceList = deviceManager_->GetDeviceList();
   deviceList.push_back(MM::g_Keyword_CoreDevice);
   return deviceList;
 }
@@ -3004,7 +3268,7 @@ vector<string> CMMCore::getLoadedDevicesOfType(MM::DeviceType devType) const
       return coreDev;
    }
 
-   return pluginManager_.GetDeviceList(devType);
+   return deviceManager_->GetDeviceList(devType);
 }
 
 /**
@@ -3019,30 +3283,24 @@ vector<string> CMMCore::getLoadedDevicesOfType(MM::DeviceType devType) const
  */
 std::vector<std::string> CMMCore::getAllowedPropertyValues(const char* label, const char* propName) throw (CMMError)
 {
-   // in case we requested Core device
-   std::vector<std::string> valueList;
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
-      valueList = properties_->GetAllowedValues(propName);
-   }
-   else
-   {
-      try {
-         MM::Device* pDevice = pluginManager_.GetDevice(label);
-		 MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   if (IsCoreDeviceLabel(label))
+      return properties_->GetAllowedValues(propName);
 
-         for (unsigned i=0; i<pDevice->GetNumberOfPropertyValues(propName); i++)
-         {
-            char value[MM::MaxStrLength];
-            pDevice->GetPropertyValueAt(propName, i, value);
-            string strVal(value);
-            valueList.push_back(strVal);
-         }
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
+
+   std::vector<std::string> valueList;
+
+   {
+      mm::DeviceModuleLockGuard guard(pDevice);
+      unsigned nrValues = pDevice->GetNumberOfPropertyValues(propName);
+      valueList.reserve(nrValues);
+      for (unsigned i = 0; i < nrValues; ++i)
+      {
+         valueList.push_back(pDevice->GetPropertyValueAt(propName, i));
       }
    }
+
    return valueList;
 }
 
@@ -3055,36 +3313,23 @@ std::vector<std::string> CMMCore::getAllowedPropertyValues(const char* label, co
  */
 string CMMCore::getProperty(const char* label, const char* propName) throw (CMMError)
 {
-
-   if (label == NULL || propName == NULL)
-      throw CMMError(MMERR_NullPointerException);
-
-   // in case we requested Core device
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return properties_->Get(propName);
-   }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-   MM::Device* pDevice;
-   try {
-      pDevice = pluginManager_.GetDevice(label);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      throw;
-   }
-
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   char value[MM::MaxStrLength];
-   int nRet = pDevice->GetProperty(propName, value);
-   if (nRet != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(nRet, pDevice).c_str(), MMERR_DEVICE_GENERIC);
+   mm::DeviceModuleLockGuard guard(pDevice);
+   std::string value = pDevice->GetProperty(propName);
    
    // use the opportunity to update the cache
    // Note, stateCache is mutable so that we can update it from this const function
-   PropertySetting s(label, propName, value);
-   stateCache_.addSetting(s);
+   PropertySetting s(label, propName, value.c_str());
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      stateCache_.addSetting(s);
+   }
 
-   return string(value);
+   return value;
 }
 
 /**
@@ -3096,23 +3341,20 @@ string CMMCore::getProperty(const char* label, const char* propName) throw (CMME
  */
 string CMMCore::getPropertyFromCache(const char* label, const char* propName) const throw (CMMError)
 {
-
-   if (label == NULL || propName == NULL)
-      throw CMMError(MMERR_NullPointerException);
-
-   // in case we requested Core device
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return properties_->Get(propName);
+   CheckDeviceLabel(label);
+   CheckPropertyName(propName);
+
+   {
+      MMThreadGuard scg(stateCacheLock_);
+      if (!stateCache_.isPropertyIncluded(label, propName))
+         throw CMMError("Property " + ToQuotedString(propName) + " of device " +
+               ToQuotedString(label) + " not found in cache",
+               MMERR_PropertyNotInCache);
+      PropertySetting s = stateCache_.getSetting(label, propName);
+      return s.getPropertyValue();
    }
-
-
-   if (!stateCache_.isPropertyIncluded(label, propName))
-      throw CMMError(label, "Property not found in the cache", MMERR_PropertyNotInCache);
-
-   PropertySetting s = stateCache_.getSetting(label, propName);
-
-   return s.getPropertyValue();
 }
 
 /**
@@ -3125,43 +3367,37 @@ string CMMCore::getPropertyFromCache(const char* label, const char* propName) co
 void CMMCore::setProperty(const char* label, const char* propName, 
                           const char* propValue) throw (CMMError)
 {
-  if (label == NULL || propName == NULL || propValue == NULL)
-     throw CMMError(MMERR_NullPointerException);
+   CheckDeviceLabel(label);
+   CheckPropertyName(propName);
+   CheckPropertyValue(propValue);
 
-  // check for forbiden characters
-   string val(propValue);
-   if (std::string::npos != val.find_first_of(MM::g_FieldDelimiters, 0))
-      throw CMMError(label, getCoreErrorText(MMERR_InvalidContents).c_str(), MMERR_InvalidContents);
-
-   // perform special processing for core initialization commands
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
+   if (IsCoreDeviceLabel(label))
    {
+      LOG_DEBUG(coreLogger_) << "Will set Core property: " <<
+         propName << " = " << propValue;
+
       properties_->Execute(propName, propValue);
-      stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, propName, propValue));
+      {
+         MMThreadGuard scg(stateCacheLock_);
+         stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, propName, propValue));
+      }
+
+      LOG_DEBUG(coreLogger_) << "Did set Core property: " <<
+         propName << " = " << propValue;
    }
    else
    {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+      boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
       
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+      mm::DeviceModuleLockGuard guard(pDevice);
 
-      int nRet = pDevice->SetProperty(propName, propValue);
-      if (nRet != DEVICE_OK) {
-         std::ostringstream se;
-         se << getDeviceErrorText(nRet, pDevice).c_str() << "(Error code: " << nRet << ")";
-         logError(label, se.str().c_str());
-         throw CMMError(se.str().c_str(), MMERR_DEVICE_GENERIC);
+      pDevice->SetProperty(propName, propValue);
+
+      {
+         MMThreadGuard scg(stateCacheLock_);
+         stateCache_.addSetting(PropertySetting(label, propName, propValue));
       }
-      stateCache_.addSetting(PropertySetting(label, propName, propValue));
    }
-
-   CORE_DEBUG3("Property set: device=%s, name=%s, value=%s\n", label, propName, propValue);
 }
 
 /**
@@ -3174,8 +3410,7 @@ void CMMCore::setProperty(const char* label, const char* propName,
 void CMMCore::setProperty(const char* label, const char* propName, 
                           const bool propValue) throw (CMMError)
 {
-   std::string svalue = (propValue?"1":"0");
-   setProperty(label, propName, svalue.c_str());
+   setProperty(label, propName, (propValue ? "1" : "0"));
 }
 
 /**
@@ -3188,9 +3423,7 @@ void CMMCore::setProperty(const char* label, const char* propName,
 void CMMCore::setProperty(const char* label, const char* propName, 
                           const long propValue) throw (CMMError)
 {
-   std::ostringstream ovalue;
-   ovalue << propValue;
-   setProperty(label, propName, ovalue.str().c_str());
+   setProperty(label, propName, ToString(propValue).c_str());
 }
 
 /**
@@ -3203,9 +3436,7 @@ void CMMCore::setProperty(const char* label, const char* propName,
 void CMMCore::setProperty(const char* label, const char* propName, 
                           const float propValue) throw (CMMError)
 {
-   std::ostringstream ovalue;
-   ovalue << propValue;
-   setProperty(label, propName, ovalue.str().c_str());
+   setProperty(label, propName, ToString(propValue).c_str());
 }
 
 /**
@@ -3218,9 +3449,7 @@ void CMMCore::setProperty(const char* label, const char* propName,
 void CMMCore::setProperty(const char* label, const char* propName, 
                           const double propValue) throw (CMMError)
 {
-   std::ostringstream ovalue;
-   ovalue << propValue;
-   setProperty(label, propName, ovalue.str().c_str());
+   setProperty(label, propName, ToString(propValue).c_str());
 }
 
 
@@ -3230,21 +3459,12 @@ void CMMCore::setProperty(const char* label, const char* propName,
  */
 bool CMMCore::hasProperty(const char* label, const char* propName) throw (CMMError)
 {
-   // in case we requested Core device
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return properties_->Has(propName);
-   }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-   MM::Device* pDevice;
-   try {
-      pDevice = pluginManager_.GetDevice(label);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      throw;
-   }
-
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
+   mm::DeviceModuleLockGuard guard(pDevice);
    return pDevice->HasProperty(propName);
 }
 
@@ -3257,27 +3477,13 @@ bool CMMCore::hasProperty(const char* label, const char* propName) throw (CMMErr
  */
 bool CMMCore::isPropertyReadOnly(const char* label, const char* propName) throw (CMMError)
 {
-   // in case we requested Core device
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return properties_->IsReadOnly(propName);
-   }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-   MM::Device* pDevice;
-   try {
-      pDevice = pluginManager_.GetDevice(label);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      throw;
-   }
-
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   bool bReadOnly;
-   int nRet = pDevice->GetPropertyReadOnly(propName, bReadOnly);
-   if (nRet != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(nRet, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-   return bReadOnly;
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetPropertyReadOnly(propName);
 }
 
 /**
@@ -3289,27 +3495,13 @@ bool CMMCore::isPropertyReadOnly(const char* label, const char* propName) throw 
  */
 bool CMMCore::isPropertyPreInit(const char* label, const char* propName) throw (CMMError)
 {
-   // in case we requested Core device
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return false;
-   }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-   MM::Device* pDevice;
-   try {
-      pDevice = pluginManager_.GetDevice(label);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      throw;
-   }
-
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   bool preInit;
-   int nRet = pDevice->GetPropertyInitStatus(propName, preInit);
-   if (nRet != DEVICE_OK)
-      throw CMMError(label, getDeviceErrorText(nRet, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-   return preInit;
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetPropertyInitStatus(propName);
 }
 
 /**
@@ -3317,28 +3509,13 @@ bool CMMCore::isPropertyPreInit(const char* label, const char* propName) throw (
  */
 double CMMCore::getPropertyLowerLimit(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return 0.0;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-	  MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      double limit;
-      int ret = pDevice->GetPropertyLowerLimit(propName, limit);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-      return limit;
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetPropertyLowerLimit(propName);
 }
 
 /**
@@ -3346,28 +3523,13 @@ double CMMCore::getPropertyLowerLimit(const char* label, const char* propName) t
  */
 double CMMCore::getPropertyUpperLimit(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return 0.0;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      double limit;
-      int ret = pDevice->GetPropertyUpperLimit(propName, limit);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-      return limit;
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetPropertyUpperLimit(propName);
 }
 
 /**
@@ -3377,28 +3539,13 @@ double CMMCore::getPropertyUpperLimit(const char* label, const char* propName) t
  */
 bool CMMCore::hasPropertyLimits(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return false;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      bool hasLimits;
-      int ret = pDevice->HasPropertyLimits(propName, hasLimits);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-      return hasLimits;
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->HasPropertyLimits(propName);
 }
 
 /**
@@ -3408,28 +3555,13 @@ bool CMMCore::hasPropertyLimits(const char* label, const char* propName) throw (
  */
 bool CMMCore::isPropertySequenceable(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return false;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      bool isSequenceable;
-      int ret = pDevice->IsPropertySequenceable(propName, isSequenceable);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-      return isSequenceable;
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->IsPropertySequenceable(propName);
 }
 
 
@@ -3440,28 +3572,13 @@ bool CMMCore::isPropertySequenceable(const char* label, const char* propName) th
  */
 long CMMCore::getPropertySequenceMaxLength(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       return 0;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      long numEvents;
-      int ret = pDevice->GetPropertySequenceMaxLength(propName, numEvents);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-      return numEvents;
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetPropertySequenceMaxLength(propName);
 }
 
 
@@ -3473,25 +3590,14 @@ long CMMCore::getPropertySequenceMaxLength(const char* label, const char* propNa
  */
 void CMMCore::startPropertySequence(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
+      // XXX Should be a throw
       return;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      int ret = pDevice->StartPropertySequence(propName);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   pDevice->StartPropertySequence(propName);
 }
 
 /**
@@ -3502,25 +3608,14 @@ void CMMCore::startPropertySequence(const char* label, const char* propName) thr
  */
 void CMMCore::stopPropertySequence(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
+      // XXX Should be a throw
       return;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      int ret = pDevice->StopPropertySequence(propName);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   pDevice->StopPropertySequence(propName);
 }
 
 /**
@@ -3532,38 +3627,25 @@ void CMMCore::stopPropertySequence(const char* label, const char* propName) thro
  */
 void CMMCore::loadPropertySequence(const char* label, const char* propName, std::vector<std::string> eventSequence) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
+      // XXX Should be a throw
       return;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
    
-	  MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      int ret = pDevice->ClearPropertySequence(propName);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
+   mm::DeviceModuleLockGuard guard(pDevice);
+   pDevice->ClearPropertySequence(propName);
 
-      std::vector<std::string>::iterator it;
-      for ( it=eventSequence.begin() ; it < eventSequence.end(); it++ )
-      {
-         ret = pDevice->AddToPropertySequence(propName, (*it).c_str());
-         if (ret != DEVICE_OK)
-            throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-      }
-
-      ret = pDevice->SendPropertySequence(propName);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
+   std::vector<std::string>::iterator it;
+   for (std::vector<std::string>::const_iterator it = eventSequence.begin(),
+         end = eventSequence.end();
+         it < end; ++it)
+   {
+      CheckPropertyValue(it->c_str());
+      pDevice->AddToPropertySequence(propName, it->c_str());
    }
+
+   pDevice->SendPropertySequence(propName);
 }
 
 /**
@@ -3571,29 +3653,14 @@ void CMMCore::loadPropertySequence(const char* label, const char* propName, std:
  */
 MM::PropertyType CMMCore::getPropertyType(const char* label, const char* propName) throw (CMMError)
 {
-   if (strcmp(label, MM::g_Keyword_CoreDevice) == 0)
-   {
+   if (IsCoreDeviceLabel(label))
       // TODO: return the proper core type
       return MM::Undef;
-   }
-   else
-   {
-      MM::Device* pDevice;
-      try {
-         pDevice = pluginManager_.GetDevice(label);
-      } catch (CMMError& err) {
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-         throw;
-      }
+   boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(label);
+   CheckPropertyName(propName);
 
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      MM::PropertyType pt;
-      int ret = pDevice->GetPropertyType(propName, pt);
-      if (ret != DEVICE_OK)
-         throw CMMError(label, getDeviceErrorText(ret, pDevice).c_str(), MMERR_DEVICE_GENERIC);
-
-      return pt;
-   }
+   mm::DeviceModuleLockGuard guard(pDevice);
+   return pDevice->GetPropertyType(propName);
 }
 
 
@@ -3603,11 +3670,14 @@ MM::PropertyType CMMCore::getPropertyType(const char* label, const char* propNam
  */
 unsigned CMMCore::getImageWidth()
 {
-   if (camera_ == 0)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
+   {
       return 0;
+   }
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-   return camera_->GetImageWidth();
+   mm::DeviceModuleLockGuard guard(camera);
+   return camera->GetImageWidth();
 }
 
 /**
@@ -3616,11 +3686,14 @@ unsigned CMMCore::getImageWidth()
  */
 unsigned CMMCore::getImageHeight()
 {
-   if (camera_ == 0)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
+   {
       return 0;
+   }
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-   return camera_->GetImageHeight();
+   mm::DeviceModuleLockGuard guard(camera);
+   return camera->GetImageHeight();
 }
 
 /**
@@ -3630,11 +3703,14 @@ unsigned CMMCore::getImageHeight()
  */
 unsigned CMMCore::getBytesPerPixel()
 {
-   if (camera_ == 0)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
+   {
       return 0;
+   }
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-   return camera_->GetImageBytesPerPixel();
+   mm::DeviceModuleLockGuard guard(camera);
+   return camera->GetImageBytesPerPixel();
 }
 
 /**
@@ -3646,11 +3722,14 @@ unsigned CMMCore::getBytesPerPixel()
  */
 unsigned CMMCore::getImageBitDepth()
 {
-   if (camera_)
-      return camera_->GetBitDepth();
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
+   {
+      return 0;
+   }
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-   return 0;
+   mm::DeviceModuleLockGuard guard(camera);
+   return camera->GetBitDepth();
 }
 
 /**
@@ -3659,11 +3738,13 @@ unsigned CMMCore::getImageBitDepth()
  */
 unsigned CMMCore::getNumberOfComponents()
 {
-   if (camera_)
-      return camera_->GetNumberOfComponents();
-
-   MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-   return 0;
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
+   {
+      return 0;
+   }
+   mm::DeviceModuleLockGuard guard(camera);
+   return camera->GetNumberOfComponents();
 }
 
 /**
@@ -3671,46 +3752,79 @@ unsigned CMMCore::getNumberOfComponents()
  */
 unsigned CMMCore::getNumberOfCameraChannels()
 {
-   if (camera_)
-      return camera_->GetNumberOfChannels();
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
+   {
+      return 0;
+   }
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-   return 0;
+   mm::DeviceModuleLockGuard guard(camera);
+   return camera->GetNumberOfChannels();
 }
 
 string CMMCore::getCameraChannelName(unsigned int channelNr)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      char name[MM::MaxStrLength];
-      camera_->GetChannelName(channelNr, name);
-      return name;
+      return std::string();
    }
-   return "";
+
+   mm::DeviceModuleLockGuard guard(camera);
+   return camera->GetChannelName(channelNr);
 }
 
 /**
- * Sets the current exposure setting of the camera in milliseconds.
+ * Sets the exposure setting of the current camera in milliseconds.
  * @param dExp   the exposure in milliseconds
  */
 void CMMCore::setExposure(double dExp) throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (!camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      camera_->SetExposure(dExp);
-      if (camera_->HasProperty(MM::g_Keyword_Exposure))
-      {
-         char cameraName[MM::MaxStrLength];
-         camera_->GetLabel(cameraName);
-         stateCache_.addSetting(PropertySetting(cameraName, MM::g_Keyword_Exposure, CDeviceUtils::ConvertToString(dExp)));
-      }
+      throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
    }
    else
-      throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
+   {
+      std::string cameraName;
+      {
+         mm::DeviceModuleLockGuard guard(camera);
+         cameraName = camera->GetLabel();
+      }
+      setExposure(cameraName.c_str(), dExp);
+   }
+}
 
-   CORE_DEBUG1("Exposure set to %.3f ms\n", dExp);
+/**
+ * Sets the exposure setting of the specified camera in milliseconds.
+ * @param label  the camera device label
+ * @param dExp   the exposure in milliseconds
+ */
+void CMMCore::setExposure(const char* label, double dExp) throw (CMMError)
+{
+   boost::shared_ptr<CameraInstance> pCamera =
+      deviceManager_->GetDeviceOfType<CameraInstance>(label);
+
+   {
+      mm::DeviceModuleLockGuard guard(pCamera);
+      LOG_DEBUG(coreLogger_) << "Will set camera " << label <<
+         " exposure to " << std::fixed << std::setprecision(3) <<
+         dExp << " ms";
+
+      pCamera->SetExposure(dExp);
+      if (pCamera->HasProperty(MM::g_Keyword_Exposure))
+      {
+         {
+            MMThreadGuard scg(stateCacheLock_);
+            stateCache_.addSetting(PropertySetting(label, MM::g_Keyword_Exposure, CDeviceUtils::ConvertToString(dExp)));
+         }
+      }
+   }
+
+   LOG_DEBUG(coreLogger_) << "Did set camera " << label <<
+      " exposure to " << std::fixed << std::setprecision(3) <<
+      dExp << " ms";
 }
 
 /**
@@ -3719,10 +3833,11 @@ void CMMCore::setExposure(double dExp) throw (CMMError)
  */
 double CMMCore::getExposure() throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      return camera_->GetExposure();
+      mm::DeviceModuleLockGuard guard(camera);
+      return camera->GetExposure();
    }
    else
       //throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
@@ -3730,46 +3845,67 @@ double CMMCore::getExposure() throw (CMMError)
 }
 
 /**
- * Sets hardware Region Of Interest (ROI). This command will
- * change dimensions of the image.
- * 
+ * Set the hardware region of interest for the current camera.
+ *
+ * A successful call to this method will clear any images in the sequence
+ * buffer, even if the ROI does not change.
+ *
+ * The coordinates are in units of binned pixels. That is, conceptually,
+ * binning is applied before the ROI.
+ *
  * @param x      coordinate of the top left corner
  * @param y      coordinate of the top left corner
- * @param xSize  horizontal dimension
- * @param ySize  vertical dimension
+ * @param xSize  number of horizontal pixels
+ * @param ySize  number of horizontal pixels
  */
 void CMMCore::setROI(int x, int y, int xSize, int ySize) throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      int nRet = camera_->SetROI(x, y, xSize, ySize);
+      mm::DeviceModuleLockGuard guard(camera);
+      LOG_DEBUG(coreLogger_) << "Will set ROI of current camera to ("
+         "left = " << x << ", top = " << y <<
+         ", width = " << xSize << ", height = " << ySize << ")";
+      int nRet = camera->SetROI(x, y, xSize, ySize);
       if (nRet != DEVICE_OK)
-         throw CMMError(getDeviceErrorText(nRet, camera_).c_str(), MMERR_DEVICE_GENERIC);
+         throw CMMError(getDeviceErrorText(nRet, camera).c_str(), MMERR_DEVICE_GENERIC);
+
+      // Any images left over in the sequence buffer may have sizes
+      // inconsistent with the current image size. There is no way to "fix"
+      // popNextImage() to handle this correctly, so we need to make sure we
+      // discard such images.
+      cbuf_->Clear();
    }
    else
       throw CMMError(getCoreErrorText(MMERR_CameraNotAvailable).c_str(), MMERR_CameraNotAvailable);
 
-   CORE_DEBUG4("ROI set to (%d, %d, %d, %d)\n", x, y, xSize, ySize);
+   LOG_DEBUG(coreLogger_) << "Did set ROI of current camera to ("
+      "left = " << x << ", top = " << y <<
+      ", width = " << xSize << ", height = " << ySize << ")";
 }
 
 /**
- * Returns info on the current Region Of Interest (ROI).
- * 
+ * Return the current hardware region of interest for the current camera.
+ *
+ * The coordinates are in units of binned pixels. That is, conceptually,
+ * binning is applied before the ROI.
+ *
  * @param x      coordinate of the top left corner
  * @param y      coordinate of the top left corner
- * @param xSize  horizontal dimension
- * @param ySize  vertical dimension
+ * @param xSize  number of horizontal pixels
+ * @param ySize  number of horizontal pixels
  */
 void CMMCore::getROI(int& x, int& y, int& xSize, int& ySize) throw (CMMError)
 {
    unsigned uX(0), uY(0), uXSize(0), uYSize(0);
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      int nRet = camera_->GetROI(uX, uY, uXSize, uYSize);
+      mm::DeviceModuleLockGuard guard(camera);
+      int nRet = camera->GetROI(uX, uY, uXSize, uYSize);
       if (nRet != DEVICE_OK)
-         throw CMMError(getDeviceErrorText(nRet, camera_).c_str(), MMERR_DEVICE_GENERIC);
+         throw CMMError(getDeviceErrorText(nRet, camera).c_str(), MMERR_DEVICE_GENERIC);
    }
 
    x = (int) uX;
@@ -3779,17 +3915,53 @@ void CMMCore::getROI(int& x, int& y, int& xSize, int& ySize) throw (CMMError)
 }
 
 /**
- * Resets the current ROI to the full frame.
+ * Return the current hardware region of interest for a camera.
+ *
+ * @param label  camera label
+ * @param x      coordinate of the top left corner
+ * @param y      coordinate of the top left corner
+ * @param xSize  number of horizontal pixels
+ * @param ySize  number of vertical pixels
+ */
+void CMMCore::getROI(const char* label, int& x, int& y, int& xSize, int& ySize) throw (CMMError)
+{
+   boost::shared_ptr<CameraInstance> pCam =
+      deviceManager_->GetDeviceOfType<CameraInstance>(label);
+
+   unsigned uX(0), uY(0), uXSize(0), uYSize(0);
+   mm::DeviceModuleLockGuard guard(pCam);
+   int nRet = pCam->GetROI(uX, uY, uXSize, uYSize);
+   if (nRet != DEVICE_OK)
+      throw CMMError(getDeviceErrorText(nRet, pCam).c_str(), MMERR_DEVICE_GENERIC);
+
+   x = (int) uX;
+   y = (int) uY;
+   xSize = (int) uXSize;
+   ySize = (int) uYSize;
+}
+
+/**
+ * Set the region of interest of the current camera to the full frame.
+ *
+ * A successful call to this method will clear any images in the sequence
+ * buffer, even if the ROI does not change.
  */
 void CMMCore::clearROI() throw (CMMError)
 {
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
       // effectively clears the current ROI setting
-      MMThreadGuard guard(pluginManager_.getModuleLock(camera_));
-      int nRet = camera_->ClearROI();
+      mm::DeviceModuleLockGuard guard(camera);
+      int nRet = camera->ClearROI();
       if (nRet != DEVICE_OK)
-         throw CMMError(getDeviceErrorText(nRet, camera_).c_str(), MMERR_DEVICE_GENERIC);
+         throw CMMError(getDeviceErrorText(nRet, camera).c_str(), MMERR_DEVICE_GENERIC);
+
+      // Any images left over in the sequence buffer may have sizes
+      // inconsistent with the current image size. There is no way to "fix"
+      // popNextImage() to handle this correctly, so we need to make sure we
+      // discard such images.
+      cbuf_->Clear();
    }
 }
 
@@ -3802,27 +3974,33 @@ void CMMCore::clearROI() throw (CMMError)
  */
 void CMMCore::setState(const char* deviceLabel, long state) throw (CMMError)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+   mm::DeviceModuleLockGuard guard(pStateDev);
 
+   LOG_DEBUG(coreLogger_) << "Will set " << deviceLabel << " to state " << state;
    int nRet = pStateDev->SetPosition(state);
    if (nRet != DEVICE_OK)
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(nRet, pStateDev));
 
    if (pStateDev->HasProperty(MM::g_Keyword_State))
    {
-      stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_State, CDeviceUtils::ConvertToString(state)));
+      {
+         MMThreadGuard scg(stateCacheLock_);
+         stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_State, CDeviceUtils::ConvertToString(state)));
+      }
    }
    if (pStateDev->HasProperty(MM::g_Keyword_Label))
    {
-      char posLbl[MM::MaxStrLength];
-      nRet = pStateDev->GetPositionLabel(state, posLbl);
-      if (nRet != DEVICE_OK)
-         throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
-      stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_Label, posLbl));
+      std::string posLbl = pStateDev->GetPositionLabel(state);
+
+      {
+         MMThreadGuard scg(stateCacheLock_);
+         stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_Label, posLbl.c_str()));
+      }
    }
 
-   CORE_DEBUG2("%s set to state %d\n", deviceLabel, (int)state);
+   LOG_DEBUG(coreLogger_) << "Did set " << deviceLabel << " to state " << state;
 }
 
 /**
@@ -3834,13 +4012,14 @@ void CMMCore::setState(const char* deviceLabel, long state) throw (CMMError)
  */
 long CMMCore::getState(const char* deviceLabel) throw (CMMError)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+   mm::DeviceModuleLockGuard guard(pStateDev);
 
    long state;
    int nRet = pStateDev->GetPosition(state);
    if (nRet != DEVICE_OK)
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(nRet, pStateDev));
 
    return state;
 }
@@ -3850,8 +4029,9 @@ long CMMCore::getState(const char* deviceLabel) throw (CMMError)
  */
 long CMMCore::getNumberOfStates(const char* deviceLabel)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+   mm::DeviceModuleLockGuard guard(pStateDev);
    return pStateDev->GetNumberOfPositions();
 }
 
@@ -3863,23 +4043,33 @@ long CMMCore::getNumberOfStates(const char* deviceLabel)
  */
 void CMMCore::setStateLabel(const char* deviceLabel, const char* stateLabel) throw (CMMError)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+   CheckStateLabel(stateLabel);
+
+   mm::DeviceModuleLockGuard guard(pStateDev);
+   LOG_DEBUG(coreLogger_) << "Will set " << deviceLabel << " to label " << stateLabel;
    int nRet = pStateDev->SetPosition(stateLabel);
    if (nRet != DEVICE_OK)
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(nRet, pStateDev));
+   LOG_DEBUG(coreLogger_) << "Did set " << deviceLabel << " to label " << stateLabel;
 
    if (pStateDev->HasProperty(MM::g_Keyword_Label))
    {
-      stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_Label, stateLabel));
+      {
+         MMThreadGuard scg(stateCacheLock_);
+         stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_Label, stateLabel));
+      }
    }
    if (pStateDev->HasProperty(MM::g_Keyword_State))
    {
-      stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_State,
-                             CDeviceUtils::ConvertToString(getStateFromLabel(deviceLabel, stateLabel))));
+      long state = getStateFromLabel(deviceLabel, stateLabel);
+      {
+         MMThreadGuard scg(stateCacheLock_);
+         stateCache_.addSetting(PropertySetting(deviceLabel, MM::g_Keyword_State,
+                  CDeviceUtils::ConvertToString(state)));
+      }
    }
-
-   CORE_DEBUG2("%s set to state label %s\n", deviceLabel, stateLabel);
 }
 
 /**
@@ -3890,14 +4080,11 @@ void CMMCore::setStateLabel(const char* deviceLabel, const char* stateLabel) thr
  */
 string CMMCore::getStateLabel(const char* deviceLabel) throw (CMMError)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
-   char pos[MM::MaxStrLength];
-   int nRet = pStateDev->GetPosition(pos);
-   if (nRet != DEVICE_OK)
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
 
-   return string(pos);
+   mm::DeviceModuleLockGuard guard(pStateDev);
+   return pStateDev->GetPositionLabel();
 }
 
 /**
@@ -3909,20 +4096,20 @@ string CMMCore::getStateLabel(const char* deviceLabel) throw (CMMError)
  */
 void CMMCore::defineStateLabel(const char* deviceLabel, long state, const char* label) throw (CMMError)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+   CheckStateLabel(label);
+
+   mm::DeviceModuleLockGuard guard(pStateDev);
    // Remember old label so that we can update configurations that use it
-   char oldLabel[MM::MaxStrLength];
-   int nRet = pStateDev->GetPositionLabel(state, oldLabel);
-   if (nRet != DEVICE_OK)
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+   std::string oldLabel = pStateDev->GetPositionLabel(state);
 
    // Set new label
-   nRet = pStateDev->SetPositionLabel(state, label);
+   int nRet = pStateDev->SetPositionLabel(state, label);
    if (nRet != DEVICE_OK)
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(nRet, pStateDev));
 
-   if (strcmp(label, oldLabel) != 0)
+   if (label != oldLabel)
    {
       // Fix existing configurations that use the old label
       std::vector<std::string> configGroups = getAvailableConfigGroups();
@@ -3936,7 +4123,7 @@ void CMMCore::defineStateLabel(const char* deviceLabel, long state, const char* 
             Configuration conf = getConfigData((*itcfg).c_str(), (*itcf).c_str());
             if (conf.isPropertyIncluded(deviceLabel, MM::g_Keyword_Label) ) 
             {
-               PropertySetting setting(deviceLabel, MM::g_Keyword_Label, oldLabel);
+               PropertySetting setting(deviceLabel, MM::g_Keyword_Label, oldLabel.c_str());
                if (conf.isSettingIncluded(setting))
                {
                   deleteConfig((*itcfg).c_str(), (*itcf).c_str(), deviceLabel, MM::g_Keyword_Label);
@@ -3950,7 +4137,8 @@ void CMMCore::defineStateLabel(const char* deviceLabel, long state, const char* 
       }
    }
 
-   CORE_DEBUG3("State %d for device %s defined as label %s\n", (int)state, deviceLabel, label);
+   LOG_DEBUG(coreLogger_) << "Defined label " << label <<
+      " for device " << deviceLabel << " state " << state;
 }
 
 /**
@@ -3961,16 +4149,14 @@ void CMMCore::defineStateLabel(const char* deviceLabel, long state, const char* 
  */
 vector<string> CMMCore::getStateLabels(const char* deviceLabel) throw (CMMError)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pStateDev);
    vector<string> stateLabels;
-   char label[MM::MaxStrLength];
    for (unsigned i=0; i<pStateDev->GetNumberOfPositions(); i++)
    {
-      int nRet = pStateDev->GetPositionLabel(i, label);
-      if (nRet != DEVICE_OK)
-         throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
-      stateLabels.push_back(label);
+      stateLabels.push_back(pStateDev->GetPositionLabel(i));
    }
    return stateLabels;
 }
@@ -3984,182 +4170,17 @@ vector<string> CMMCore::getStateLabels(const char* deviceLabel) throw (CMMError)
  */
 long CMMCore::getStateFromLabel(const char* deviceLabel, const char* stateLabel) throw (CMMError)
 {
-   MM::State* pStateDev = getSpecificDevice<MM::State>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStateDev));
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+   CheckStateLabel(stateLabel);
+
+   mm::DeviceModuleLockGuard guard(pStateDev);
    long state;
    int nRet = pStateDev->GetLabelPosition(stateLabel, state);
    if (nRet != DEVICE_OK)
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(nRet, pStateDev));
 
    return state;
-}
-
-/**
- * Defines a single configuration entry (setting). If the configuration name
- * was not previously defined a new configuration will be automatically created.
- * If the name was previously defined the new setting will be added to its list of
- * property settings. The new setting will override previously defined ones if it
- * refers to the same property name.
- *
- * @param configName   the configuration name
- * @param deviceLabel  the device label
- * @param propName     the property name
- * @param value        the property value
- */
-void CMMCore::defineConfiguration(const char* configName, const char* deviceLabel, const char* propName, const char* value)
-{
-   // check if the configuration allready exists
-   CConfigMap::const_iterator it = configs_.find(configName);
-   Configuration* pConf;
-
-   if (it == configs_.end())
-   {
-		try
-		{
-			pConf = new Configuration();
-		}
-		catch(bad_alloc& ex)
-		{
-			ostringstream messs;
-			messs << getCoreErrorText(MMERR_OutOfMemory).c_str() << " " << ex.what() << endl;
-			throw CMMError(messs.str().c_str() , MMERR_OutOfMemory);
-		}
-		if (NULL == pConf) throw CMMError(getCoreErrorText(MMERR_OutOfMemory).c_str(), MMERR_OutOfMemory);
-      configs_[configName] = pConf; // add new configuration
-   }   
-   else
-      pConf = it->second;
-
-   // add the setting
-   PropertySetting setting(deviceLabel, propName, value);
-   pConf->addSetting(setting);
-
-   CORE_DEBUG4("Configuration %s: new setting for device %s defined as %s=%s\n", configName, deviceLabel, propName, value);
-}
-
-/**
- * Applies a configuration. The command will fail if the
- * configuration was not previously defined.
- *
- * @param configName      the configuration name
- */
-void CMMCore::setConfiguration(const char* configName) throw (CMMError)
-{
-   // tolerate empty configuration names
-   if (configName == 0 || strlen(configName) == 0)
-      return;
-
-   CConfigMap::const_iterator it = configs_.find(configName);
-   if (it == configs_.end())
-      throw CMMError(configName, getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
-   
-   try {
-      applyConfiguration(*it->second);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      throw;
-   }
-
-   CORE_DEBUG1("Configuration %s applied.\n", configName);
-}
-
-/**
- * Deletes a configuration. The command will fail if the
- * configuration was not previously defined.
- *
- * @param configName      the configuration name
- */
-void CMMCore::deleteConfiguration(const char* configName) throw (CMMError)
-{
-   // tolerate empty configuration names
-   if (configName == 0 || strlen(configName) == 0)
-      return;
-
-   CConfigMap::const_iterator it = configs_.find(configName);
-   if (it == configs_.end())
-      throw CMMError(configName, getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
-   configs_.erase(configName);
-   CORE_LOG1("Configuration %s deleted.\n", configName);
-}
-
-
-/**
- * Returns all defined configuration names.
- * @return an array of configuration names
- */
-std::vector<string> CMMCore::getAvailableConfigurations() const
-{
-   vector<string> configList;
-   CConfigMap::const_iterator it = configs_.begin();
-   while(it != configs_.end())
-      configList.push_back(it++->first);
-
-   return configList;
-}
-
-/**
- * Returns the current configuration.
- * An empty string is a valid return value, since the system state will not
- * always correspond to any of the defined configurations.
- * Also, in general it is possible that the system state fits multiple configurations.
- * This method will return only the first maching configuration, if any.
- *
- * @return the name of the current configuration
- */
-string CMMCore::getConfiguration()
-{
-
-
-   // Here we find all configurations that "fit" the current state of the system
-   // but return only the first one.
-   // Still not sure how to treat multiple configurations fitting the system state -
-   // but for the time being we will assume that all configurations are unique and
-   // therefore we need to return only one. In the future we may revert to returning
-   // a vector of mathcing configurations...
-
-   vector<string> configList;
-   string empty("");
-
-   CConfigMap::const_iterator it = configs_.begin();
-   while(it != configs_.end())
-   {
-      if (isConfigurationCurrent(*it->second))
-         configList.push_back(it->first);
-      it++;
-   }
-   if (configList.empty())
-      return empty;
-   else
-      return configList[0];
-}
-
-/**
- * Returns the configuration object for a given name.
- *
- * @return The configuration object
- * @param configName        the configuration name
- */
-Configuration CMMCore::getConfigurationData(const char* configName) const throw (CMMError)
-{
-
-
-
-   CConfigMap::const_iterator it = configs_.find(configName);
-   if (it == configs_.end())
-      throw CMMError(configName, getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
-   return *it->second;
-}
-
-/**
- * Checks if the configuration already exists.
- *
- * @return true if the configuration is already defined
- * @param configName configuration name 
- */
-bool CMMCore::isConfigurationDefined(const char* configName)
-{
-   CConfigMap::const_iterator it = configs_.find(configName);
-   return it == configs_.end() ? false : true;
 }
 
 /**
@@ -4167,11 +4188,15 @@ bool CMMCore::isConfigurationDefined(const char* configName)
  */
 void CMMCore::defineConfigGroup(const char* groupName) throw (CMMError)
 {
+   CheckConfigGroupName(groupName);
+
    if (!configGroups_->Define(groupName))
-      throw CMMError(groupName, getCoreErrorText(MMERR_DuplicateConfigGroup).c_str(), MMERR_DuplicateConfigGroup);
+      throw CMMError(ToQuotedString(groupName) + ": " + getCoreErrorText(MMERR_DuplicateConfigGroup),
+            MMERR_DuplicateConfigGroup);
 
    updateAllowedChannelGroups();
-   CORE_LOG1("Configuration group %s created.\n", groupName);
+
+   LOG_DEBUG(coreLogger_) << "Created config group " << groupName;
 }
 
 /**
@@ -4179,15 +4204,18 @@ void CMMCore::defineConfigGroup(const char* groupName) throw (CMMError)
  */
 void CMMCore::deleteConfigGroup(const char* groupName) throw (CMMError)
 {
+   CheckConfigGroupName(groupName);
+
    if (!configGroups_->Delete(groupName))
-      throw CMMError(groupName, getCoreErrorText(MMERR_NoConfigGroup).c_str(), MMERR_NoConfigGroup);
+      throw CMMError(ToQuotedString(groupName) + ": " + getCoreErrorText(MMERR_NoConfigGroup),
+            MMERR_NoConfigGroup);
 
    if (0 == channelGroup_.compare(groupName))
       setChannelGroup("");
 
    updateAllowedChannelGroups();
 
-   CORE_LOG1("Configuration group %s deleted.\n", groupName);
+   LOG_DEBUG(coreLogger_) << "Deleted config group " << groupName;
 }
 
 /**
@@ -4195,9 +4223,15 @@ void CMMCore::deleteConfigGroup(const char* groupName) throw (CMMError)
  */
 void CMMCore::renameConfigGroup(const char* oldGroupName, const char* newGroupName) throw (CMMError)
 {
+   CheckConfigGroupName(oldGroupName);
+   CheckConfigGroupName(newGroupName);
+
    if (!configGroups_->RenameGroup(oldGroupName, newGroupName))
-      throw CMMError(oldGroupName, getCoreErrorText(MMERR_NoConfigGroup).c_str(), MMERR_NoConfigGroup);
-   CORE_LOG2("Configuration group %s renamed to %s.\n", oldGroupName, newGroupName);
+      throw CMMError(ToQuotedString(oldGroupName) + ": " + getCoreErrorText(MMERR_NoConfigGroup),
+            MMERR_NoConfigGroup);
+
+   LOG_DEBUG(coreLogger_) << "Renamed config group " << oldGroupName <<
+      " to " << newGroupName;
 
    updateAllowedChannelGroups();
 
@@ -4214,13 +4248,13 @@ void CMMCore::renameConfigGroup(const char* oldGroupName, const char* newGroupNa
  */
 void CMMCore::defineConfig(const char* groupName, const char* configName) throw (CMMError)
 {
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(configName);
 
-   if (strcspn(configName, "/\\*!'") != strlen(configName))
-      throw CMMError(configName, getCoreErrorText(MMERR_BadConfigName).c_str(), MMERR_BadConfigName);
    configGroups_->Define(groupName, configName);
-   ostringstream txt;
-   txt << groupName << "/" << configName;
-   CORE_LOG1("Configuration %s defined.\n", txt.str().c_str());
+
+   LOG_DEBUG(coreLogger_) << "Config group " << groupName <<
+      ": added preset " << configName;
 }
 
 /**
@@ -4238,13 +4272,17 @@ void CMMCore::defineConfig(const char* groupName, const char* configName) throw 
  */
 void CMMCore::defineConfig(const char* groupName, const char* configName, const char* deviceLabel, const char* propName, const char* value) throw (CMMError)
 {
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(configName);
+   CheckDeviceLabel(deviceLabel);
+   CheckPropertyName(propName);
+   CheckPropertyValue(value);
 
-   if (strcspn(configName, "/\\*!'") != strlen(configName))
-      throw CMMError(configName, getCoreErrorText(MMERR_BadConfigName).c_str(), MMERR_BadConfigName);
    configGroups_->Define(groupName, configName, deviceLabel, propName, value);
-   ostringstream txt;
-   txt << groupName << "/" << configName;
-   CORE_LOG4("Configuration %s: new setting for device %s defined as %s=%s\n", txt.str().c_str(), deviceLabel, propName, value);
+
+   LOG_DEBUG(coreLogger_) << "Config group " << groupName <<
+      ": preset " << configName << ": added setting " <<
+      deviceLabel << "-" << propName << " = " << value;
 }
 
 
@@ -4263,20 +4301,32 @@ void CMMCore::defineConfig(const char* groupName, const char* configName, const 
  * @param propName property name
  * @param value property value
 */
-void CMMCore::definePixelSizeConfig(const char* resolutionID, const char* deviceLabel, const char* propName, const char* value)
+void CMMCore::definePixelSizeConfig(const char* resolutionID, const char* deviceLabel, const char* propName, const char* value) throw (CMMError)
 {
+   CheckConfigPresetName(resolutionID);
+   CheckDeviceLabel(deviceLabel);
+   CheckPropertyName(propName);
+   CheckPropertyValue(value);
+
    pixelSizeGroup_->Define(resolutionID, deviceLabel, propName, value);
-   CORE_LOG4("Resolution ID %s: for device %s defined as %s=%s\n", resolutionID, deviceLabel, propName, value);
+
+   LOG_DEBUG(coreLogger_) << "Pixel size config: "
+      "preset " << resolutionID << ": added setting : " <<
+      deviceLabel << "-" << propName << " = " << value;
 }
 
 /**
  * Defines an empty pixel size entry.
 */
 
-void CMMCore::definePixelSizeConfig(const char* resolutionID)
+void CMMCore::definePixelSizeConfig(const char* resolutionID) throw (CMMError)
 {
+   CheckConfigPresetName(resolutionID);
+
    pixelSizeGroup_->Define(resolutionID);
-   CORE_LOG1("Empty Resolution ID %s defined", resolutionID);
+
+   LOG_DEBUG(coreLogger_) << "Pixel size config: "
+      "added preset " << resolutionID;
 }
 
 /**
@@ -4284,8 +4334,10 @@ void CMMCore::definePixelSizeConfig(const char* resolutionID)
  *
  * @return true if the configuration is already defined
  */
-bool CMMCore::isPixelSizeConfigDefined(const char* resolutionID) const
+bool CMMCore::isPixelSizeConfigDefined(const char* resolutionID) const throw (CMMError)
 {
+   CheckConfigPresetName(resolutionID);
+
    return  pixelSizeGroup_->Find(resolutionID) != 0;
 }
 
@@ -4294,11 +4346,17 @@ bool CMMCore::isPixelSizeConfigDefined(const char* resolutionID) const
  */ 
 void CMMCore::setPixelSizeUm(const char* resolutionID, double pixSize)  throw (CMMError)
 {
+   CheckConfigPresetName(resolutionID);
+
    PixelSizeConfiguration* psc = pixelSizeGroup_->Find(resolutionID);
    if (psc == 0)
-      throw CMMError(resolutionID, getCoreErrorText(MMERR_NoConfigGroup).c_str(), MMERR_NoConfigGroup);
+      throw CMMError(ToQuotedString(resolutionID) + ": " + getCoreErrorText(MMERR_NoConfigGroup),
+            MMERR_NoConfigGroup);
    psc->setPixelSizeUm(pixSize);
-   CORE_LOG2("Pixel size %f um set for resolution ID: %s\n", pixSize, resolutionID);
+
+   LOG_DEBUG(coreLogger_) << "Pixel size config: "
+      "preset " << resolutionID << ": set resolution to " <<
+      std::fixed << std::setprecision(5) << pixSize << " um/px";
 }
 
 /**
@@ -4310,23 +4368,26 @@ void CMMCore::setPixelSizeUm(const char* resolutionID, double pixSize)  throw (C
  */
 void CMMCore::setPixelSizeConfig(const char* resolutionID) throw (CMMError)
 {
+   CheckConfigPresetName(resolutionID);
+
    PixelSizeConfiguration* psc = pixelSizeGroup_->Find(resolutionID);
    ostringstream os;
    os << resolutionID;
    if (!psc)
    {
-      throw CMMError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError(ToQuotedString(resolutionID) + ": " + getCoreErrorText(MMERR_NoConfiguration),
+            MMERR_NoConfiguration);
    }
    
    try {
       applyConfiguration(*psc);
    } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
       logError("setPixelSizeConfig", getCoreErrorText(err.getCode()).c_str());
       throw;
    }
 
-   CORE_DEBUG1("Pixel Size Configuration %s applied.\n", os.str().c_str());
+   LOG_DEBUG(coreLogger_) << "Applied pixel size configuration preset " <<
+      resolutionID;
 }
 
 /**
@@ -4338,32 +4399,31 @@ void CMMCore::setPixelSizeConfig(const char* resolutionID) throw (CMMError)
  */
 void CMMCore::setConfig(const char* groupName, const char* configName) throw (CMMError)
 {
-   if (groupName == 0)
-   {
-      throw CMMError("GroupName not defined", MMERR_NoConfigGroup);
-   }
-   if (configName == 0)
-   {
-      throw CMMError("ConfigName not defined", MMERR_NoConfiguration);
-   }
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(configName);
 
    Configuration* pCfg = configGroups_->Find(groupName, configName);
    ostringstream os;
    os << groupName << "/" << configName;
    if (!pCfg)
    {
-      throw CMMError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Preset " + ToQuotedString(configName) +
+            " of configuration group " + ToQuotedString(groupName) +
+            " does not exist",
+            MMERR_NoConfiguration);
    }
-   
+
+   LOG_DEBUG(coreLogger_) << "Config group " << groupName <<
+      ": will apply preset " << configName;
+
    try {
       applyConfiguration(*pCfg);
-   } catch (CMMError& err) {
-      if (err.getCode() != MMERR_DEVICE_GENERIC)
-         err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
+   } catch (CMMError&) {
       throw;
    }
 
-   CORE_DEBUG1("Configuration %s applied.\n", os.str().c_str());
+   LOG_DEBUG(coreLogger_) << "Config group " << groupName <<
+      ": did apply preset " << configName;
 }
 
 /**
@@ -4373,14 +4433,19 @@ void CMMCore::setConfig(const char* groupName, const char* configName) throw (CM
  */
 void CMMCore::renameConfig(const char* groupName, const char* oldConfigName, const char* newConfigName) throw (CMMError)
 {
-   ostringstream os1, os2;
-   os1 << groupName << "/" << oldConfigName;
-   os2 << groupName << "/" << newConfigName;
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(oldConfigName);
+   CheckConfigPresetName(newConfigName);
+
    if (!configGroups_->RenameConfig(groupName, oldConfigName, newConfigName)) {
       logError("renameConfig", getCoreErrorText(MMERR_NoConfiguration).c_str());
-      throw CMMError(os1.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Configuration group " + ToQuotedString(oldConfigName) +
+            " does not exist",
+            MMERR_NoConfiguration);
    }
-   CORE_LOG2("Configuration %s renamed to %s.\n", os1.str().c_str(), os2.str().c_str());
+
+   LOG_DEBUG(coreLogger_) << "Config group " << groupName <<
+      ": renamed preset " << oldConfigName << " to " << newConfigName;
 }
 
 /**
@@ -4390,13 +4455,20 @@ void CMMCore::renameConfig(const char* groupName, const char* oldConfigName, con
  */
 void CMMCore::deleteConfig(const char* groupName, const char* configName) throw (CMMError)
 {
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(configName);
+
    ostringstream os;
    os << groupName << "/" << configName;
    if (!configGroups_->Delete(groupName, configName)) {
       logError("deleteConfig", getCoreErrorText(MMERR_NoConfiguration).c_str());
-      throw CMMError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Configuration group " + ToQuotedString(groupName) +
+            " does not exist",
+            MMERR_NoConfiguration);
    }
-   CORE_LOG1("Configuration %s deleted.\n", os.str().c_str());
+
+   LOG_DEBUG(coreLogger_) << "Config group " << groupName <<
+      ": deleted preset " << configName;
 }
 
 /**
@@ -4406,13 +4478,25 @@ void CMMCore::deleteConfig(const char* groupName, const char* configName) throw 
  */
 void CMMCore::deleteConfig(const char* groupName, const char* configName, const char* deviceLabel, const char* propName) throw (CMMError)
 {
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(configName);
+   CheckDeviceLabel(deviceLabel);
+   CheckPropertyName(propName);
+
    ostringstream os;
    os << groupName << "/" << configName << "/" << deviceLabel << "/" << propName;
    if (!configGroups_->Delete(groupName, configName, deviceLabel, propName)) {
       logError("deleteConfig", getCoreErrorText(MMERR_NoConfiguration).c_str());
-      throw CMMError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Property " + ToQuotedString(propName) +
+            " of device " + ToQuotedString(deviceLabel) +
+            " is not in preset " + ToQuotedString(configName) +
+            " of configuration group " + ToQuotedString(groupName),
+            MMERR_NoConfiguration);
    }
-   CORE_LOG1("Configuration property %s deleted.\n", os.str().c_str());
+
+   LOG_DEBUG(coreLogger_) << "Config group " << groupName <<
+      ": preset " << configName << ": deleted property " <<
+      deviceLabel << "-" << propName;
 }
 
 
@@ -4424,6 +4508,8 @@ void CMMCore::deleteConfig(const char* groupName, const char* configName, const 
  */
 vector<string> CMMCore::getAvailableConfigs(const char* group) const
 {
+   CheckConfigGroupName(group);
+
    return configGroups_->GetAvailableConfigs(group);
 }
 
@@ -4456,15 +4542,11 @@ vector<string> CMMCore::getAvailablePixelSizeConfigs() const
  */
 string CMMCore::getCurrentConfig(const char* groupName) throw (CMMError)
 {
-
-
-   string empty("");
-   if (groupName == NULL)
-      throw CMMError(MMERR_NullPointerException);
+   CheckConfigGroupName(groupName);
 
    vector<string> cfgs = configGroups_->GetAvailableConfigs(groupName);
    if (cfgs.empty())
-      return empty;
+      return "";
 
    Configuration curState = getConfigGroupState(groupName, false);
 
@@ -4476,7 +4558,7 @@ string CMMCore::getCurrentConfig(const char* groupName) throw (CMMError)
    }
 
    // no match
-   return empty;
+   return "";
 }
 
 /**
@@ -4490,14 +4572,11 @@ string CMMCore::getCurrentConfig(const char* groupName) throw (CMMError)
  */
 string CMMCore::getCurrentConfigFromCache(const char* groupName) throw (CMMError)
 {
-
-   string empty("");
-   if (groupName == NULL)
-      throw CMMError(MMERR_NullPointerException);
+   CheckConfigGroupName(groupName);
 
    vector<string> cfgs = configGroups_->GetAvailableConfigs(groupName);
    if (cfgs.empty())
-      return empty;
+      return "";
 
    Configuration curState = getConfigGroupState(groupName, true);
 
@@ -4509,7 +4588,7 @@ string CMMCore::getCurrentConfigFromCache(const char* groupName) throw (CMMError
    }
 
    // no match
-   return empty;
+   return "";
 }
 
 /**
@@ -4519,6 +4598,9 @@ string CMMCore::getCurrentConfigFromCache(const char* groupName) throw (CMMError
  */
 Configuration CMMCore::getConfigData(const char* groupName, const char* configName) throw (CMMError)
 {
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(configName);
+
    Configuration* pCfg = configGroups_->Find(groupName, configName);
    if (!pCfg)
    {
@@ -4526,7 +4608,10 @@ Configuration CMMCore::getConfigData(const char* groupName, const char* configNa
       ostringstream os;
       os << groupName << "/" << configName;
       logError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str());
-      throw CMMError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Configuration group " + ToQuotedString(groupName) +
+            " or its preset " + ToQuotedString(configName) +
+            " does not exist",
+            MMERR_NoConfiguration);
    }
    return *pCfg;
 }
@@ -4537,6 +4622,8 @@ Configuration CMMCore::getConfigData(const char* groupName, const char* configNa
  */
 Configuration CMMCore::getPixelSizeConfigData(const char* configName) throw (CMMError)
 {
+   CheckConfigPresetName(configName);
+
    Configuration* pCfg = pixelSizeGroup_->Find(configName);
    if (!pCfg)
    {
@@ -4544,7 +4631,9 @@ Configuration CMMCore::getPixelSizeConfigData(const char* configName) throw (CMM
       ostringstream os;
       os << "Pixel size" << "/" << configName;
       logError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str());
-      throw CMMError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Pixel size configuration preset " + ToQuotedString(configName) +
+            " does not exist",
+            MMERR_NoConfiguration);
    }
    return *pCfg;
 }
@@ -4556,14 +4645,18 @@ Configuration CMMCore::getPixelSizeConfigData(const char* configName) throw (CMM
  */
 void CMMCore::renamePixelSizeConfig(const char* oldConfigName, const char* newConfigName) throw (CMMError)
 {
-   ostringstream os1, os2;
-   os1 << "Pixel size" << "/" << oldConfigName;
-   os2 << "Pixel size" << "/" << newConfigName;
+   CheckConfigPresetName(oldConfigName);
+   CheckConfigPresetName(newConfigName);
+
    if (!pixelSizeGroup_->Rename(oldConfigName, newConfigName)) {
       logError("renamePixelSizeConfig", getCoreErrorText(MMERR_NoConfiguration).c_str());
-      throw CMMError(os1.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Pixel size configuration preset " + ToQuotedString(oldConfigName) +
+            " does not exist",
+            MMERR_NoConfiguration);
    }
-   CORE_LOG2("Pixel Size Configuration %s renamed to %s.\n", os1.str().c_str(), os2.str().c_str());
+
+   LOG_DEBUG(coreLogger_) << "Pixel size config: "
+      "renamed preset " << oldConfigName << " to " << newConfigName;
 }
 
 /**
@@ -4573,13 +4666,17 @@ void CMMCore::renamePixelSizeConfig(const char* oldConfigName, const char* newCo
  */
 void CMMCore::deletePixelSizeConfig(const char* configName) throw (CMMError)
 {
-   ostringstream os;
-   os << "Pixel size" << "/" << configName;
+   CheckConfigPresetName(configName);
+
    if (!pixelSizeGroup_->Delete(configName)) {
       logError("deletePixelSizeConfig", getCoreErrorText(MMERR_NoConfiguration).c_str());
-      throw CMMError(os.str().c_str(), getCoreErrorText(MMERR_NoConfiguration).c_str(), MMERR_NoConfiguration);
+      throw CMMError("Pixel size configuration preset " + ToQuotedString(configName) +
+            " does not exist",
+            MMERR_NoConfiguration);
    }
-   CORE_LOG1("Pixel Size Configuration %s deleted.\n", os.str().c_str());
+
+   LOG_DEBUG(coreLogger_) << "Pixel size config: "
+      "deleted preset " << configName;
 }
 
 /**
@@ -4620,7 +4717,8 @@ string CMMCore::getCurrentPixelSizeConfig(bool cached) throw (CMMError)
 				}
 				else
 				{
-				   value = stateCache_.getSetting(cs.getDeviceLabel().c_str(), cs.getPropertyName().c_str()).getPropertyValue();
+               MMThreadGuard scg(stateCacheLock_);
+               value = stateCache_.getSetting(cs.getDeviceLabel().c_str(), cs.getPropertyName().c_str()).getPropertyValue();
 				}
                PropertySetting ss(cs.getDeviceLabel().c_str(), cs.getPropertyName().c_str(), value.c_str()); // state setting
                curState.addSetting(ss);
@@ -4664,20 +4762,28 @@ double CMMCore::getPixelSizeUm()
  */
 double CMMCore::getPixelSizeUm(bool cached)
 {
-	 string resolutionID = getCurrentPixelSizeConfig(cached);
+   std::string resolutionID = getCurrentPixelSizeConfig(cached);
+   if (resolutionID.length() > 0)
+   {
+      // check which one matches the current state
+      PixelSizeConfiguration* pCfg = pixelSizeGroup_->Find(resolutionID.c_str());
+      double pixSize = pCfg->getPixelSizeUm();
 
-	 if (resolutionID.length()>0) {
-		 // check which one matches the current state
-		 PixelSizeConfiguration* pCfg = pixelSizeGroup_->Find(resolutionID.c_str());
-		 double pixSize = pCfg->getPixelSizeUm();
-		 if (camera_)
-		 {
-			pixSize *= camera_->GetBinning() / getMagnificationFactor();
-		 }
-		 return pixSize;
-	 } else {
-		return 0.0;
-	 }
+      boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+      if (camera)
+      {
+         mm::DeviceModuleLockGuard guard(camera);
+         pixSize *= camera->GetBinning();
+      }
+
+      pixSize /= getMagnificationFactor();
+
+      return pixSize;
+   }
+   else
+   {
+      return 0.0;
+   }
 }
 
 /**
@@ -4685,9 +4791,12 @@ double CMMCore::getPixelSizeUm(bool cached)
  */
 double CMMCore::getPixelSizeUmByID(const char* resolutionID) throw (CMMError)
 {
+   CheckConfigPresetName(resolutionID);
+
    PixelSizeConfiguration* psc = pixelSizeGroup_->Find(resolutionID);
    if (psc == 0)
-      throw CMMError(resolutionID, getCoreErrorText(MMERR_NoConfigGroup).c_str(), MMERR_NoConfigGroup);
+      throw CMMError(ToQuotedString(resolutionID) + ": " + getCoreErrorText(MMERR_NoConfigGroup),
+            MMERR_NoConfigGroup);
    return psc->getPixelSizeUm();
 }
 
@@ -4706,7 +4815,11 @@ double CMMCore::getMagnificationFactor() const
    {
       try
       {
-         magnification *= getSpecificDevice<MM::Magnifier>(magnifiers[i].c_str())->GetMagnification();
+         boost::shared_ptr<MagnifierInstance> magnifier =
+            deviceManager_->GetDeviceOfType<MagnifierInstance>(magnifiers[i]);
+
+         mm::DeviceModuleLockGuard guard(magnifier);
+         magnification *= magnifier->GetMagnification();
       }
       catch (CMMError e)
       {
@@ -4723,6 +4836,9 @@ double CMMCore::getMagnificationFactor() const
  */
 bool CMMCore::isConfigDefined(const char* groupName, const char* configName)
 {
+   CheckConfigGroupName(groupName);
+   CheckConfigPresetName(configName);
+
    return  configGroups_->Find(groupName, configName) != 0;
 }
 
@@ -4733,6 +4849,8 @@ bool CMMCore::isConfigDefined(const char* groupName, const char* configName)
  */
 bool CMMCore::isGroupDefined(const char* groupName)
 {
+   CheckConfigGroupName(groupName);
+
    return  configGroups_->isDefined(groupName);
 }
 
@@ -4743,6 +4861,10 @@ bool CMMCore::isGroupDefined(const char* groupName)
  */
 void CMMCore::definePropertyBlock(const char* blockName, const char* propertyName, const char* propertyValue)
 {
+   CheckPropertyBlockName(blockName);
+   CheckPropertyName(propertyName);
+   CheckPropertyValue(propertyValue);
+
    // check if the block allready exists
    CPropBlockMap::const_iterator it = propBlocks_.find(blockName);
    PropertyBlock* pBlock;
@@ -4758,7 +4880,8 @@ void CMMCore::definePropertyBlock(const char* blockName, const char* propertyNam
    PropertyPair pair(propertyName, propertyValue);
    pBlock->addPair(pair);
 
-   CORE_DEBUG3("Property block %s defined as %s=%s\n", blockName, propertyName, propertyValue);
+   LOG_DEBUG(coreLogger_) << "Property block " << blockName <<
+      ": added setting " << propertyName << " = " << propertyValue;
 }
 
 /**
@@ -4779,11 +4902,14 @@ std::vector<std::string> CMMCore::getAvailablePropertyBlocks() const
  */
 PropertyBlock CMMCore::getPropertyBlockData(const char* blockName)
 {
+   CheckPropertyBlockName(blockName);
+
    CPropBlockMap::const_iterator it = propBlocks_.find(blockName);
    if (it == propBlocks_.end())
    {
       logError(blockName, getCoreErrorText(MMERR_InvalidPropertyBlock).c_str());
-      throw CMMError(blockName, getCoreErrorText(MMERR_InvalidPropertyBlock).c_str(), MMERR_InvalidPropertyBlock);
+      throw CMMError(ToQuotedString(blockName) + ": " + getCoreErrorText(MMERR_InvalidPropertyBlock),
+            MMERR_InvalidPropertyBlock);
    }
    return *it->second;
 }
@@ -4793,23 +4919,11 @@ PropertyBlock CMMCore::getPropertyBlockData(const char* blockName)
  */
 PropertyBlock CMMCore::getStateLabelData(const char* deviceLabel, const char* stateLabel)
 {
-   MM::Device* pDevice;
-   try {
-      pDevice = pluginManager_.GetDevice(deviceLabel);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      logError(deviceLabel, err.getMsg().c_str());
-      throw;
-   }
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+   CheckStateLabel(stateLabel);
 
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   if (pDevice->GetType() != MM::StateDevice)
-   {
-      logError(deviceLabel, getCoreErrorText(MMERR_InvalidStateDevice).c_str());
-      throw CMMError(deviceLabel, getCoreErrorText(MMERR_InvalidStateDevice).c_str(), MMERR_InvalidStateDevice);
-   }
-
-   MM::State* pStateDev = static_cast<MM::State*>(pDevice);
+   mm::DeviceModuleLockGuard guard(pStateDev);
 
    // check if corresponding label exists
    long pos;
@@ -4817,7 +4931,7 @@ PropertyBlock CMMCore::getStateLabelData(const char* deviceLabel, const char* st
    if (nRet != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(nRet, pStateDev));
    }
 
    PropertyBlock blk;
@@ -4837,42 +4951,22 @@ PropertyBlock CMMCore::getStateLabelData(const char* deviceLabel, const char* st
  */
 PropertyBlock CMMCore::getData(const char* deviceLabel)
 {
+   boost::shared_ptr<StateInstance> pStateDev =
+      deviceManager_->GetDeviceOfType<StateInstance>(deviceLabel);
+
    // here we could have written simply: 
    // return getStateLabelData(deviceLabel, getStateLabel(deviceLabel).c_str());
    // but that would be inefficient beacuse of the multiple index lookup, so we'll
    // do it explicitely:
 
-   // find the device
-   MM::Device* pDevice;
-   try {
-      pDevice = pluginManager_.GetDevice(deviceLabel);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      logError(deviceLabel, err.getMsg().c_str());
-      throw;
-   }
-
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-   if (pDevice->GetType() != MM::StateDevice)
-   {
-      logError(deviceLabel, getCoreErrorText(MMERR_InvalidStateDevice).c_str());
-      throw CMMError(deviceLabel, getCoreErrorText(MMERR_InvalidStateDevice).c_str(), MMERR_InvalidStateDevice);
-   }
-
-   MM::State* pStateDev = static_cast<MM::State*>(pDevice);
+   mm::DeviceModuleLockGuard guard(pStateDev);
 
    // obtain the current state label
-   char pos[MM::MaxStrLength];
-   int nRet = pStateDev->GetPosition(pos);
-   if (nRet != DEVICE_OK)
-   {
-      logError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(nRet, pStateDev).c_str(), MMERR_DEVICE_GENERIC);
-   }
+   std::string pos = pStateDev->GetPositionLabel();
 
    PropertyBlock blk;
    try {
-      blk = getPropertyBlockData(pos);
+      blk = getPropertyBlockData(pos.c_str());
    } catch (...) {
       ;
       // not an error here - there is just no data for this entry. 
@@ -4904,31 +4998,41 @@ void CMMCore::setSerialProperties(const char* portName,
  * This command blocks until it recives an answer fromt he device terminated by the specified
  * sequence.
  */
-void CMMCore::setSerialPortCommand(const char* name, const char* command, const char* term) throw (CMMError)
+void CMMCore::setSerialPortCommand(const char* portLabel, const char* command, const char* term) throw (CMMError)
 {
-   MM::Serial* pSerial = getSpecificDevice<MM::Serial>(name);
+   boost::shared_ptr<SerialInstance> pSerial =
+      deviceManager_->GetDeviceOfType<SerialInstance>(portLabel);
+   if (!command)
+      command = ""; // XXX Or should we throw?
+   if (!term)
+      term = "";
+
    int ret = pSerial->SetCommand(command, term);
    if (ret != DEVICE_OK)
    {
-      logError(name, getDeviceErrorText(ret, pSerial).c_str());
-      throw CMMError(name, getDeviceErrorText(ret, pSerial).c_str(), MMERR_DEVICE_GENERIC);
+      logError(portLabel, getDeviceErrorText(ret, pSerial).c_str());
+      throw CMMError(getDeviceErrorText(ret, pSerial));
    }
 }
 
 /**
  * Continuously read from the serial port until the terminating sequence is encountered.
  */
-std::string CMMCore::getSerialPortAnswer(const char* name, const char* term) throw (CMMError) 
+std::string CMMCore::getSerialPortAnswer(const char* portLabel, const char* term) throw (CMMError)
 {
-   MM::Serial* pSerial = getSpecificDevice<MM::Serial>(name);
+   boost::shared_ptr<SerialInstance> pSerial =
+      deviceManager_->GetDeviceOfType<SerialInstance>(portLabel);
+   if (!term || term[0] == '\0')
+      throw CMMError("Null or empty terminator; cannot delimit received message");
+
    const int bufLen = 1024;
    char answerBuf[bufLen];
    int ret = pSerial->GetAnswer(answerBuf, bufLen, term);
    if (ret != DEVICE_OK)
    {
       string errText = getDeviceErrorText(ret, pSerial).c_str();
-      logError(name, errText.c_str());
-      throw CMMError(name, errText.c_str(), MMERR_DEVICE_GENERIC);
+      logError(portLabel, errText.c_str());
+      throw CMMError(errText);
    }
 
    return string(answerBuf);
@@ -4937,23 +5041,26 @@ std::string CMMCore::getSerialPortAnswer(const char* name, const char* term) thr
 /**
  * Sends an array of characters to the serial port and returns immediately.
  */
-void CMMCore::writeToSerialPort(const char* name, const std::vector<char> &data) throw (CMMError)
+void CMMCore::writeToSerialPort(const char* portLabel, const std::vector<char> &data) throw (CMMError)
 {
-   MM::Serial* pSerial = getSpecificDevice<MM::Serial>(name);
+   boost::shared_ptr<SerialInstance> pSerial =
+      deviceManager_->GetDeviceOfType<SerialInstance>(portLabel);
+
    int ret = pSerial->Write((unsigned char*)(&(data[0])), (unsigned long)data.size());
    if (ret != DEVICE_OK)
    {
-      logError(name, getDeviceErrorText(ret, pSerial).c_str());
-      throw CMMError(name, getDeviceErrorText(ret, pSerial).c_str(), MMERR_DEVICE_GENERIC);
+      logError(portLabel, getDeviceErrorText(ret, pSerial).c_str());
+      throw CMMError(getDeviceErrorText(ret, pSerial));
    }
 }
 
 /**
  * Reads the contents of the Rx buffer.
  */
-vector<char> CMMCore::readFromSerialPort(const char* name) throw (CMMError)
+vector<char> CMMCore::readFromSerialPort(const char* portLabel) throw (CMMError)
 {
-   MM::Serial* pSerial = getSpecificDevice<MM::Serial>(name);
+   boost::shared_ptr<SerialInstance> pSerial =
+      deviceManager_->GetDeviceOfType<SerialInstance>(portLabel);
 
    const int bufLen = 1024; // internal chunk size limit
    unsigned char answerBuf[bufLen];
@@ -4961,8 +5068,8 @@ vector<char> CMMCore::readFromSerialPort(const char* name) throw (CMMError)
    int ret = pSerial->Read(answerBuf, bufLen, read);
    if (ret != DEVICE_OK)
    {
-      logError(name, getDeviceErrorText(ret, pSerial).c_str());
-      throw CMMError(name, getDeviceErrorText(ret, pSerial).c_str(), MMERR_DEVICE_GENERIC);
+      logError(portLabel, getDeviceErrorText(ret, pSerial).c_str());
+      throw CMMError(getDeviceErrorText(ret, pSerial));
    }
 
    vector<char> data;
@@ -4979,14 +5086,16 @@ vector<char> CMMCore::readFromSerialPort(const char* name) throw (CMMError)
  */
 void CMMCore::setSLMImage(const char* deviceLabel, unsigned char* pixels) throw (CMMError)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
-
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+   if (!pixels)
+      throw CMMError("Null image");
+   mm::DeviceModuleLockGuard guard(pSLM);
    int ret = pSLM->SetImage(pixels);
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pSLM));
    }
 }
 
@@ -4995,14 +5104,16 @@ void CMMCore::setSLMImage(const char* deviceLabel, unsigned char* pixels) throw 
  */
 void CMMCore::setSLMImage(const char* deviceLabel, imgRGB32 pixels) throw (CMMError)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
-
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+   if (!pixels)
+      throw CMMError("Null image");
+   mm::DeviceModuleLockGuard guard(pSLM);
    int ret = pSLM->SetImage((unsigned int *) pixels);
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pSLM));
    }
 }
 
@@ -5011,14 +5122,15 @@ void CMMCore::setSLMImage(const char* deviceLabel, imgRGB32 pixels) throw (CMMEr
  */
 void CMMCore::setSLMPixelsTo(const char* deviceLabel, unsigned char intensity) throw (CMMError)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
 
+   mm::DeviceModuleLockGuard guard(pSLM);
    int ret = pSLM->SetPixelsTo(intensity);
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pSLM));
    }
 }
 
@@ -5027,14 +5139,15 @@ void CMMCore::setSLMPixelsTo(const char* deviceLabel, unsigned char intensity) t
  */
 void CMMCore::setSLMPixelsTo(const char* deviceLabel, unsigned char red, unsigned char green, unsigned char blue) throw (CMMError)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
 
+   mm::DeviceModuleLockGuard guard(pSLM);
    int ret = pSLM->SetPixelsTo(red, green, blue);
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pSLM));
    }
 }
 
@@ -5043,76 +5156,173 @@ void CMMCore::setSLMPixelsTo(const char* deviceLabel, unsigned char red, unsigne
  */
 void CMMCore::displaySLMImage(const char* deviceLabel) throw (CMMError)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
 
+   mm::DeviceModuleLockGuard guard(pSLM);
    int ret = pSLM->DisplayImage();
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pSLM));
    }
 }
 
+void CMMCore::setSLMExposure(const char* deviceLabel, double exposure_ms) throw (CMMError)
+{
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
+   int ret = pSLM->SetExposure(exposure_ms);
+   if (ret != DEVICE_OK)
+   {
+      logError(deviceLabel, getDeviceErrorText(ret, pSLM).c_str());
+      throw CMMError(getDeviceErrorText(ret, pSLM));
+   }
+}
+
+double CMMCore::getSLMExposure(const char* deviceLabel) throw (CMMError)
+{
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
+   return pSLM->GetExposure();
+}
+
+
 unsigned CMMCore::getSLMWidth(const char* deviceLabel)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
    return pSLM->GetWidth();
 }
 
 unsigned CMMCore::getSLMHeight(const char* deviceLabel)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
    return pSLM->GetHeight();
 }
 
 unsigned CMMCore::getSLMNumberOfComponents(const char* deviceLabel)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
    return pSLM->GetNumberOfComponents();
 }
 
 unsigned CMMCore::getSLMBytesPerPixel(const char* deviceLabel)
 {
-   MM::SLM* pSLM = getSpecificDevice<MM::SLM>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pSLM));
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
    return pSLM->GetBytesPerPixel();
 }
 
-/* GALVO CODE */
+long CMMCore::getSLMSequenceMaxLength(const char* deviceLabel) 
+{
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
 
+   mm::DeviceModuleLockGuard guard(pSLM);
+   long numEvents;
+   int ret = pSLM->GetSLMSequenceMaxLength(numEvents);
+   if (ret != DEVICE_OK)
+      throw CMMError(getDeviceErrorText(ret, pSLM));
+   return numEvents;
+}
+
+void CMMCore::startSLMSequence(const char* deviceLabel) throw (CMMError)
+{
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
+   int ret = pSLM->StartSLMSequence();
+   if (ret != DEVICE_OK)
+      throw CMMError(getDeviceErrorText(ret, pSLM));
+}
+
+void CMMCore::stopSLMSequence(const char* deviceLabel) throw (CMMError)
+{
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pSLM);
+   int ret = pSLM->StopSLMSequence();
+   if (ret != DEVICE_OK)
+      throw CMMError(getDeviceErrorText(ret, pSLM));
+}
+
+void CMMCore::loadSLMSequence(const char* deviceLabel, std::vector<unsigned char *> imageSequence) throw (CMMError)
+{
+   boost::shared_ptr<SLMInstance> pSLM =
+      deviceManager_->GetDeviceOfType<SLMInstance>(deviceLabel);
+
+   
+   mm::DeviceModuleLockGuard guard(pSLM);
+   int ret = pSLM->ClearSLMSequence();
+   if (ret != DEVICE_OK)
+      throw CMMError(getDeviceErrorText(ret, pSLM));
+
+   std::vector<unsigned char *>::iterator it;
+   for (std::vector<unsigned char *>::const_iterator it = imageSequence.begin(),
+         end = imageSequence.end();
+         it < end; ++it)
+   {
+      ret = pSLM->AddToSLMSequence(*it);
+      if (ret != DEVICE_OK)
+         throw CMMError(getDeviceErrorText(ret, pSLM));
+   }
+
+   ret = pSLM->SendSLMSequence();
+   if (ret != DEVICE_OK)
+      throw CMMError(getDeviceErrorText(ret, pSLM));
+}
+
+/* GALVO CODE */
 
 /**
  * Set the Galvo to an x,y position and fire the laser for a predetermined duration.
  */
 void CMMCore::pointGalvoAndFire(const char* deviceLabel, double x, double y, double pulseTime_us) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret = pGalvo->PointAndFire(x,y,pulseTime_us);
 
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
 void CMMCore::setGalvoSpotInterval(const char* deviceLabel, double pulseTime_us) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret = pGalvo->SetSpotInterval(pulseTime_us);
 
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5122,15 +5332,17 @@ void CMMCore::setGalvoSpotInterval(const char* deviceLabel, double pulseTime_us)
  */
 void CMMCore::setGalvoPosition(const char* deviceLabel, double x, double y) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
    
    int ret = pGalvo->SetPosition(x, y);
 
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5139,15 +5351,17 @@ void CMMCore::setGalvoPosition(const char* deviceLabel, double x, double y) thro
  */
 void CMMCore::getGalvoPosition(const char* deviceLabel, double &x, double &y) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
    
    int ret = pGalvo->GetPosition(x, y);
 
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5156,15 +5370,17 @@ void CMMCore::getGalvoPosition(const char* deviceLabel, double &x, double &y) th
  */
 void CMMCore::setGalvoIlluminationState(const char* deviceLabel, bool on) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret = pGalvo->SetIlluminationState(on);
 
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5175,8 +5391,10 @@ void CMMCore::setGalvoIlluminationState(const char* deviceLabel, bool on) throw 
  */
 double CMMCore::getGalvoXRange(const char* deviceLabel) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
    return pGalvo->GetXRange();
 }
 
@@ -5185,8 +5403,10 @@ double CMMCore::getGalvoXRange(const char* deviceLabel) throw (CMMError)
  */
 double CMMCore::getGalvoYRange(const char* deviceLabel) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
    return pGalvo->GetYRange();
 }
 
@@ -5196,15 +5416,17 @@ double CMMCore::getGalvoYRange(const char* deviceLabel) throw (CMMError)
  */
 void CMMCore::addGalvoPolygonVertex(const char* deviceLabel, int polygonIndex, double x, double y) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret =  pGalvo->AddPolygonVertex(polygonIndex, x, y);
    
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5213,15 +5435,17 @@ void CMMCore::addGalvoPolygonVertex(const char* deviceLabel, int polygonIndex, d
  */
 void CMMCore::deleteGalvoPolygons(const char* deviceLabel) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret = pGalvo->DeletePolygons();
    
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5231,15 +5455,17 @@ void CMMCore::deleteGalvoPolygons(const char* deviceLabel) throw (CMMError)
  */
 void CMMCore::loadGalvoPolygons(const char* deviceLabel) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret =  pGalvo->LoadPolygons();
    
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5248,15 +5474,17 @@ void CMMCore::loadGalvoPolygons(const char* deviceLabel) throw (CMMError)
  */
 void CMMCore::setGalvoPolygonRepetitions(const char* deviceLabel, int repetitions) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret =  pGalvo->SetPolygonRepetitions(repetitions);
    
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5266,15 +5494,17 @@ void CMMCore::setGalvoPolygonRepetitions(const char* deviceLabel, int repetition
  */
 void CMMCore::runGalvoPolygons(const char* deviceLabel) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret =  pGalvo->RunPolygons();
    
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5283,15 +5513,17 @@ void CMMCore::runGalvoPolygons(const char* deviceLabel) throw (CMMError)
  */
 void CMMCore::runGalvoSequence(const char* deviceLabel) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pGalvo);
 
    int ret =  pGalvo->RunSequence();
    
    if (ret != DEVICE_OK)
    {
       logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
+      throw CMMError(getDeviceErrorText(ret, pGalvo));
    }
 }
 
@@ -5300,18 +5532,11 @@ void CMMCore::runGalvoSequence(const char* deviceLabel) throw (CMMError)
  */
 string CMMCore::getGalvoChannel(const char* deviceLabel) throw (CMMError)
 {
-   MM::Galvo* pGalvo = getSpecificDevice<MM::Galvo>(deviceLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pGalvo));
+   boost::shared_ptr<GalvoInstance> pGalvo =
+      deviceManager_->GetDeviceOfType<GalvoInstance>(deviceLabel);
 
-   char channelName[MM::MaxStrLength];
-   int ret = pGalvo->GetChannel(channelName);
-   
-   if (ret != DEVICE_OK)
-   {
-      logError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str());
-      throw CMMError(deviceLabel, getDeviceErrorText(ret, pGalvo).c_str(), MMERR_DEVICE_GENERIC);
-   }
-   return string(channelName);
+   mm::DeviceModuleLockGuard guard(pGalvo);
+   return pGalvo->GetChannel();
 }
 
 /* SYSTEM STATE */
@@ -5324,12 +5549,16 @@ string CMMCore::getGalvoChannel(const char* deviceLabel) throw (CMMError)
  */
 void CMMCore::saveSystemState(const char* fileName) throw (CMMError)
 {
+   if (!fileName)
+      throw CMMError("Null filename");
+
    ofstream os;
    os.open(fileName, ios_base::out | ios_base::trunc);
    if (!os.is_open())
    {
       logError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str());
-      throw CMMError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str(), MMERR_FileOpenFailed);
+      throw CMMError(ToQuotedString(fileName) + ": " + getCoreErrorText(MMERR_FileOpenFailed),
+            MMERR_FileOpenFailed);
    }
 
    // save system state
@@ -5354,12 +5583,16 @@ void CMMCore::saveSystemState(const char* fileName) throw (CMMError)
  */
 void CMMCore::loadSystemState(const char* fileName) throw (CMMError)
 {
+   if (!fileName)
+      throw CMMError("Null filename");
+
    ifstream is;
    is.open(fileName, ios_base::in);
    if (!is.is_open())
    {
       logError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str());
-      throw CMMError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str(), MMERR_FileOpenFailed);
+      throw CMMError(ToQuotedString(fileName) + ": " + getCoreErrorText(MMERR_FileOpenFailed),
+            MMERR_FileOpenFailed);
    }
 
    // Process commands
@@ -5385,7 +5618,9 @@ void CMMCore::loadSystemState(const char* fileName) throw (CMMError)
 
          // non-empty and non-comment lines mush have at least one token
          if (tokens.size() < 1)
-            throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+            throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                  ToQuotedString(line) + ")",
+                  MMERR_InvalidCFGEntry);
             
          if(tokens[0].compare(MM::g_CFGCommand_Property) == 0)
          {
@@ -5393,18 +5628,18 @@ void CMMCore::loadSystemState(const char* fileName) throw (CMMError)
             // --------------------
             if (tokens.size() != 4)
                // invalid format
-               throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+               throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                     ToQuotedString(line) + ")",
+                     MMERR_InvalidCFGEntry);
             try
             {          
                // apply the command
                setProperty(tokens[1].c_str(), tokens[2].c_str(), tokens[3].c_str());
             }
-            catch (CMMError& err)
+            catch (CMMError&)
             {
-               // log the failure but continue parsing
-               CORE_LOG3("Property setting failed: %s-%s-%s\n",
-                         tokens[1].c_str(), tokens[2].c_str(), tokens[3].c_str());
-               CORE_LOG1("%s\n", err.getMsg().c_str());
+               // Don't give up yet.
+               // TODO Yes, do give up, unless cleanly recoverable.
             }
          }
       }
@@ -5421,12 +5656,16 @@ void CMMCore::loadSystemState(const char* fileName) throw (CMMError)
  */
 void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
 {
+   if (!fileName)
+      throw CMMError("Null filename");
+
    ofstream os;
    os.open(fileName, ios_base::out | ios_base::trunc);
    if (!os.is_open())
    {
       logError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str());
-      throw CMMError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str(), MMERR_FileOpenFailed);
+      throw CMMError(ToQuotedString(fileName) + ": " + getCoreErrorText(MMERR_FileOpenFailed),
+            MMERR_FileOpenFailed);
    }
 
    // insert the system reset command
@@ -5436,17 +5675,13 @@ void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
 
    // save device list
    os << "# Load devices" << endl;
-   vector<string> devices = pluginManager_.GetDeviceList();
+   vector<string> devices = deviceManager_->GetDeviceList();
    vector<string>::const_iterator it;
    for (it=devices.begin(); it != devices.end(); it++)
    {
-      MM::Device* pDev = pluginManager_.GetDevice((*it).c_str());
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDev));
-      char deviceName[MM::MaxStrLength] = "";
-      char moduleName[MM::MaxStrLength] = "";
-      pDev->GetName(deviceName);
-      pDev->GetModuleName(moduleName);
-      os << MM::g_CFGCommand_Device << "," << *it << "," << moduleName << "," << deviceName << endl; 
+      boost::shared_ptr<DeviceInstance> pDev = deviceManager_->GetDevice(*it);
+      mm::DeviceModuleLockGuard guard(pDev);
+      os << MM::g_CFGCommand_Device << "," << *it << "," << pDev->GetAdapterModule()->GetName() << "," << pDev->GetName() << endl;
    }
 
    // save equipment
@@ -5471,13 +5706,12 @@ void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
       PropertySetting s = config.getSetting(i);
 
       // check if the property must be set before initialization
-      MM::Device* pDevice = pluginManager_.GetDevice(s.getDeviceLabel().c_str());
+      boost::shared_ptr<DeviceInstance> pDevice = deviceManager_->GetDevice(s.getDeviceLabel());
       if (pDevice)
       {
-         MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-         bool initStatus = false;
-         pDevice->GetPropertyInitStatus(s.getPropertyName().c_str(), initStatus);
-         if (initStatus)
+         mm::DeviceModuleLockGuard guard(pDevice);
+         bool isPreInit = pDevice->GetPropertyInitStatus(s.getPropertyName().c_str());
+         if (isPreInit)
          {
             os << MM::g_CFGCommand_Property << ',' << s.getDeviceLabel()
                << ',' << s.getPropertyName() << ',' << s.getPropertyValue() << endl;
@@ -5489,15 +5723,12 @@ void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
    os << "# Hub references" << endl;
    for (it=devices.begin(); it != devices.end(); it++)
    {
-      MM::Device* pDev = pluginManager_.GetDevice((*it).c_str());
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDev));
-      char parentID[MM::MaxStrLength];
-      pDev->GetParentID(parentID);
-      if (strlen(parentID) > 0)
+      boost::shared_ptr<DeviceInstance> device = deviceManager_->GetDevice(*it);
+      mm::DeviceModuleLockGuard guard(device);
+      std::string parentID = device->GetParentID();
+      if (!parentID.empty())
       {
-         char label[MM::MaxStrLength];
-         pDev->GetLabel(label);
-         os << MM::g_CFGCommand_Property << ',' << label << ',' << parentID << endl;
+         os << MM::g_CFGCommand_Property << ',' << device->GetLabel() << ',' << parentID << endl;
       }
    }
 
@@ -5509,38 +5740,24 @@ void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
    os << "# Delays" << endl;
    for (it=devices.begin(); it != devices.end(); it++)
    {
-      MM::Device* pDev = pluginManager_.GetDevice((*it).c_str());
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDev));
+      boost::shared_ptr<DeviceInstance> pDev = deviceManager_->GetDevice(*it);
+      mm::DeviceModuleLockGuard guard(pDev);
       if (pDev->GetDelayMs() > 0.0)
          os << MM::g_CFGCommand_Delay << "," << *it << "," << pDev->GetDelayMs() << endl; 
    }
 
    // save labels
    os << "# Labels" << endl;
-   vector<string> deviceLabels = pluginManager_.GetDeviceList(MM::StateDevice);
+   vector<string> deviceLabels = deviceManager_->GetDeviceList(MM::StateDevice);
    for (size_t i=0; i<deviceLabels.size(); i++)
    {
-      MM::State* pSD = getSpecificDevice<MM::State>(deviceLabels[i].c_str());
-      MMThreadGuard guard(pluginManager_.getModuleLock(pSD));
+      boost::shared_ptr<StateInstance> pSD =
+         deviceManager_->GetDeviceOfType<StateInstance>(deviceLabels[i]);
+      mm::DeviceModuleLockGuard guard(pSD);
       unsigned numPos = pSD->GetNumberOfPositions();
       for (unsigned long j=0; j<numPos; j++)
       {
-         char lbl[MM::MaxStrLength];
-         pSD->GetPositionLabel(j, lbl);
-         os << MM::g_CFGCommand_Label << ',' << deviceLabels[i] << ',' << j << ',' << lbl << endl;
-      }
-   }
-
-   // save global configurations
-   os << "# Global configurations" << endl;
-   vector<string> configs = getAvailableConfigurations();
-   for (size_t i=0; i<configs.size(); i++)
-   {
-      Configuration c = getConfigurationData(configs[i].c_str());
-      for (size_t j=0; j<c.size(); j++)
-      {
-         PropertySetting s = c.getSetting(j);
-         os << MM::g_CFGCommand_Configuration << ',' << configs[i] << ',' << s.getDeviceLabel() << ',' << s.getPropertyName() << ',' << s.getPropertyValue() << endl;
+         os << MM::g_CFGCommand_Label << ',' << deviceLabels[i] << ',' << j << ',' << pSD->GetPositionLabel(j) << endl;
       }
    }
 
@@ -5569,17 +5786,20 @@ void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
 
    // save device roles
    os << "# Roles" << endl;
-   if (camera_)
+   boost::shared_ptr<CameraInstance> camera = currentCameraDevice_.lock();
+   if (camera)
    {
-      os << MM::g_CFGCommand_Property << ',' << MM::g_Keyword_CoreDevice << ',' << MM::g_Keyword_CoreCamera << ',' << getCameraDevice() << endl; 
+      os << MM::g_CFGCommand_Property << ',' << MM::g_Keyword_CoreDevice << ',' << MM::g_Keyword_CoreCamera << ',' << camera->GetLabel() << endl;
    }
-   if (shutter_)
+   boost::shared_ptr<ShutterInstance> shutter = currentShutterDevice_.lock();
+   if (shutter)
    {
-      os << MM::g_CFGCommand_Property << ',' << MM::g_Keyword_CoreDevice << ',' << MM::g_Keyword_CoreShutter << ',' << getShutterDevice() << endl; 
+      os << MM::g_CFGCommand_Property << ',' << MM::g_Keyword_CoreDevice << ',' << MM::g_Keyword_CoreShutter << ',' << shutter->GetLabel() << endl;
    }
-   if (focusStage_)
+   boost::shared_ptr<StageInstance> focus = currentFocusDevice_.lock();
+   if (focus)
    {
-      os << MM::g_CFGCommand_Property << ',' << MM::g_Keyword_CoreDevice << ',' << MM::g_Keyword_CoreFocus << ',' << getFocusDevice() << endl; 
+      os << MM::g_CFGCommand_Property << ',' << MM::g_Keyword_CoreDevice << ',' << MM::g_Keyword_CoreFocus << ',' << focus->GetLabel() << endl;
    }
 }
 
@@ -5598,7 +5818,7 @@ void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
  *    Label - executes defineStateLabel() command
  *    Equipment - executes definePropertyBlockCommand()
  *    Property - executes setPropertyCommand()
- *    Configuration - executes defineConfiguration()
+ *    Configuration - ignored for backward compatibility
  *  
  * The remaining fields in the line will be used for corresponding command parameters.
  * The number of parameters depends on the actual command used.
@@ -5606,13 +5826,49 @@ void CMMCore::saveSystemConfiguration(const char* fileName) throw (CMMError)
  */
 void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
 {
+   try
+   {
+      loadSystemConfigurationImpl(fileName);
+   }
+   catch (const CMMError&)
+   {
+      // Unload all devices so as not to leave loaded but uninitialized devices
+      // (which are prone to cause a crash when accessed) hanging around.
+      LOG_INFO(coreLogger_) <<
+         "Unloading all devices after failure to load system configuration";
+
+      try
+      {
+         // XXX Ideally, we would try to unload all devices, skipping over any
+         // errors from Shutdown().
+         unloadAllDevices();
+      }
+      catch (const CMMError& err)
+      {
+         LOG_ERROR(coreLogger_) <<
+            "Error occurred while unloading all devices: " <<
+            err.getFullMsg();
+      }
+
+      LOG_INFO(coreLogger_) <<
+         "Now rethrowing original error from system configuration loading";
+      throw;
+   }
+}
+
+
+void CMMCore::loadSystemConfigurationImpl(const char* fileName) throw (CMMError)
+{
+   if (!fileName)
+      throw CMMError("Null filename");
 
    ifstream is;
    is.open(fileName, ios_base::in);
    if (!is.is_open())
    {
       logError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str());
-      throw CMMError(fileName, getCoreErrorText(MMERR_FileOpenFailed).c_str(), MMERR_FileOpenFailed);
+      throw CMMError(ToQuotedString(fileName) + ": " + getCoreErrorText(MMERR_FileOpenFailed),
+            MMERR_FileOpenFailed);
    }
 
    // Process commands
@@ -5620,9 +5876,6 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
    char line[maxLineLength+1];
    vector<string> tokens;
 
-   const int errorLimit = 100; // errors allowed before aborting the load
-   ostringstream summaryErrorText;
-   int errorCount = 0;
    int lineCount = 0;
 
    while(is.getline(line, maxLineLength, '\n'))
@@ -5649,14 +5902,18 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
 
             // non-empty and non-comment lines mush have at least one token
             if (tokens.size() < 1)
-               throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+               throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                     ToQuotedString(line) + ")",
+                     MMERR_InvalidCFGEntry);
                
             if(tokens[0].compare(MM::g_CFGCommand_Device) == 0)
             {
                // load device command
                // -------------------
                if (tokens.size() != 4)
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
                loadDevice(tokens[1].c_str(), tokens[2].c_str(), tokens[3].c_str());
             }
             else if(tokens[0].compare(MM::g_CFGCommand_Property) == 0)
@@ -5669,14 +5926,18 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                   // ...assuming here that the last missing toke represents an empty string
                   setProperty(tokens[1].c_str(), tokens[2].c_str(), "");
                else
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
             }
             else if(tokens[0].compare(MM::g_CFGCommand_Delay) == 0)
             {
                // set delay command
                // -----------------
                if (tokens.size() != 3)
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
                setDeviceDelayMs(tokens[1].c_str(), atof(tokens[2].c_str()));
             }
             else if(tokens[0].compare(MM::g_CFGCommand_Label) == 0)
@@ -5684,7 +5945,9 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                // define label command
                // --------------------
                if (tokens.size() != 4)
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
                defineStateLabel(tokens[1].c_str(), atol(tokens[2].c_str()), tokens[3].c_str());
             }
             else if(tokens[0].compare(MM::g_CFGCommand_Configuration) == 0)
@@ -5692,9 +5955,11 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                // define configuration command
                // ----------------------------
                if (tokens.size() != 5)
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
-               defineConfiguration(tokens[1].c_str(), tokens[2].c_str(), tokens[3].c_str(), tokens[4].c_str());
-               CORE_LOG1("Obsolete command %s used in configuration file.\n", MM::g_CFGCommand_Configuration);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
+               LOG_WARNING(coreLogger_) << "Obsolete command " << tokens[0] <<
+                  " ignored in configuration file";
             }
             else if(tokens[0].compare(MM::g_CFGCommand_ConfigGroup) == 0)
             {
@@ -5710,7 +5975,9 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                else if (tokens.size() == 2)
                   defineConfigGroup(tokens[1].c_str());
                else
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
             }
             else if(tokens[0].compare(MM::g_CFGCommand_ConfigPixelSize) == 0)
             {
@@ -5719,7 +5986,9 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                if (tokens.size() == 5)
                   definePixelSizeConfig(tokens[1].c_str(), tokens[2].c_str(), tokens[3].c_str(), tokens[4].c_str());
                else
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
             }
             else if(tokens[0].compare(MM::g_CFGCommand_PixelSize_um) == 0)
             {
@@ -5728,14 +5997,18 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                if (tokens.size() == 3)
                   setPixelSizeUm(tokens[1].c_str(), atof(tokens[2].c_str()));
                else
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
             }
             else if(tokens[0].compare(MM::g_CFGCommand_Equipment) == 0)
             {
                // define configuration command
                // ----------------------------
                if (tokens.size() != 4)
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
                definePropertyBlock(tokens[1].c_str(), tokens[2].c_str(), tokens[3].c_str());
             }
             else if(tokens[0].compare(MM::g_CFGCommand_ImageSynchro) == 0)
@@ -5743,7 +6016,9 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                // define image sycnhro
                // --------------------
                if (tokens.size() != 2)
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
                assignImageSynchro(tokens[1].c_str());
             }
             else if(tokens[0].compare(MM::g_CFGCommand_ParentID) == 0)
@@ -5751,7 +6026,9 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
                // set parent ID
                // -------------
                if (tokens.size() != 3)
-                  throw CMMError(line, getCoreErrorText(MMERR_InvalidCFGEntry).c_str(), MMERR_InvalidCFGEntry);
+                  throw CMMError(getCoreErrorText(MMERR_InvalidCFGEntry) + " (" +
+                        ToQuotedString(line) + ")",
+                        MMERR_InvalidCFGEntry);
 
                setParentLabel(tokens[1].c_str(), tokens[2].c_str());
             }
@@ -5759,21 +6036,14 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
          }
          catch (CMMError& err)
          {
-            summaryErrorText << "Line " << lineCount << ": " << line << endl;
-            summaryErrorText << err.getMsg() << endl << endl;
-            errorCount++;
-            if (errorCount >= errorLimit)
-            {
-               summaryErrorText << "Too many errors. Loading stopped.";
-               throw CMMError(summaryErrorText.str().c_str(), MMERR_InvalidConfigurationFile);
-            }
+            if (externalCallback_)
+               externalCallback_->onSystemConfigurationLoaded();
+            std::ostringstream errorText;
+            errorText << "Line " << lineCount << ": " << line << endl;
+            errorText << err.getFullMsg() << endl << endl;
+            throw CMMError(errorText.str().c_str(), MMERR_InvalidConfigurationFile);
          }
       }
-   }
-
-   if (errorCount > 0)
-   {
-      throw CMMError(summaryErrorText.str().c_str(), MMERR_InvalidConfigurationFile);
    }
 
    updateAllowedChannelGroups();
@@ -5786,6 +6056,9 @@ void CMMCore::loadSystemConfiguration(const char* fileName) throw (CMMError)
 
    // update the system cache
    updateSystemStateCache();
+
+   if (externalCallback_)
+         externalCallback_->onSystemConfigurationLoaded();
 }
 
 
@@ -5806,11 +6079,13 @@ void CMMCore::registerCallback(MMEventCallback* cb)
  */
 double CMMCore::getLastFocusScore()
 {
-   if (autoFocus_ != 0)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
+      mm::DeviceModuleLockGuard guard(autofocus);
       double score;
-      int ret = autoFocus_->GetLastFocusScore(score);
+      int ret = autofocus->GetLastFocusScore(score);
       if (ret != DEVICE_OK)
          return 0.0;
       return score;
@@ -5827,11 +6102,13 @@ double CMMCore::getLastFocusScore()
  */
 double CMMCore::getCurrentFocusScore()
 {
-   if (autoFocus_ != 0)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
+      mm::DeviceModuleLockGuard guard(autofocus);
       double score;
-      int ret = autoFocus_->GetCurrentFocusScore(score);
+      int ret = autofocus->GetCurrentFocusScore(score);
       if (ret != DEVICE_OK)
          return 0.0;
       return score;
@@ -5846,20 +6123,20 @@ double CMMCore::getCurrentFocusScore()
  */
 void CMMCore::enableContinuousFocus(bool enable) throw (CMMError)
 {
-   if (autoFocus_ != 0)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
-	  int ret = autoFocus_->SetContinuousFocusing(enable);
+      mm::DeviceModuleLockGuard guard(autofocus);
+	  int ret = autofocus->SetContinuousFocusing(enable);
       if (ret != DEVICE_OK)
       {
-         logError(getDeviceName(autoFocus_).c_str(), getDeviceErrorText(ret, autoFocus_).c_str());
-         throw CMMError(getDeviceErrorText(ret, autoFocus_).c_str(), MMERR_DEVICE_GENERIC);
+         logError(getDeviceName(autofocus).c_str(), getDeviceErrorText(ret, autofocus).c_str());
+         throw CMMError(getDeviceErrorText(ret, autofocus).c_str(), MMERR_DEVICE_GENERIC);
       }
 
-      if (enable)
-         CORE_LOG("Continuous focusing enabled\n");
-      else
-         CORE_LOG("Continuous focusing disabled\n");
+      LOG_DEBUG(coreLogger_) << "Continuous autofocus turned " <<
+         (enable ? "on" : "off");
    }
    else
    {
@@ -5876,15 +6153,17 @@ void CMMCore::enableContinuousFocus(bool enable) throw (CMMError)
  */
 bool CMMCore::isContinuousFocusEnabled() throw (CMMError)
 {
-   if (autoFocus_ != 0)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
-	  bool state;
-      int ret = autoFocus_->GetContinuousFocusing(state);
+      mm::DeviceModuleLockGuard guard(autofocus);
+      bool state;
+      int ret = autofocus->GetContinuousFocusing(state);
       if (ret != DEVICE_OK)
       {
-         logError(getDeviceName(autoFocus_).c_str(), getDeviceErrorText(ret, autoFocus_).c_str());
-         throw CMMError(getDeviceErrorText(ret, autoFocus_).c_str(), MMERR_DEVICE_GENERIC);
+         logError(getDeviceName(autofocus).c_str(), getDeviceErrorText(ret, autofocus).c_str());
+         throw CMMError(getDeviceErrorText(ret, autofocus).c_str(), MMERR_DEVICE_GENERIC);
       }
       return state;
    }
@@ -5897,10 +6176,12 @@ bool CMMCore::isContinuousFocusEnabled() throw (CMMError)
 */
 bool CMMCore::isContinuousFocusLocked() throw (CMMError)
 {
-	if (autoFocus_ != 0)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
 	{
-		MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
-		return autoFocus_->IsContinuousFocusLocked();
+      mm::DeviceModuleLockGuard guard(autofocus);
+      return autofocus->IsContinuousFocusLocked();
 	}
 	else
 	{
@@ -5913,8 +6194,10 @@ bool CMMCore::isContinuousFocusLocked() throw (CMMError)
  */
 bool CMMCore::isContinuousFocusDrive(const char* stageLabel) throw (CMMError)
 {
-   MM::Stage* pStage = getSpecificDevice<MM::Stage>(stageLabel);
-   MMThreadGuard guard(pluginManager_.getModuleLock(pStage));
+   boost::shared_ptr<StageInstance> pStage =
+      deviceManager_->GetDeviceOfType<StageInstance>(stageLabel);
+
+   mm::DeviceModuleLockGuard guard(pStage);
    return pStage->IsContinuousFocusDrive();
 }
 
@@ -5924,14 +6207,16 @@ bool CMMCore::isContinuousFocusDrive(const char* stageLabel) throw (CMMError)
  */
 void CMMCore::fullFocus() throw (CMMError)
 {
-   if (autoFocus_)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {  
-	  MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
-      int ret = autoFocus_->FullFocus();
+      mm::DeviceModuleLockGuard guard(autofocus);
+      int ret = autofocus->FullFocus();
       if (ret != DEVICE_OK)
       {
-         logError(getDeviceName(autoFocus_).c_str(), getDeviceErrorText(ret, autoFocus_).c_str());
-         throw CMMError(getDeviceErrorText(ret, autoFocus_).c_str(), MMERR_DEVICE_GENERIC);
+         logError(getDeviceName(autofocus).c_str(), getDeviceErrorText(ret, autofocus).c_str());
+         throw CMMError(getDeviceErrorText(ret, autofocus).c_str(), MMERR_DEVICE_GENERIC);
       }
    }
    else
@@ -5945,14 +6230,16 @@ void CMMCore::fullFocus() throw (CMMError)
  */
 void CMMCore::incrementalFocus() throw (CMMError)
 {
-   if (autoFocus_)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
-      int ret = autoFocus_->IncrementalFocus();
+      mm::DeviceModuleLockGuard guard(autofocus);
+      int ret = autofocus->IncrementalFocus();
       if (ret != DEVICE_OK)
       {
-         logError(getDeviceName(autoFocus_).c_str(), getDeviceErrorText(ret, autoFocus_).c_str());
-         throw CMMError(getDeviceErrorText(ret, autoFocus_).c_str(), MMERR_DEVICE_GENERIC);
+         logError(getDeviceName(autofocus).c_str(), getDeviceErrorText(ret, autofocus).c_str());
+         throw CMMError(getDeviceErrorText(ret, autofocus).c_str(), MMERR_DEVICE_GENERIC);
       }
    }
    else
@@ -5967,14 +6254,16 @@ void CMMCore::incrementalFocus() throw (CMMError)
  */
 void CMMCore::setAutoFocusOffset(double offset) throw (CMMError)
 {
-   if (autoFocus_)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
-      int ret = autoFocus_->SetOffset(offset);
+      mm::DeviceModuleLockGuard guard(autofocus);
+      int ret = autofocus->SetOffset(offset);
       if (ret != DEVICE_OK)
       {
-         logError(getDeviceName(autoFocus_).c_str(), getDeviceErrorText(ret, autoFocus_).c_str());
-         throw CMMError(getDeviceErrorText(ret, autoFocus_).c_str(), MMERR_DEVICE_GENERIC);
+         logError(getDeviceName(autofocus).c_str(), getDeviceErrorText(ret, autofocus).c_str());
+         throw CMMError(getDeviceErrorText(ret, autofocus).c_str(), MMERR_DEVICE_GENERIC);
       }
    }
    else
@@ -5988,15 +6277,17 @@ void CMMCore::setAutoFocusOffset(double offset) throw (CMMError)
  */
 double CMMCore::getAutoFocusOffset() throw (CMMError)
 {
-   if (autoFocus_)
+   boost::shared_ptr<AutoFocusInstance> autofocus =
+      currentAutofocusDevice_.lock();
+   if (autofocus)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(autoFocus_));
+      mm::DeviceModuleLockGuard guard(autofocus);
       double offset;
-      int ret = autoFocus_->GetOffset(offset);
+      int ret = autofocus->GetOffset(offset);
       if (ret != DEVICE_OK)
       {
-         logError(getDeviceName(autoFocus_).c_str(), getDeviceErrorText(ret, autoFocus_).c_str());
-         throw CMMError(getDeviceErrorText(ret, autoFocus_).c_str(), MMERR_DEVICE_GENERIC);
+         logError(getDeviceName(autofocus).c_str(), getDeviceErrorText(ret, autofocus).c_str());
+         throw CMMError(getDeviceErrorText(ret, autofocus).c_str(), MMERR_DEVICE_GENERIC);
       }
       return offset;
    }
@@ -6012,51 +6303,204 @@ double CMMCore::getAutoFocusOffset() throw (CMMError)
 // Private methods
 ///////////////////////////////////////////////////////////////////////////////
 
-bool CMMCore::isConfigurationCurrent(const Configuration& config)
+void CMMCore::InitializeErrorMessages()
 {
+   errorText_[MMERR_OK] = "No errors.";
+   errorText_[MMERR_GENERIC] = "Core error occurred.";
+   errorText_[MMERR_DEVICE_GENERIC] = "Device error encountered.";
+   errorText_[MMERR_NoDevice] = "Device not defined or initialized.";
+   errorText_[MMERR_SetPropertyFailed] = "Property does not exist, or value not allowed.";
+   errorText_[MMERR_LoadLibraryFailed] = "Unable to load library: file not accessible or corrupted.";
+   errorText_[MMERR_LibraryFunctionNotFound] =
+      "Unable to identify expected interface: the library is not comaptible or corrupted.";
+   errorText_[MMERR_CreateNotFound] =
+      "Unable to identify CreateDevice function: the library is not comaptible or corrupted.";
+   errorText_[MMERR_DeleteNotFound] =
+      "Unable to identify DeleteDevice function: the library is not comaptible or corrupted.";
+   errorText_[MMERR_CreateFailed] = "DeviceCreate function failed.";
+   errorText_[MMERR_DeleteFailed] = "DeviceDelete function failed.";
+   errorText_[MMERR_UnknownModule] = "Current device can't be unloaded: using unknown library.";
+   errorText_[MMERR_UnexpectedDevice] = "Unexpected device encountered.";
+   errorText_[MMERR_ModuleVersionMismatch] = "Module version mismatch.";
+   errorText_[MMERR_DeviceVersionMismatch] = "Device interface version mismatch.";
+   errorText_[MMERR_DeviceUnloadFailed] =
+      "Requested device seems fine, but the current one failed to unload.";
+   errorText_[MMERR_CameraNotAvailable] = "Camera not loaded or initialized.";
+   errorText_[MMERR_InvalidStateDevice] = "Unsupported API. This device is not a state device";
+   errorText_[MMERR_NoConfiguration] = "Configuration not defined";
+   errorText_[MMERR_InvalidPropertyBlock] = "Property block not defined";
+   errorText_[MMERR_UnhandledException] =
+      "Internal inconsistency: unknown system exception encountered";
+   errorText_[MMERR_DevicePollingTimeout] = "Device timed out";
+   errorText_[MMERR_InvalidShutterDevice] = "Unsupported interface. This device is not a shutter.";
+   errorText_[MMERR_DuplicateLabel] = "Specified device label already in use.";
+   errorText_[MMERR_InvalidSerialDevice] =
+      "Unsupported interface. The specified device is not a serial port.";
+   errorText_[MMERR_InvalidSpecificDevice] =
+      "Unsupported interface. Device is not of the correct type.";
+   errorText_[MMERR_InvalidLabel] = "Can't find the device with the specified label.";
+   errorText_[MMERR_FileOpenFailed] = "File open failed.";
+   errorText_[MMERR_InvalidCFGEntry] =
+      "Invalid configuration file line encountered. Wrong number of tokens for the current context.";
+   errorText_[MMERR_InvalidContents] =
+      "Reserved character(s) encountered in the value or name string.";
+   errorText_[MMERR_InvalidCoreProperty] = "Unrecognized core property.";
+   errorText_[MMERR_InvalidCoreValue] =
+      "Core property is read-only or the requested value is not allowed.";
+   errorText_[MMERR_NoConfigGroup] = "Configuration group not defined";
+   errorText_[MMERR_DuplicateConfigGroup] = "Group name already in use.";
+   errorText_[MMERR_CameraBufferReadFailed] = "Camera image buffer read failed.";
+   errorText_[MMERR_CircularBufferFailedToInitialize] =
+      "Failed to initialize circular buffer - memory requirements not adequate.";
+   errorText_[MMERR_CircularBufferEmpty] = "Circular buffer is empty.";
+   errorText_[MMERR_ContFocusNotAvailable] = "Auto-focus focus device not defined.";
+   errorText_[MMERR_BadConfigName] = "Configuration name contains illegale characters (/\\*!')";
+   errorText_[MMERR_NotAllowedDuringSequenceAcquisition] =
+      "This operation can not be executed while sequence acquisition is runnning.";
+   errorText_[MMERR_OutOfMemory] = "Out of memory.";
+   errorText_[MMERR_InvalidImageSequence] = "Issue snapImage before getImage.";
+   errorText_[MMERR_NullPointerException] = "Null Pointer Exception.";
+   errorText_[MMERR_CreatePeripheralFailed] = "Hub failed to create specified peripheral device.";
+}
 
+void CMMCore::CreateCoreProperties()
+{
+   properties_ = new CorePropertyCollection(this);
 
-  // getConfigState(   
+   // Initialize
+   CoreProperty propInit("0", false);
+   propInit.AddAllowedValue("0");
+   propInit.AddAllowedValue("1");
+   properties_->Add(MM::g_Keyword_CoreInitialize, propInit);
 
-   // to dermine whether the current state of the system matches our configuration
-   // we need to check property settings one by one
-   for (size_t i=0; i<config.size(); i++)
-   {
-      PropertySetting setting = config.getSetting(i);
+   // Auto shutter
+   CoreProperty propAutoShutter("1", false);
+   propAutoShutter.AddAllowedValue("0");
+   propAutoShutter.AddAllowedValue("1");
+   properties_->Add(MM::g_Keyword_CoreAutoShutter, propAutoShutter);
 
-      // perform special processing for core commands
-      if (setting.getDeviceLabel().compare(MM::g_Keyword_CoreDevice) == 0)
-      {
-         string coreValue = properties_->Get(setting.getPropertyName().c_str());
-         if (coreValue.compare(setting.getPropertyValue()) != 0)
-            return false;
-         else
-            continue;
-      }
+   CoreProperty propCamera;
+   properties_->Add(MM::g_Keyword_CoreCamera, propCamera);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreCamera, "");
 
-      // first get device
-	   MM::Device* pDevice = 0;
-	   try {
-		   // >>> TODO: is throwing an exception an efficient way of doing this???
-	      // (is getting a wrong device is going to happen a lot?)
-		   pDevice = pluginManager_.GetDevice(setting.getDeviceLabel().c_str());
-	   } catch (CMMError&) {
-	      // trap exception and return "device not found"
-         return false;
-	   }
+   CoreProperty propShutter;
+   properties_->Add(MM::g_Keyword_CoreShutter, propShutter);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreShutter, "");
 
-      // then fetch property
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      char value[MM::MaxStrLength];
-      int ret = pDevice->GetProperty(setting.getPropertyName().c_str(), value);
-      if (ret != DEVICE_OK)
-         return false; // property not found
+   CoreProperty propFocus;
+   properties_->Add(MM::g_Keyword_CoreFocus, propFocus);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreFocus, "");
 
-      // and finally check the value
-      if (setting.getPropertyValue().compare(value) != 0)
-         return false; // value does not match
-   }
-   return true;
+   CoreProperty propXYStage;
+   properties_->Add(MM::g_Keyword_CoreXYStage, propXYStage);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreXYStage, "");
+
+   CoreProperty propAutoFocus;
+   properties_->Add(MM::g_Keyword_CoreAutoFocus, propAutoFocus);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreAutoFocus, "");
+
+   CoreProperty propImageProc;
+   properties_->Add(MM::g_Keyword_CoreImageProcessor, propImageProc);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreImageProcessor, "");
+
+   CoreProperty propSLM;
+   properties_->Add(MM::g_Keyword_CoreSLM, propSLM);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreSLM, "");
+
+   CoreProperty propGalvo;
+   properties_->Add(MM::g_Keyword_CoreGalvo, propGalvo);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreGalvo, "");
+
+   CoreProperty propChannelGroup;
+   properties_->Add(MM::g_Keyword_CoreChannelGroup, propChannelGroup);
+   properties_->AddAllowedValue(MM::g_Keyword_CoreChannelGroup, "");
+
+   // Time after which we give up on checking the Busy flag status
+   CoreProperty propBusyTimeoutMs;
+   properties_->Add(MM::g_Keyword_CoreTimeoutMs, propBusyTimeoutMs);
+
+   properties_->Refresh();
+}
+
+static bool ContainsForbiddenCharacters(const std::string& str)
+{
+   return (std::string::npos != str.find_first_of(MM::g_FieldDelimiters));
+}
+
+void CMMCore::CheckDeviceLabel(const char* label) throw (CMMError)
+{
+   if (!label)
+      throw CMMError("Null device label", MMERR_NullPointerException);
+   if (strlen(label) == 0)
+      throw CMMError("Empty device label");
+   if (ContainsForbiddenCharacters(label))
+      throw CMMError("Device label " + ToQuotedString(label) + " contains reserved characters",
+            MMERR_InvalidContents);
+}
+
+void CMMCore::CheckPropertyName(const char* propName) throw (CMMError)
+{
+   if (!propName)
+      throw CMMError("Null property name", MMERR_NullPointerException);
+   if (ContainsForbiddenCharacters(propName))
+      throw CMMError("Property name " + ToQuotedString(propName) + " contains reserved characters",
+            MMERR_InvalidContents);
+}
+
+void CMMCore::CheckPropertyValue(const char* value) throw (CMMError)
+{
+   if (!value)
+      throw CMMError("Null property value", MMERR_NullPointerException);
+   if (ContainsForbiddenCharacters(value))
+      throw CMMError("Property value " + ToQuotedString(value) + " contains reserved characters",
+            MMERR_InvalidContents);
+}
+
+void CMMCore::CheckStateLabel(const char* stateLabel) throw (CMMError)
+{
+   if (!stateLabel)
+      throw CMMError("Null state label", MMERR_NullPointerException);
+   if (ContainsForbiddenCharacters(stateLabel))
+      throw CMMError("State label " + ToQuotedString(stateLabel) + " contains reserved characters",
+            MMERR_InvalidContents);
+}
+
+void CMMCore::CheckConfigGroupName(const char* groupName) throw (CMMError)
+{
+   if (!groupName)
+      throw CMMError("Null configuration group name", MMERR_NullPointerException);
+   if (ContainsForbiddenCharacters(groupName))
+      throw CMMError("Configuration group name " + ToQuotedString(groupName) + " contains reserved characters",
+            MMERR_InvalidContents);
+}
+
+void CMMCore::CheckConfigPresetName(const char* presetName) throw (CMMError)
+{
+   if (!presetName)
+      throw CMMError("Null configuration preset name", MMERR_NullPointerException);
+   std::string nameString(presetName);
+   // XXX Why do we have additional requirement for preset names?
+   if (std::string::npos != nameString.find_first_of("/\\*!\'") ||
+         ContainsForbiddenCharacters(nameString))
+      throw CMMError("Configuration preset name " + ToQuotedString(nameString) +
+            " contains reserved or invalid characters",
+            MMERR_BadConfigName);
+}
+
+void CMMCore::CheckPropertyBlockName(const char* blockName) throw (CMMError)
+{
+   if (!blockName)
+      throw CMMError("Null property block name", MMERR_NullPointerException);
+   if (ContainsForbiddenCharacters(blockName))
+      throw CMMError("Property block name " + ToQuotedString(blockName) + " contains reserved characters",
+            MMERR_InvalidContents);
+}
+
+bool CMMCore::IsCoreDeviceLabel(const char* label) const throw (CMMError)
+{
+   if (!label)
+      throw CMMError("Null device label", MMERR_NullPointerException);
+   return (strcmp(label, MM::g_Keyword_CoreDevice) == 0);
 }
 
 /**
@@ -6078,20 +6522,32 @@ void CMMCore::applyConfiguration(const Configuration& config) throw (CMMError)
       if (setting.getDeviceLabel().compare(MM::g_Keyword_CoreDevice) == 0)
       {
          properties_->Execute(setting.getPropertyName().c_str(), setting.getPropertyValue().c_str());
-         stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, setting.getPropertyName().c_str(), setting.getPropertyValue().c_str()));
+         {
+            MMThreadGuard scg(stateCacheLock_);
+            stateCache_.addSetting(PropertySetting(MM::g_Keyword_CoreDevice, setting.getPropertyName().c_str(), setting.getPropertyValue().c_str()));
+         }
       }
       else
       {
          // normal processing
-         MM::Device* pDevice = pluginManager_.GetDevice(setting.getDeviceLabel().c_str());
-		 MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-         int ret = pDevice->SetProperty(setting.getPropertyName().c_str(), setting.getPropertyValue().c_str());
-         if (ret != DEVICE_OK)
+         boost::shared_ptr<DeviceInstance> pDevice =
+            deviceManager_->GetDevice(setting.getDeviceLabel());
+         mm::DeviceModuleLockGuard guard(pDevice);
+         try
+         {
+            pDevice->SetProperty(setting.getPropertyName(),
+                  setting.getPropertyValue());
+
+            {
+               MMThreadGuard scg(stateCacheLock_);
+               stateCache_.addSetting(setting);
+            }
+         }
+         catch (const CMMError&)
          {
             failedProps.push_back(setting);
             error = true;
-         } else
-            stateCache_.addSetting(setting);
+         }
       }
    }
    if (error) 
@@ -6121,18 +6577,26 @@ int CMMCore::applyProperties(vector<PropertySetting>& props, string& lastError)
    for (size_t i=0; i<props.size(); i++)
    {
       // normal processing
-      MM::Device* pDevice = pluginManager_.GetDevice(props[i].getDeviceLabel().c_str());
-	  MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      int ret = pDevice->SetProperty(props[i].getPropertyName().c_str(), props[i].getPropertyValue().c_str());
-      if (ret != DEVICE_OK)
+      boost::shared_ptr<DeviceInstance> pDevice =
+         deviceManager_->GetDevice(props[i].getDeviceLabel());
+      mm::DeviceModuleLockGuard guard(pDevice);
+      try
+      {
+         pDevice->SetProperty(props[i].getPropertyName(),
+               props[i].getPropertyValue());
+
+         {
+            MMThreadGuard scg(stateCacheLock_);
+            stateCache_.addSetting(props[i]);
+         }
+      }
+      catch (const CMMError& e)
       {
          failedProps.push_back(props[i]);
-         std::ostringstream se;
-         se << getDeviceErrorText(ret, pDevice).c_str() << "(Error code: " << ret << ")";
-         logError(props[i].getDeviceLabel().c_str(), se.str().c_str());
-         lastError = se.str();
-      } else
-         stateCache_.addSetting(props[i]);
+         std::string message = e.getFullMsg();
+         logError(props[i].getDeviceLabel().c_str(), message.c_str());
+         lastError = message;
+      }
    }
    props = failedProps;
    return (int) failedProps.size();
@@ -6141,24 +6605,16 @@ int CMMCore::applyProperties(vector<PropertySetting>& props, string& lastError)
 
 
 
-string CMMCore::getDeviceErrorText(int deviceCode, MM::Device* pDevice)
+string CMMCore::getDeviceErrorText(int deviceCode, boost::shared_ptr<DeviceInstance> device)
 {
-   ostringstream txt;
-   if (pDevice)
+   if (!device)
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      // device specific error
-      char devName[MM::MaxStrLength];
-      pDevice->GetLabel(devName);
-      txt <<  "Error in device " << devName  << ": ";
-
-      char text[MM::MaxStrLength];
-      pDevice->GetErrorText(deviceCode, text);
-      if (strlen(text) > 0)
-         txt << text << ". ";
+      return "Cannot get error message for null device";
    }
 
-   return txt.str();
+   mm::DeviceModuleLockGuard guard(device);
+   return "Error in device " + ToQuotedString(device->GetLabel()) + ": " +
+      device->GetErrorText(deviceCode) + " (" + ToString(deviceCode) + ")";
 }
 
 string CMMCore::getCoreErrorText(int code) const
@@ -6173,156 +6629,16 @@ string CMMCore::getCoreErrorText(int code) const
    return txt;
 }
 
-MM::Device* CMMCore::getDevice(const char* label) throw (CMMError)
+void CMMCore::logError(const char* device, const char* msg)
 {
-   try {
-      return pluginManager_.GetDevice(label);
-   } catch (CMMError& err) {
-      err.setCoreMsg(getCoreErrorText(err.getCode()).c_str());
-      logError(label, getCoreErrorText(err.getCode()).c_str());
-      throw;
-   }
+   // TODO Fix various inconsistent usages of this function.
+   LOG_ERROR(coreLogger_) << "Error occurred in device " << device << ": " << msg;
 }
 
-
-void CMMCore::initializeLogging()
+string CMMCore::getDeviceName(boost::shared_ptr<DeviceInstance> pDev)
 {
-   // append start day to corelog name
-   boost::gregorian::date today( boost::gregorian::day_clock::local_day());
-
-   std::ostringstream sout; 
-	sout.fill('0'); 
-	sout.width(4);
-   sout<<today.year();
-   sout << std::setw(2) << today.month().as_number() << std::setw(2) << today.day() ; 
-  
-   std::string logName = g_logFileName + sout.str() + std::string(".txt");
-
-   getLoggerInstance()->Initialize(logName, g_CoreName);
-   getLoggerInstance()->EnableLogToStderr(true);
-   //only "debug" priority messages will have time stamp
-   //- requested feature
-}
-
-
-void CMMCore::logError(const char* device, const char* msg, const char* fileName, int line)
-{
-   ostringstream os;
-   os << "Device " << device << ". " << msg << endl;
-   if (fileName == 0)
-      CORE_LOG1("Error occurred. %s\n", os.str().c_str());
-   else
-      CORE_LOG3("Error occurred. %s, file %s, line %d\n", os.str().c_str(), fileName, line);
-}
-
-string CMMCore::getDeviceName(MM::Device* pDev)
-{
-   MMThreadGuard guard(pluginManager_.getModuleLock(pDev));
-   char devName[MM::MaxStrLength];
-   pDev->GetName(devName);
-   string name(devName);
-   return name;
-}
-
-/**
-* Compress the core log into a gz archive return the path of the archive
-* 
-*/
-
-std::string CMMCore::saveLogArchive(void)
-{
-   char* pLogContents = 0;
-   unsigned long logLength = 0;
-   getLoggerInstance()->LogContents(&pLogContents, logLength);
-   if( 0 == pLogContents) // file reading failed
-   {
-      const char* pWarning =
-         "MMCore was not able to read the log file!";
-      logLength = static_cast<unsigned long>(strlen(pWarning));
-      pLogContents = new char[logLength];
-      strcpy( pLogContents, pWarning);
-   }
-
-   char* pCompressedContents = 0;
-   unsigned long compressedLength = 0;
-
-   // prepare a gz archive
-   Compressor::CompressData(pLogContents, logLength, &pCompressedContents, compressedLength);
-   // finished with the log contents
-   delete [] pLogContents;
-   pLogContents = 0;
-
-   std::string payLoadPath = getLoggerInstance()->LogPath() + ".gz";
-
-   std::ofstream ofile( payLoadPath.c_str(), ios::out|ios::binary);
-   if (ofile.is_open())
-   {
-     if( 0!=pCompressedContents)
-      ofile.write( pCompressedContents, compressedLength);
-   }
-   // finished with the compressed contents
-   if( 0 != pCompressedContents)
-    free(pCompressedContents);
-
-   CORE_LOG("prepared log archive...");
-   return payLoadPath;
-
-}
-
-/**
-* just like saveLogArchive, but client can add whatever header desired
-* 
-*/
-std::string CMMCore::saveLogArchiveWithPreamble(char* preamble, ///< beginning of a header to be prepended to the corelog
-                                                int preambleLength ///< length of the header
-                                                )
-{
-   if( 0 == preamble)
-      preambleLength = 0; // intentionally modifying local copy of arg
-
-   char* pLogContents = 0;
-   unsigned long logLength = 0;
-   getLoggerInstance()->LogContents(&pLogContents, logLength);
-   if( 0 == pLogContents) // file reading failed
-   {
-      const char* pWarning =
-         "MMCore was not able to read the log file!";
-      logLength = static_cast<unsigned long>(strlen(pWarning));
-      pLogContents = new char[logLength];
-      strcpy( pLogContents, pWarning);
-   }
-
-   char* pEntireMessage = new char[preambleLength + logLength];
-   if(0 < preambleLength)
-      memcpy( pEntireMessage, preamble, preambleLength);
-   memcpy( pEntireMessage + preambleLength, pLogContents, logLength);
-
-   // finished with the log contents
-   delete [] pLogContents;
-   pLogContents = 0;
-
-
-   char* pCompressedContents = 0;
-   unsigned long compressedLength = 0;
-
-   // prepare a gz archive
-   Compressor::CompressData(pEntireMessage, preambleLength + logLength, &pCompressedContents, compressedLength);
-
-   std::string payLoadPath = getLoggerInstance()->LogPath() + ".gz";
-
-   std::ofstream ofile( payLoadPath.c_str(), ios::out|ios::binary);
-   if (ofile.is_open())
-   {
-     if( 0!=pCompressedContents)
-      ofile.write( pCompressedContents, compressedLength);
-   }
-   // finished with the compressed contents
-   if( 0 != pCompressedContents)
-    free(pCompressedContents);
-
-   CORE_LOG("prepared log archive...");
-   return payLoadPath;
-
+   mm::DeviceModuleLockGuard guard(pDev);
+   return pDev->GetName();
 }
 
 void CMMCore::updateAllowedChannelGroups()
@@ -6340,43 +6656,6 @@ void CMMCore::updateAllowedChannelGroups()
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// Acqusition context methods
-// experimental implementation works only with image processor devices
-//
-
-void CMMCore::acqBeforeFrame() throw (CMMError)
-{
-
-   if (imageProcessor_)
-   {
-      int ret = imageProcessor_->AcqBeforeFrame();
-      if (ret != DEVICE_OK)
-      {
-         char name[MM::MaxStrLength];
-         imageProcessor_->GetName(name);
-         logError(name, getDeviceErrorText(ret, imageProcessor_).c_str());
-         throw CMMError(getDeviceErrorText(ret, imageProcessor_).c_str(), MMERR_DEVICE_GENERIC);
-      }
-   }
-}
-
-void CMMCore::acqAfterFrame() throw (CMMError)
-{
-   if (imageProcessor_)
-   {
-      int ret = imageProcessor_->AcqAfterFrame();
-      if (ret != DEVICE_OK)
-      {
-         char name[MM::MaxStrLength];
-         imageProcessor_->GetName(name);
-         logError(name, getDeviceErrorText(ret, imageProcessor_).c_str());
-         throw CMMError(getDeviceErrorText(ret, imageProcessor_).c_str(), MMERR_DEVICE_GENERIC);
-      }
-   }
-}
-
-
-///////////////////////////////////////////////////////////////////////////////
 //  Automatic device and serial port discovery methods
 //
 
@@ -6385,47 +6664,54 @@ void CMMCore::acqAfterFrame() throw (CMMError)
  * Used to automate discovery of correct serial port
  * Also configures the serial port correctly
  *
- * @param deviceName  the label of the device for which the serial port should be found
+ * @param label  the label of the device for which the serial port should be found
  */
-MM::DeviceDetectionStatus CMMCore::detectDevice(char* deviceName)
+MM::DeviceDetectionStatus CMMCore::detectDevice(char* label)
 {
+   CheckDeviceLabel(label);
+
    MM::DeviceDetectionStatus result = MM::Unimplemented; 
    std::vector< std::string> propertiesToRestore;
    std::map< std::string, std::string> valuesToRestore;
-   char p[MM::MaxStrLength];
-   p[0] = 0;
+   std::string port;
 
    try
    {
+      boost::shared_ptr<DeviceInstance> pDevice =
+         deviceManager_->GetDevice(label);
 
-      MM::Device* pDevice  = pluginManager_.GetDevice(deviceName);
-
-      if( NULL != pDevice)
+      mm::DeviceModuleLockGuard guard(pDevice);
+      try
       {
-         MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-         if (DEVICE_OK == pDevice->GetProperty(MM::g_Keyword_Port, p))
+         port = pDevice->GetProperty(MM::g_Keyword_Port);
+      }
+      catch (const CMMError&)
+      {
+         // XXX BUG There was a comment here saying that we ignore errors
+         // "if the port property does not exist", but the behavior is to
+         // ignore any error in getting the _value_ of that property. I'm
+         // keeping the behavior for now, since in practice the two are
+         // usually equivalent, and fixing all the error handling in this
+         // function would be more than a small project.
+      }
+      if (!port.empty())
+      {
+         // there is a valid serial port setting for this device, so
+         // gather the properties that will be restored if we don't find the device
+
+         propertiesToRestore.push_back(MM::g_Keyword_BaudRate);
+         propertiesToRestore.push_back(MM::g_Keyword_DataBits);
+         propertiesToRestore.push_back(MM::g_Keyword_StopBits);
+         propertiesToRestore.push_back(MM::g_Keyword_Parity);
+         propertiesToRestore.push_back(MM::g_Keyword_Handshaking);
+         propertiesToRestore.push_back(MM::g_Keyword_AnswerTimeout);
+         propertiesToRestore.push_back(MM::g_Keyword_DelayBetweenCharsMs);
+         // record the current settings before running device detection.
+         std::string previousValue;
+         for( std::vector< std::string>::iterator sit = propertiesToRestore.begin(); sit!= propertiesToRestore.end(); ++sit)
          {
-            if( 0 < strlen(p))
-            {
-               // there is a valid serial port setting for this device, so 
-               // gather the properties that will be restored if we don't find the device
-
-
-               propertiesToRestore.push_back(MM::g_Keyword_BaudRate);
-               propertiesToRestore.push_back(MM::g_Keyword_DataBits);
-               propertiesToRestore.push_back(MM::g_Keyword_StopBits);
-               propertiesToRestore.push_back(MM::g_Keyword_Parity);
-               propertiesToRestore.push_back(MM::g_Keyword_Handshaking);
-               propertiesToRestore.push_back(MM::g_Keyword_AnswerTimeout);
-               propertiesToRestore.push_back(MM::g_Keyword_DelayBetweenCharsMs);
-               // record the current settings before running device detection.
-               std::string previousValue;
-               for( std::vector< std::string>::iterator sit = propertiesToRestore.begin(); sit!= propertiesToRestore.end(); ++sit)
-               {
-                  previousValue = getProperty(p,(*sit).c_str());
-                  valuesToRestore[*sit] = std::string(previousValue);
-               }  
-            }
+            previousValue = getProperty(port.c_str(), (*sit).c_str());
+            valuesToRestore[*sit] = std::string(previousValue);
          }
       }
 
@@ -6434,12 +6720,8 @@ MM::DeviceDetectionStatus CMMCore::detectDevice(char* deviceName)
    }
    catch(...)
    {
-      ostringstream txt;
-      string port("none");
-      if (strlen(p) > 0)
-         port = p;
-      txt << "Device Detection: error testing ports " << port << " for device " << deviceName;  
-      logMessage(txt.str().c_str());
+      LOG_ERROR(coreLogger_) << "Device detection: error testing ports " <<
+         (port.empty() ? "none" : port) << " for device " << label;
    }
 
    // if the device is not there, restore the parameters to the original settings
@@ -6447,17 +6729,17 @@ MM::DeviceDetectionStatus CMMCore::detectDevice(char* deviceName)
    {
       for( std::vector< std::string>::iterator sit = propertiesToRestore.begin(); sit!= propertiesToRestore.end(); ++sit)
       {
-         if( 0 <strlen(p))
+         if (!port.empty())
          {
             try
             {
-               setProperty(p, (*sit).c_str(), (valuesToRestore[*sit]).c_str());
+               setProperty(port.c_str(), (*sit).c_str(), (valuesToRestore[*sit]).c_str());
             }
             catch(...)
             {
-               ostringstream txt;
-               txt << "Device Detection: error restoring port " << p << " state after testing for device " << deviceName;  
-               logMessage(txt.str().c_str());
+               LOG_ERROR(coreLogger_) <<
+                  "Device detection: error restoring port " << port <<
+                  " state after testing for device " << label;
             }
          }
       }
@@ -6473,57 +6755,40 @@ MM::DeviceDetectionStatus CMMCore::detectDevice(char* deviceName)
  * report that Z-stage, filter changer and objective turrent are currently installed and return three
  * device names in the string list.
  *
+ * Currently, this method can only be called once, right after loading the hub
+ * device. Doing otherwise results in undefined behavior. This function was
+ * intended for use during initial configuration, not routine loading of
+ * devices. These restrictions may be relaxed in the future if possible.
+ *
  * @param hubDeviceLabel    the label for the device of type Hub
  */
-std::vector<std::string> CMMCore::getInstalledDevices(const char* hubDeviceLabel)
+std::vector<std::string> CMMCore::getInstalledDevices(const char* hubDeviceLabel) throw (CMMError)
 {
-   std::vector<std::string> result;
-   MM::Device* pDevice  = pluginManager_.GetDevice(hubDeviceLabel);
-   if (pDevice && pDevice->GetType() == MM::HubDevice)
-   {
-      MM::Hub* pHub = static_cast<MM::Hub*>(pDevice);
-      MMThreadGuard guard(pluginManager_.getModuleLock(pHub));
-      pHub->DetectInstalledDevices();
-      for(unsigned i=0; i<pHub->GetNumberOfInstalledDevices(); i++)
-      {
-         MM::Device* pInstDev = pHub->GetInstalledDevice(i);
-         char devName[MM::MaxStrLength];
-         pInstDev->GetName(devName);
-         result.push_back(devName);
-      }
-   }
-   return result;
+   boost::shared_ptr<HubInstance> pHub =
+      deviceManager_->GetDeviceOfType<HubInstance>(hubDeviceLabel);
+
+   mm::DeviceModuleLockGuard guard(pHub);
+   return pHub->GetInstalledPeripheralNames();
 }
 
-std::vector<std::string> CMMCore::getLoadedPeripheralDevices(const char* hubLabel)
+std::vector<std::string> CMMCore::getLoadedPeripheralDevices(const char* hubLabel) throw (CMMError)
 {
-   return pluginManager_.GetLoadedPeripherals(hubLabel);
+   CheckDeviceLabel(hubLabel);
+   return deviceManager_->GetLoadedPeripherals(hubLabel);
 }
 
-std::string CMMCore::getInstalledDeviceDescription(const char* hubLabel, const char* deviceLabel)
+std::string CMMCore::getInstalledDeviceDescription(const char* hubLabel, const char* deviceLabel) throw (CMMError)
 {
-   std::string result("N/A");
-   MM::Device* pDevice  = pluginManager_.GetDevice(hubLabel);
-   if (pDevice && pDevice->GetType() == MM::HubDevice)
+   boost::shared_ptr<HubInstance> pHub =
+      deviceManager_->GetDeviceOfType<HubInstance>(hubLabel);
+   CheckDeviceLabel(deviceLabel);
+
+   std::string description;
    {
-      MMThreadGuard guard(pluginManager_.getModuleLock(pDevice));
-      MM::Hub* pHub = static_cast<MM::Hub*>(pDevice);
-      // do not attempt to detect devices, assume instead
-      // that detection has already been performed
-      for(unsigned i=0; i<pHub->GetNumberOfInstalledDevices(); i++)
-      {
-         MM::Device* pInstDev = pHub->GetInstalledDevice(i);
-         char descr[MM::MaxStrLength] = "N/A";
-         char name[MM::MaxStrLength] = "";
-         pInstDev->GetName(name);
-         if (strcmp(name, deviceLabel) == 0)
-         {
-            pInstDev->GetDescription(descr);
-            result = descr;
-         }
-      }
+      mm::DeviceModuleLockGuard guard(pHub);
+      description = pHub->GetInstalledPeripheralDescription(deviceLabel);
    }
-   return result;
+   return description.empty() ? "N/A" : description;
 }
 
 // at least on OS X, there is a 'primary' MAC address, so we'll
@@ -6547,9 +6812,8 @@ std::vector<std::string> CMMCore::getMACAddresses(void)
 
          if( 0 != status)
          {
-            std::ostringstream m;
-            m << "error retrieving MAC address " << status;
-            logMessage(m.str().c_str());
+            LOG_ERROR(coreLogger_) << "Error " << status <<
+               " while getting MAC address";
          }
          delete pHost;
       }

@@ -71,6 +71,7 @@ const char* g_ZeissFilterWheel1 = "ZeissFilterWheel1";
 const char* g_ZeissFilterWheel2 = "ZeissFilterWheel2";
 const char* g_ZeissXYStage = "XYStage";
 const char* g_ZStage = "ZStage";
+const char* g_PhotoModule = "PhotoModule";
 
 // List of Turret numbers (from Zeiss documentation)
 int g_ReflectorTurret = 1;
@@ -93,44 +94,25 @@ const char* g_Keyword_LoadSample = "Load Position";
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_ZeissDeviceName,"Zeiss Axiovert 200m controlled through serial interface");
-   AddAvailableDeviceName(g_ZeissShutter,"Shutter"); 
-   AddAvailableDeviceName(g_ZeissShutterMF,"ShutterMFFirmware"); 
-   AddAvailableDeviceName(g_ZeissReflector,"Reflector Turret (dichroics)"); 
-   AddAvailableDeviceName(g_ZeissSidePort,"SidePort switcher"); 
-   AddAvailableDeviceName(g_ZeissBasePort,"BasePort Slider"); 
-   AddAvailableDeviceName(g_ZeissObjectives,"Objective Turret"); 
-   AddAvailableDeviceName(g_ZeissCondenser,"Condenser Turret"); 
-   AddAvailableDeviceName(g_ZeissOptovar,"Optovar"); 
-   AddAvailableDeviceName(g_ZeissTubelens,"Tubelens"); 
-   AddAvailableDeviceName(g_ZeissLampMirror,"Lamp Switcher"); 
-   AddAvailableDeviceName(g_ZeissHalogenLamp,"Halogen Lamp"); 
-   AddAvailableDeviceName(g_ZeissFocusName,"Z-Drive"); 
-   AddAvailableDeviceName(g_ZeissExtFilterWheel,"External FilterWheel"); 
-   AddAvailableDeviceName(g_ZeissFilterWheel1,"FilterWheel 1"); 
-   AddAvailableDeviceName(g_ZeissFilterWheel2,"FilterWheel 2"); 
-   AddAvailableDeviceName(g_ZeissXYStage,"XY Stage (MCU 28)"); 
-   AddAvailableDeviceName(g_ZStage,"Z Stage on Axioskop 2"); 
-
-   // TODO: remove when finished with revision
-/*
-   if( DiscoverabilityTest())
-   {
-      // only the 'turrets' implment isPresent??
-      SetDeviceIsDiscoverable(g_ZeissReflector,true);
-      SetDeviceIsDiscoverable(g_ZeissObjectives,true);
-      SetDeviceIsDiscoverable(g_ZeissExtFilterWheel,true);
-      SetDeviceIsDiscoverable(g_ZeissOptovar,true);
-      SetDeviceIsDiscoverable(g_ZeissFilterWheel1,true);;
-      SetDeviceIsDiscoverable(g_ZeissFilterWheel2,true);
-      SetDeviceIsDiscoverable(g_ZeissCondenser,true);
-      //SetDeviceIsDiscoverable(g_CondenserFrontlens,true);
-      SetDeviceIsDiscoverable(g_ZeissTubelens,true);
-      SetDeviceIsDiscoverable(g_ZeissBasePort,true);
-      SetDeviceIsDiscoverable(g_ZeissSidePort,true);
-      SetDeviceIsDiscoverable(g_ZeissLampMirror,true);
-   }
-*/
+   RegisterDevice(g_ZeissDeviceName, MM::HubDevice, "Zeiss Axiovert 200m controlled through serial interface");
+   RegisterDevice(g_ZeissShutter, MM::ShutterDevice, "Shutter");
+   RegisterDevice(g_ZeissShutterMF, MM::ShutterDevice, "ShutterMFFirmware");
+   RegisterDevice(g_ZeissReflector, MM::StateDevice, "Reflector Turret (dichroics)");
+   RegisterDevice(g_ZeissSidePort, MM::StateDevice, "SidePort switcher");
+   RegisterDevice(g_ZeissBasePort, MM::StateDevice, "BasePort Slider");
+   RegisterDevice(g_ZeissObjectives, MM::StateDevice, "Objective Turret");
+   RegisterDevice(g_ZeissCondenser, MM::StateDevice, "Condenser Turret");
+   RegisterDevice(g_ZeissOptovar, MM::StateDevice, "Optovar");
+   RegisterDevice(g_ZeissTubelens, MM::StateDevice, "Tubelens");
+   RegisterDevice(g_ZeissLampMirror, MM::StateDevice, "Lamp Switcher");
+   RegisterDevice(g_ZeissHalogenLamp, MM::ShutterDevice, "Halogen Lamp");
+   RegisterDevice(g_ZeissFocusName, MM::StageDevice, "Z-Drive");
+   RegisterDevice(g_ZeissExtFilterWheel, MM::StateDevice, "External FilterWheel");
+   RegisterDevice(g_ZeissFilterWheel1, MM::StateDevice, "FilterWheel 1");
+   RegisterDevice(g_ZeissFilterWheel2, MM::StateDevice, "FilterWheel 2");
+   RegisterDevice(g_ZeissXYStage, MM::XYStageDevice, "XY Stage (MCU 28)");
+   RegisterDevice(g_ZStage, MM::StageDevice, "Z Stage on Axioskop 2");
+   RegisterDevice(g_PhotoModule, MM::StateDevice, "AxioPhot 2 Photo Module");
 }
 
 using namespace std;
@@ -180,6 +162,8 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
       return new XYStage();
    else if (strcmp(deviceName, g_ZStage) == 0)
       return new ZStage();
+   else if (strcmp(deviceName, g_PhotoModule) == 0)
+      return new PhotoModule();
 
    return 0;
 }
@@ -476,7 +460,6 @@ int ZeissTurret::GetPresence(MM::Device& device, MM::Core& core,  int turretNr, 
 //
 ZeissScope::ZeissScope() :
    initialized_(false),                                                     
-   answerTimeoutMs_(1000),
    pTurretIDMap_(NULL)
 {
    InitializeDefaultErrorMessages();
@@ -538,7 +521,14 @@ int ZeissScope::Initialize()
       if (ret != DEVICE_OK)
          ret = g_hub.GetVersion(*this, *GetCoreCallback(), version);
       if (DEVICE_OK != ret)
-         return ret;
+      {
+         // We have not detected the CAN microscope stand. However, there may
+         // be an MCU 28 connected directly to the computer.
+         int mcu28Status = GetMCU28Version(version);
+         if (mcu28Status != DEVICE_OK)
+            return ret;
+      }
+
       ret = CreateProperty("Microscope Version", version.c_str(), MM::String, true);
       if (DEVICE_OK != ret)
          return ret;
@@ -585,6 +575,27 @@ bool ZeissScope::IsMCU28Present()
       return true; // got the right answer
    else
       return false;
+}
+
+int ZeissScope::GetMCU28Version(std::string& ver)
+{
+   // get firmware info
+   const char * command = "NPTv0";
+   int ret = g_hub.ExecuteCommand(*this, *GetCoreCallback(),  command);
+   if (ret != DEVICE_OK)
+      return ret;
+
+   // first two chars should read 'PN'
+   string response;
+   ret = g_hub.GetAnswer(*this, *GetCoreCallback(), response);
+   if (ret != DEVICE_OK)
+      return ret;
+   if (response.substr(0,2).compare("PN") == 0) 
+      ver = "Application version: " + response.substr(2);
+   else
+      return ERR_UNEXPECTED_ANSWER;
+
+   return DEVICE_OK;
 }
 
 MM::DeviceDetectionStatus ZeissScope::DetectDevice(void)
@@ -736,6 +747,11 @@ int ZeissScope::DetectInstalledDevices()
    std::map<int,std::string>& turrr = turretIDMap();
    std::map<int, std::string>::iterator iii;
 
+   // It is possible to use an MCU 28 XY stage connected directly to the computer.
+   // In that case, all checks for the other devices (with HP* commands) will
+   // time out, and we don't want to wait for all of them. So, we skip all of
+   // those checks in the case where the first one times out.
+   bool couldNotCommunicateWithStandDevice = false;
 
    for( iii = turrr.begin(); turrr.end() != iii; ++iii)
    {
@@ -749,28 +765,46 @@ int ZeissScope::DetectInstalledDevices()
                AddInstalledDevice(pDev);
          }
       }
+      else if (ret != ERR_UNEXPECTED_ANSWER) // Serial communication failed (e.g. timed out)
+      {
+         // Skip further checks for stand-attached devices
+         couldNotCommunicateWithStandDevice = true;
+         break;
+      }
    }
 
-   CreateAndAddDevice(g_ZeissHalogenLamp);
-
-   std::string response;
-   Query("HPCk1,0", response);
-   if (0 != response.compare("0"))
+   if (!couldNotCommunicateWithStandDevice)
    {
-      CreateAndAddDevice(g_ZeissShutter);
-   }
+      CreateAndAddDevice(g_ZeissHalogenLamp);
 
-   Query("HPCk1,0", response);
-   if (0 != response.compare("1F"))
-   {
-      CreateAndAddDevice(g_ZeissFocusName);
-   }
+      std::string response;
+      Query("HPCk1,0", response);
+      if (0 != response.compare("0"))
+      {
+         CreateAndAddDevice(g_ZeissShutter);
+      }
 
-   Query("HPCm1,0", response);
-   if (!(  (0 == response.compare("0"))
-           ||(0 == response.compare("55"))  ))
-   {
-      CreateAndAddDevice(g_ZeissShutter);
+      Query("HPCk1,0", response);
+      if (0 != response.compare("1F"))
+      {
+         CreateAndAddDevice(g_ZeissFocusName);
+      }
+
+      // NS 2015-04: I think this should always create an MF shutter, 
+      // but play it safe
+      Query("HPCm1,0", response);
+      if (!(  (0 == response.compare("0"))
+              ||(0 == response.compare("55"))  ))
+      {
+         if (g_hub.firmware_ == "MF")
+         {
+            CreateAndAddDevice(g_ZeissShutterMF);
+         } 
+         else 
+         {
+            CreateAndAddDevice(g_ZeissShutter);
+         }
+      }
    }
 
    // finally check if MCU28 is installed
@@ -780,6 +814,7 @@ int ZeissScope::DetectInstalledDevices()
       if (pDev)
          AddInstalledDevice(pDev);
    }
+
    return DEVICE_OK;
 }
 
@@ -809,9 +844,11 @@ ZeissShutter::ZeissShutter () :
    name_ (g_ZeissShutter),
    shutterNr_ (1),
    external_ (false),
-   state_ (1)
+   state_ (1),
+   changedTime_ (0.0)
 {
    InitializeDefaultErrorMessages();
+   EnableDelay();
 
    // Todo: Add custom messages
    SetErrorText(ERR_SCOPE_NOT_ACTIVE, "Zeiss Scope is not initialized.  It is needed for the Zeiss Shutter to work");
@@ -854,6 +891,11 @@ int ZeissShutter::Initialize()
    if (DEVICE_OK != ret)
       return ret;
 
+   // Set timer for the Busy signal, or we'll get a time-out the first time 
+   // we check the state of the shutter, for good measure, go back 'delay' 
+   // time into the past
+   changedTime_ = GetCurrentMMTime();
+
    // Check current state of shutter:
    ret = GetOpen(state_);
    if (DEVICE_OK != ret)
@@ -885,8 +927,13 @@ int ZeissShutter::Initialize()
 
 bool ZeissShutter::Busy()
 {
-   bool busy;
+   bool timer_busy, shutter_busy;
    ostringstream cmd;
+
+   // first check the timer
+   MM::MMTime interval = GetCurrentMMTime() - changedTime_;
+   MM::MMTime delay(GetDelayMs()*1000.0);
+   timer_busy = (interval < delay );
 
    if (external_)
       cmd << "SPSb2";
@@ -919,9 +966,9 @@ bool ZeissShutter::Busy()
    }
 
    // interpret the status byte returned by the micrsocope
-   busy = (1 & (statusByte >> 4));
+   shutter_busy = (1 & (statusByte >> 4));
 
-   return busy;
+   return timer_busy || shutter_busy;
 }
 
 int ZeissShutter::Shutdown()
@@ -936,6 +983,10 @@ int ZeissShutter::Shutdown()
 int ZeissShutter::SetOpen(bool open)
 {
    int ret;
+
+   // Set timer for the Busy signal
+   changedTime_ = GetCurrentMMTime();
+   
    char command[8] = "HPCK1,2";
    if (external_)
       command[0] = 'S';
@@ -1357,9 +1408,10 @@ int HalogenLamp::Initialize()
 
    // switch off the light manager
    ret = SetLM(false);
+   if (ret != DEVICE_OK) 
+      return ret; 
    pAct = new CPropertyAction(this, &HalogenLamp::OnLightManager);
    ret = CreateProperty("LightManager", "0", MM::Integer, false, pAct);
-
    if (ret != DEVICE_OK) 
       return ret; 
 
@@ -1511,7 +1563,6 @@ int HalogenLamp::SetIntensity(long intensity)
    const char* prefix = "HPCV1,";
    std::stringstream command_stream;
    command_stream << prefix << intensity;
-   command_stream.str().c_str();
    return g_hub.ExecuteCommand(*this, *GetCoreCallback(), command_stream.str().c_str());
 }
 
@@ -1750,7 +1801,7 @@ bool ReflectorTurret::Busy()
    return busy;
 }
 
-int ReflectorTurret::SetPosition(int position)
+int ReflectorTurret::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -1759,7 +1810,7 @@ int ReflectorTurret::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int ReflectorTurret::GetPosition(int& position)
+int ReflectorTurret::GetTurretPosition(int& position)
 {
    position = 0;
    int count = 0;
@@ -1795,7 +1846,7 @@ int ReflectorTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -1806,7 +1857,7 @@ int ReflectorTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -1926,7 +1977,7 @@ bool SidePortTurret::Busy()
    return busy;
 }
 
-int SidePortTurret::SetPosition(int position)
+int SidePortTurret::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -1935,7 +1986,7 @@ int SidePortTurret::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int SidePortTurret::GetPosition(int& position)
+int SidePortTurret::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -1952,7 +2003,7 @@ int SidePortTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -1963,7 +2014,7 @@ int SidePortTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -2082,7 +2133,7 @@ bool BasePortSlider::Busy()
    return busy;
 }
 
-int BasePortSlider::SetPosition(int position)
+int BasePortSlider::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2091,7 +2142,7 @@ int BasePortSlider::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int BasePortSlider::GetPosition(int& position)
+int BasePortSlider::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2109,7 +2160,7 @@ int BasePortSlider::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -2120,7 +2171,7 @@ int BasePortSlider::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -2240,7 +2291,7 @@ bool ObjectiveTurret::Busy()
    return busy;
 }
 
-int ObjectiveTurret::SetPosition(int position)
+int ObjectiveTurret::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2249,7 +2300,7 @@ int ObjectiveTurret::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int ObjectiveTurret::GetPosition(int& position)
+int ObjectiveTurret::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2267,7 +2318,7 @@ int ObjectiveTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -2278,7 +2329,7 @@ int ObjectiveTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -2397,7 +2448,7 @@ bool OptovarTurret::Busy()
    return busy;
 }
 
-int OptovarTurret::SetPosition(int position)
+int OptovarTurret::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2406,7 +2457,7 @@ int OptovarTurret::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int OptovarTurret::GetPosition(int& position)
+int OptovarTurret::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2424,7 +2475,7 @@ int OptovarTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -2435,7 +2486,7 @@ int OptovarTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -2554,7 +2605,7 @@ bool TubelensTurret::Busy()
    return busy;
 }
 
-int TubelensTurret::SetPosition(int position)
+int TubelensTurret::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2563,7 +2614,7 @@ int TubelensTurret::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int TubelensTurret::GetPosition(int& position)
+int TubelensTurret::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2581,7 +2632,7 @@ int TubelensTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -2592,7 +2643,7 @@ int TubelensTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -2725,7 +2776,7 @@ bool CondenserTurret::Busy()
    return aperture_busy || turret_busy;
 }
 
-int CondenserTurret::SetPosition(int position)
+int CondenserTurret::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2734,7 +2785,7 @@ int CondenserTurret::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int CondenserTurret::GetPosition(int& position)
+int CondenserTurret::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2798,7 +2849,7 @@ int CondenserTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -2809,7 +2860,7 @@ int CondenserTurret::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -2951,7 +3002,7 @@ bool LampMirror::Busy()
    return busy;
 }
 
-int LampMirror::SetPosition(int position)
+int LampMirror::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2960,7 +3011,7 @@ int LampMirror::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int LampMirror::GetPosition(int& position)
+int LampMirror::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -2978,7 +3029,7 @@ int LampMirror::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -2989,7 +3040,7 @@ int LampMirror::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }
@@ -3483,7 +3534,7 @@ bool FilterWheel::Busy()
    return busy;
 }
 
-int FilterWheel::SetPosition(int position)
+int FilterWheel::SetTurretPosition(int position)
 {
    int ret = g_turret.SetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -3492,7 +3543,7 @@ int FilterWheel::SetPosition(int position)
    return DEVICE_OK;
 }
 
-int FilterWheel::GetPosition(int& position)
+int FilterWheel::GetTurretPosition(int& position)
 {
    int ret = g_turret.GetPosition(*this, *GetCoreCallback(), turretId_, position);
    if (ret != DEVICE_OK)
@@ -3510,7 +3561,7 @@ int FilterWheel::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       int pos;
-      int ret = GetPosition(pos);
+      int ret = GetTurretPosition(pos);
       if (ret != DEVICE_OK)
          return ret;
       pos_ = pos -1;
@@ -3521,7 +3572,7 @@ int FilterWheel::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
       pProp->Get(pos_);
       int pos = pos_ + 1;
       if ((pos > 0) && (pos <= numPos_))
-         return SetPosition(pos);
+         return SetTurretPosition(pos);
       else
          return ERR_INVALID_TURRET_POSITION;
    }

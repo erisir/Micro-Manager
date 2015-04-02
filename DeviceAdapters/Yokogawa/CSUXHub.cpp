@@ -37,17 +37,12 @@
 #include <sstream>
 #include <iostream>
 
-#ifdef WIN32
-   #include <windows.h>
-   #define usleep(us) Sleep(us/1000) 
-#endif
+#include "../../MMDevice/DeviceUtils.h"
 
 using namespace std;
 
 CSUXHub::CSUXHub ()
 {
-   expireTimeUs_ = 5000000; // each command will finish within 5sec
-
    ClearRcvBuf();
 }
 
@@ -80,7 +75,7 @@ int CSUXHub::SetFilterWheelPosition(MM::Device& device, MM::Core& core, long whe
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(50000);
+         CDeviceUtils::SleepMs(50);
          counter++;
       } else
          succeeded = true;
@@ -157,14 +152,25 @@ int CSUXHub::SetDichroicPosition(MM::Device& device, MM::Core& core, long dichro
    ostringstream os;
    os << "DM_POS, " <<  dichroic ;
 
-   // send command
-   int ret = ExecuteCommand(device, core, os.str().c_str());
-   if (ret != DEVICE_OK)
-      return ret;
+   bool succeeded = false;
+   int counter = 0;
+   // try up to 10 times, wait 50 ms in between tries
+   int ret = DEVICE_OK;
+   while (!succeeded && counter < 10)
+   {
+      ret = ExecuteCommand(device, core, os.str().c_str());
+      if (ret != DEVICE_OK)
+         return ret;
+      ret = GetAcknowledgment(device,core);
+      if (ret != DEVICE_OK)  {
+         CDeviceUtils::SleepMs(50);
+         counter++;
+      } else
+         succeeded = true;
+   }
+   if (!succeeded)
+       return ret;
 
-   ret = GetAcknowledgment(device, core);
-   if (ret != DEVICE_OK)
-      return ret;
    return DEVICE_OK;
 }
 
@@ -337,7 +343,7 @@ int CSUXHub::SetBrightFieldPort(MM::Device& device, MM::Core& core, int pos)
          return ret;
       ret = GetAcknowledgment(device,core);
       if (ret != DEVICE_OK)  {
-         usleep(50000);
+         CDeviceUtils::SleepMs(50);
          counter++;
       } else
          succeeded = true;

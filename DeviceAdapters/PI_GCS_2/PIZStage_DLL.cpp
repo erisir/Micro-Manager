@@ -19,13 +19,8 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id: PIZStage_DLL.cpp,v 1.7, 2011-09-20 08:31:11Z, Steffen Rau$
+// CVS:           $Id: PIZStage_DLL.cpp,v 1.11, 2014-05-27 07:22:43Z, Steffen Rau$
 //
-
-#ifdef WIN32
-   #include <windows.h>
-   #define snprintf _snprintf 
-#endif
 
 #include "PIZStage_DLL.h"
 #include "Controller.h"
@@ -33,8 +28,8 @@
 const char* PIZStage::DeviceName_ = "PIZStage";
 const char* g_PI_ZStageAxisName = "Axis";
 const char* g_PI_ZStageAxisLimitUm = "Limit_um";
+const char* g_PI_ZStageInvertTravelRange = "Invert travel range";
 const char* g_PI_ZStageStageType = "Stage";
-//const char* g_PI_ZStageHoming = "HomingMode";
 const char* g_PI_ZStageStepSize = "StepSizeUm";
 const char* g_PI_ZStageControllerName = "Controller Name";
 
@@ -44,21 +39,29 @@ const char* g_PI_ZStageControllerName = "Controller Name";
 ///////////////////////////////////////////////////////////////////////////////
 // PIZStage
 
-PIZStage::PIZStage() :
-   stepSizeUm_(0.1),
-   initialized_(false),
-    controllerName_(""),
-    axisLimitUm_(500.0),
-   axisName_("A"),
-   stageType_("DEFAULT_STAGE"),
-   ctrl_(NULL)
-   //homingMode_("REF")
+PIZStage::PIZStage()
+    : axisName_("1")
+    , stepSizeUm_(0.1)
+    , initialized_(false)
+    , axisLimitUm_(500.0)
+    , invertTravelRange_(false)
+    , stageType_("DEFAULT_STAGE")
+    , controllerName_("")
+    , ctrl_(NULL)
 {
    InitializeDefaultErrorMessages();
 
    SetErrorText(ERR_GCS_PI_CNTR_POS_OUT_OF_LIMITS, g_msg_CNTR_POS_OUT_OF_LIMITS);
    SetErrorText(ERR_GCS_PI_CNTR_MOVE_WITHOUT_REF_OR_NO_SERVO, g_msg_CNTR_MOVE_WITHOUT_REF_OR_NO_SERVO);
    SetErrorText(ERR_GCS_PI_CNTR_AXIS_UNDER_JOYSTICK_CONTROL, g_msg_CNTR_AXIS_UNDER_JOYSTICK_CONTROL);
+   SetErrorText(ERR_GCS_PI_CNTR_INVALID_AXIS_IDENTIFIER, g_msg_CNTR_INVALID_AXIS_IDENTIFIER);
+   SetErrorText(ERR_GCS_PI_CNTR_ILLEGAL_AXIS, g_msg_CNTR_ILLEGAL_AXIS);
+   SetErrorText(ERR_GCS_PI_CNTR_VEL_OUT_OF_LIMITS, g_msg_CNTR_VEL_OUT_OF_LIMITS);
+   SetErrorText(ERR_GCS_PI_CNTR_ON_LIMIT_SWITCH, g_msg_CNTR_ON_LIMIT_SWITCH);
+   SetErrorText(ERR_GCS_PI_CNTR_MOTION_ERROR, g_msg_CNTR_MOTION_ERROR);
+   SetErrorText(ERR_GCS_PI_MOTION_ERROR, g_msg_MOTION_ERROR);
+   SetErrorText(ERR_GCS_PI_CNTR_PARAM_OUT_OF_RANGE, g_msg_CNTR_PARAM_OUT_OF_RANGE);
+   SetErrorText(ERR_GCS_PI_NO_CONTROLLER_FOUND, g_msg_NO_CONTROLLER_FOUND);
 
    // create pre-initialization properties
    // ------------------------------------
@@ -92,18 +95,23 @@ PIZStage::PIZStage() :
    pAct = new CPropertyAction (this, &PIZStage::OnAxisLimit);
    CreateProperty(g_PI_ZStageAxisLimitUm, "500.0", MM::Float, false, pAct, true);
 
+   // axis limit in um
+   pAct = new CPropertyAction (this, &PIZStage::OnAxisTravelRange);
+   CreateProperty(g_PI_ZStageInvertTravelRange, "0", MM::Integer, false, pAct, true);
+
    // axis limits (assumed symmetrical)
    pAct = new CPropertyAction (this, &PIZStage::OnPosition);
    CreateProperty(MM::g_Keyword_Position, "0.0", MM::Float, false, pAct);
-   SetPropertyLimits(MM::g_Keyword_Position, 0/*-axisLimitUm_*/, axisLimitUm_);
+   SetPropertyLimits(MM::g_Keyword_Position, 0.0/*-axisLimitUm_*/, axisLimitUm_);
 
-}  
+}
 
 PIZStage::~PIZStage()
 {
    Shutdown();
+   ctrl_ = NULL;
 }
- 
+
 void PIZStage::GetName(char* Name) const
 {
    CDeviceUtils::CopyLimitedString(Name, DeviceName_);
@@ -113,7 +121,7 @@ int PIZStage::Initialize()
 {
    MM::Device* device = GetDevice(controllerName_.c_str());
    if (device == NULL)
-	   return DEVICE_ERR;//ERR_GCS_PI_NO_CONTROLLER_FOUND;
+	   return ERR_GCS_PI_NO_CONTROLLER_FOUND;
 
    int ret = device->Initialize();
    if (ret != DEVICE_OK)
@@ -121,7 +129,7 @@ int PIZStage::Initialize()
 
    ctrl_ = PIController::GetByLabel(controllerName_);
    if (ctrl_ == NULL)
-	   return DEVICE_ERR;//ERR_GCS_PI_NO_CONTROLLER_FOUND;
+	   return ERR_GCS_PI_NO_CONTROLLER_FOUND;
 
    std::string  sBuffer;
    ctrl_->qIDN(sBuffer);
@@ -156,7 +164,11 @@ int PIZStage::Shutdown()
 
 bool PIZStage::Busy()
 {
-   return ctrl_->IsBusy();
+    if (NULL == ctrl_)
+    {
+        return false;
+    }
+    return ctrl_->IsBusy();
 }
 
 int PIZStage::SetPositionSteps(long steps)
@@ -177,19 +189,36 @@ int PIZStage::GetPositionSteps(long& steps)
   
 int PIZStage::SetPositionUm(double pos)
 {
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
+    if (invertTravelRange_)
+    {
+        pos = axisLimitUm_ - pos;
+    }
 	pos *= ctrl_->umToDefaultUnit_;
-	if (ctrl_->MOV(axisName_, &pos) == FALSE)
-		return ctrl_->TranslateError();
+	if (!ctrl_->MOV(axisName_, &pos))
+		return ctrl_->GetTranslatedError();
 
 	return DEVICE_OK;
 }
 
 int PIZStage::GetPositionUm(double& pos)
 {
-	if (ctrl_->qPOS(axisName_, &pos) == FALSE)
-		return DEVICE_ERR;
-
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
+	if (!ctrl_->qPOS(axisName_, &pos))
+    {
+		return ctrl_->GetTranslatedError();
+    }
 	pos /= ctrl_->umToDefaultUnit_;
+    if (invertTravelRange_)
+    {
+        pos = axisLimitUm_ - pos;
+    }
 	return DEVICE_OK;
 }
 
@@ -200,10 +229,9 @@ int PIZStage::SetOrigin()
 
 int PIZStage::GetLimits(double& min, double& max)
 {
-	min = 0;
-	max = axisLimitUm_;
-	return DEVICE_OK;
-   return DEVICE_UNSUPPORTED_COMMAND;
+    min = 0;
+    max = axisLimitUm_;
+    return DEVICE_OK;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -259,11 +287,27 @@ int PIZStage::OnAxisLimit(MM::PropertyBase* pProp, MM::ActionType eAct)
    if (eAct == MM::BeforeGet)
    {
       pProp->Set(axisLimitUm_);
-	  SetPropertyLimits(MM::g_Keyword_Position, 0/*-axisLimitUm_*/, axisLimitUm_);
+	  SetPropertyLimits(MM::g_Keyword_Position, 0.0/*-axisLimitUm_*/, axisLimitUm_);
    }
    else if (eAct == MM::AfterSet)
    {
       pProp->Get(axisLimitUm_);
+   }
+
+   return DEVICE_OK;
+}
+
+int PIZStage::OnAxisTravelRange(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+   if (eAct == MM::BeforeGet)
+   {
+      pProp->Set(long (invertTravelRange_ ? 1 : 0));
+   }
+   else if (eAct == MM::AfterSet)
+   {
+      long value;
+      pProp->Get(value);
+      invertTravelRange_ = (value != 0);
    }
 
    return DEVICE_OK;
@@ -318,40 +362,47 @@ int PIZStage::OnStageType(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 int PIZStage::OnHoming(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-   if (eAct == MM::BeforeGet)
-   {
-			pProp->Set(0.0);
-   }
-   else if (eAct == MM::AfterSet)
-   {
-	   std::string homingMode;
-	   pProp->Get(homingMode);
-		int ret = ctrl_->Home( axisName_, homingMode );
-		if (ret != DEVICE_OK)
-			return ret;
-   }
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
+    if (eAct == MM::BeforeGet)
+    {
+        pProp->Set(0.0);
+    }
+    else if (eAct == MM::AfterSet)
+    {
+        std::string homingMode;
+        pProp->Get(homingMode);
+        int ret = ctrl_->Home( axisName_, homingMode );
+        if (ret != DEVICE_OK)
+            return ret;
+    }
 
-   return DEVICE_OK;
+    return DEVICE_OK;
 }
 
 int PIZStage::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-   if (eAct == MM::BeforeGet)
-   {
-      double velocity = 0.0;
-	  if (ctrl_->qVEL(axisName_, &velocity))
-	     pProp->Set(velocity);
-	  else
-         pProp->Set(0.0);
-   }
-   else if (eAct == MM::AfterSet)
-   {
-      double velocity = 0.0;
-	  pProp->Get(velocity);
-      if (!ctrl_->VEL( axisName_, &velocity ))
-         return ctrl_->TranslateError();
-   }
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
+    if (eAct == MM::BeforeGet)
+    {
+        double velocity = 0.0;
+        if (ctrl_->qVEL(axisName_, &velocity))
+            pProp->Set(velocity);
+        else
+            pProp->Set(0.0);
+    }
+    else if (eAct == MM::AfterSet)
+    {
+        double velocity = 0.0;
+        pProp->Get(velocity);
+        if (!ctrl_->VEL( axisName_, &velocity ))
+            return ctrl_->GetTranslatedError();
+    }
 
-   return DEVICE_OK;
+    return DEVICE_OK;
 }
-

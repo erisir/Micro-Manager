@@ -27,22 +27,30 @@
 package org.micromanager.splitview;
 
 import com.swtdesigner.SwingResourceManager;
+
 import ij.process.ByteProcessor;
 import ij.process.ImageProcessor;
 import ij.process.ShortProcessor;
+
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+
 import javax.swing.Timer;
-import java.text.NumberFormat;
+
 import java.util.prefs.Preferences;
+
 import javax.swing.JColorChooser;
+
 import mmcorej.CMMCore;
+import mmcorej.TaggedImage;
+
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
+import org.micromanager.api.MMTags;
 import org.micromanager.api.ScriptInterface;
 import org.micromanager.utils.MMScriptException;
 import org.micromanager.utils.ReportingUtils;
@@ -59,7 +67,6 @@ public class SplitViewFrame extends javax.swing.JFrame {
    private final ScriptInterface gui_;
    private final CMMCore core_;
    private Preferences prefs_;
-   private NumberFormat nf_;
    private long imgDepth_;
    private int width_;
    private int height_;
@@ -83,20 +90,21 @@ public class SplitViewFrame extends javax.swing.JFrame {
    private boolean autoShutterOrg_;
    private String shutterLabel_;
    private boolean shutterOrg_;
-   private boolean appliedToMDA_ = false;
-   private SplitViewProcessor mmImageProcessor_;
+   private SplitViewProcessor processor_;
 
    
 
-   public SplitViewFrame(ScriptInterface gui) throws Exception {
+   public SplitViewFrame(SplitViewProcessor processor, 
+         ScriptInterface gui) throws Exception {
+      processor_ = processor;
       gui_ = gui;
       core_ = gui_.getMMCore();
-      nf_ = NumberFormat.getInstance();
       prefs_ = Preferences.userNodeForPackage(this.getClass());
 
       col1_ = new Color(prefs_.getInt(TOPLEFTCOLOR, Color.red.getRGB()));
       col2_ = new Color(prefs_.getInt(BOTTOMRIGHTCOLOR, Color.green.getRGB()));
       orientation_ = prefs_.get(ORIENTATION, LR);
+      processor_.setOrientation(orientation_);
 
       // initialize timer
       // TODO: Replace with Sequence-based live mode
@@ -145,7 +153,7 @@ public class SplitViewFrame extends javax.swing.JFrame {
 
       liveButton.setIconTextGap(6);
       liveButton.setFont(buttonFont);
-      liveButton.setIcon(SwingResourceManager.getIcon(MMStudioMainFrame.class, "/org/micromanager/icons/camera_go.png"));
+      liveButton.setIcon(SwingResourceManager.getIcon(MMStudio.class, "/org/micromanager/icons/camera_go.png"));
       liveButton.setText("Live");
 
       snapButton.setIconTextGap(6);
@@ -233,45 +241,15 @@ public class SplitViewFrame extends javax.swing.JFrame {
       width_ = (int) core_.getImageWidth();
       height_ = (int) core_.getImageHeight();
 
-      newWidth_ = calculateWidth(width_);
-      newHeight_ = calculateHeight(height_);
-   }
-
-   public int calculateWidth(int width) {
-      int newWidth = width;
-      if (!orientation_.equals(LR) && !orientation_.equals(TB)) {
-         orientation_ = LR;
-      }
-      if (orientation_.equals(LR)) {
-         newWidth = width / 2;
-      } else if (orientation_.equals(TB)) {
-         newWidth = width;
-      }
-      return newWidth;
+      newWidth_ = processor_.calculateWidth(width_);
+      newHeight_ = processor_.calculateHeight(height_);
    }
    
-   public int calculateHeight(int height) {
-      int newHeight = height;
-      if (!orientation_.equals(LR) && !orientation_.equals(TB)) {
-         orientation_ = LR;
-      }
-      if (orientation_.equals(LR)) {
-         newHeight = height;
-      } else if (orientation_.equals(TB)) {
-         newHeight = height / 2;
-      }
-      return newHeight;
-   }
-   
-   public String getOrientation() {
-      return orientation_;
-   }
-
    private void openAcq() throws MMScriptException {
 
-      gui_.openAcquisition(ACQNAME, "", 1, 2, 1);
-      gui_.initializeAcquisition(ACQNAME, newWidth_, newHeight_, (int) imgDepth_);
-      gui_.getAcquisition(ACQNAME).promptToSave(false);
+      gui_.openAcquisition(ACQNAME, "", 1, 2, 1, 1, true, false);
+      gui_.initializeAcquisition(ACQNAME, newWidth_, newHeight_, (int) imgDepth_, 8 * (int)imgDepth_);
+      gui_.promptToSaveAcquisition(ACQNAME, false);
       gui_.setChannelColor(ACQNAME, 0, col1_);
       gui_.setChannelColor(ACQNAME, 1, col2_);
       if (orientation_.equals(LR)) {
@@ -284,11 +262,11 @@ public class SplitViewFrame extends javax.swing.JFrame {
    }
 
    private void addSnapToImage() {
-      Object img;
+     TaggedImage img;
       ImageProcessor tmpImg;
       try {
          core_.snapImage();
-         img = core_.getImage();
+         img = core_.getTaggedImage();
          if (imgDepth_ == 1) {
             tmpImg = new ByteProcessor(width_, height_);
          } else if (imgDepth_ == 2) {
@@ -297,7 +275,7 @@ public class SplitViewFrame extends javax.swing.JFrame {
          {
             return;
          }
-         tmpImg.setPixels(img);
+         tmpImg.setPixels(img.pix);
 
          if (!gui_.acquisitionExists(ACQNAME)) {
             enableLiveMode(false);
@@ -305,21 +283,28 @@ public class SplitViewFrame extends javax.swing.JFrame {
          } else if (gui_.getAcquisitionImageHeight(ACQNAME) != newHeight_
                  || gui_.getAcquisitionImageWidth(ACQNAME) != newWidth_
                  || gui_.getAcquisitionImageByteDepth(ACQNAME) != imgDepth_) {
-            gui_.getAcquisition(ACQNAME).closeImageWindow();
+            gui_.closeAcquisitionWindow(ACQNAME);
             gui_.closeAcquisition(ACQNAME);
             openAcq();
          }
 
          tmpImg.setRoi(0, 0, newWidth_, newHeight_);
          // first channel
-         gui_.addImage(ACQNAME, tmpImg.crop().getPixels(), 0, 0, 0);
+         TaggedImage firstChannel = new TaggedImage(tmpImg.crop().getPixels(), img.tags);
+         firstChannel.tags.put(MMTags.Image.WIDTH, newWidth_);
+         firstChannel.tags.put(MMTags.Image.HEIGHT, newHeight_);
+         gui_.addImageToAcquisition(ACQNAME, 0, 0, 0, 0, firstChannel);
+         
          // second channel
          if (orientation_.equals(LR)) {
             tmpImg.setRoi(newWidth_, 0, newWidth_, height_);
          } else if (orientation_.equals(TB)) {
             tmpImg.setRoi(0, newHeight_, newWidth_, newHeight_);
          }
-         gui_.addImage(ACQNAME, tmpImg.crop().getPixels(), 0, 1, 0);
+         TaggedImage secondChannel = new TaggedImage(tmpImg.crop().getPixels(), img.tags);
+         secondChannel.tags.put(MMTags.Image.WIDTH, newWidth_);
+         secondChannel.tags.put(MMTags.Image.HEIGHT, newHeight_);
+         gui_.addImageToAcquisition(ACQNAME, 0, 1, 0, 0, secondChannel);
 
       } catch (Exception e) {
          if (gui_.isLiveModeOn())
@@ -341,136 +326,120 @@ public class SplitViewFrame extends javax.swing.JFrame {
     * always regenerated by the Form Editor.
     */
    @SuppressWarnings("unchecked")
-    // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
-    private void initComponents() {
+   // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
+   private void initComponents() {
 
-        buttonGroup1 = new javax.swing.ButtonGroup();
-        buttonGroup2 = new javax.swing.ButtonGroup();
-        buttonGroup3 = new javax.swing.ButtonGroup();
-        lrRadioButton = new javax.swing.JRadioButton();
-        tbRadioButton = new javax.swing.JRadioButton();
-        topLeftColorButton = new javax.swing.JButton();
-        bottomRightColorButton = new javax.swing.JButton();
-        snapButton = new javax.swing.JButton();
-        liveButton = new javax.swing.JButton();
-        applyToMDACheckBox_ = new javax.swing.JCheckBox();
+      buttonGroup1 = new javax.swing.ButtonGroup();
+      buttonGroup2 = new javax.swing.ButtonGroup();
+      buttonGroup3 = new javax.swing.ButtonGroup();
+      lrRadioButton = new javax.swing.JRadioButton();
+      tbRadioButton = new javax.swing.JRadioButton();
+      topLeftColorButton = new javax.swing.JButton();
+      bottomRightColorButton = new javax.swing.JButton();
+      snapButton = new javax.swing.JButton();
+      liveButton = new javax.swing.JButton();
 
-        setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
-        setTitle("SplitView");
-        addWindowListener(new java.awt.event.WindowAdapter() {
-            public void windowClosed(java.awt.event.WindowEvent evt) {
-                formWindowClosed(evt);
-            }
-        });
+      setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+      setTitle("SplitView");
+      addWindowListener(new java.awt.event.WindowAdapter() {
+         public void windowClosed(java.awt.event.WindowEvent evt) {
+            formWindowClosed(evt);
+         }
+      });
 
-        buttonGroup1.add(lrRadioButton);
-        lrRadioButton.setText("Left-Right Split");
-        lrRadioButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                lrRadioButtonActionPerformed(evt);
-            }
-        });
+      buttonGroup1.add(lrRadioButton);
+      lrRadioButton.setText("Left-Right Split");
+      lrRadioButton.addActionListener(new java.awt.event.ActionListener() {
+         public void actionPerformed(java.awt.event.ActionEvent evt) {
+            lrRadioButtonActionPerformed(evt);
+         }
+      });
 
-        buttonGroup1.add(tbRadioButton);
-        tbRadioButton.setText("Top-Bottom Split");
-        tbRadioButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                tbRadioButtonActionPerformed(evt);
-            }
-        });
+      buttonGroup1.add(tbRadioButton);
+      tbRadioButton.setText("Top-Bottom Split");
+      tbRadioButton.addActionListener(new java.awt.event.ActionListener() {
+         public void actionPerformed(java.awt.event.ActionEvent evt) {
+            tbRadioButtonActionPerformed(evt);
+         }
+      });
 
-        topLeftColorButton.setText("Left Color");
-        topLeftColorButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                topLeftColorButtonActionPerformed(evt);
-            }
-        });
+      topLeftColorButton.setText("Left Color");
+      topLeftColorButton.addActionListener(new java.awt.event.ActionListener() {
+         public void actionPerformed(java.awt.event.ActionEvent evt) {
+            topLeftColorButtonActionPerformed(evt);
+         }
+      });
 
-        bottomRightColorButton.setText("Right Color");
-        bottomRightColorButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                bottomRightColorButtonActionPerformed(evt);
-            }
-        });
+      bottomRightColorButton.setText("Right Color");
+      bottomRightColorButton.addActionListener(new java.awt.event.ActionListener() {
+         public void actionPerformed(java.awt.event.ActionEvent evt) {
+            bottomRightColorButtonActionPerformed(evt);
+         }
+      });
 
-        snapButton.setText("Snap");
-        snapButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                snapButtonActionPerformed(evt);
-            }
-        });
+      snapButton.setText("Snap");
+      snapButton.addActionListener(new java.awt.event.ActionListener() {
+         public void actionPerformed(java.awt.event.ActionEvent evt) {
+            snapButtonActionPerformed(evt);
+         }
+      });
 
-        liveButton.setText("Live");
-        liveButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                liveButtonActionPerformed(evt);
-            }
-        });
+      liveButton.setText("Live");
+      liveButton.addActionListener(new java.awt.event.ActionListener() {
+         public void actionPerformed(java.awt.event.ActionEvent evt) {
+            liveButtonActionPerformed(evt);
+         }
+      });
 
-        applyToMDACheckBox_.setText("Apply to Acquisition");
-        applyToMDACheckBox_.addChangeListener(new javax.swing.event.ChangeListener() {
-            public void stateChanged(javax.swing.event.ChangeEvent evt) {
-                applyToMDACheckBox_StateChanged(evt);
-            }
-        });
+      javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
+      getContentPane().setLayout(layout);
+      layout.setHorizontalGroup(
+         layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+         .addGroup(layout.createSequentialGroup()
+            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+               .addGroup(javax.swing.GroupLayout.Alignment.LEADING, layout.createSequentialGroup()
+                  .addGap(9, 9, 9)
+                  .addComponent(lrRadioButton))
+               .addGroup(javax.swing.GroupLayout.Alignment.LEADING, layout.createSequentialGroup()
+                  .addContainerGap()
+                  .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                     .addGroup(layout.createSequentialGroup()
+                        .addGap(21, 21, 21)
+                        .addComponent(snapButton))
+                     .addComponent(topLeftColorButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+               .addGroup(layout.createSequentialGroup()
+                  .addGap(18, 18, 18)
+                  .addComponent(tbRadioButton))
+               .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                  .addGroup(layout.createSequentialGroup()
+                     .addGap(21, 21, 21)
+                     .addComponent(liveButton))
+                  .addComponent(bottomRightColorButton, javax.swing.GroupLayout.PREFERRED_SIZE, 130, javax.swing.GroupLayout.PREFERRED_SIZE)))
+            .addContainerGap())
+      );
+      layout.setVerticalGroup(
+         layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+         .addGroup(layout.createSequentialGroup()
+            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+               .addComponent(lrRadioButton)
+               .addComponent(tbRadioButton))
+            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+               .addComponent(topLeftColorButton)
+               .addComponent(bottomRightColorButton))
+            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+               .addComponent(liveButton)
+               .addComponent(snapButton))
+            .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+      );
 
-        org.jdesktop.layout.GroupLayout layout = new org.jdesktop.layout.GroupLayout(getContentPane());
-        getContentPane().setLayout(layout);
-        layout.setHorizontalGroup(
-            layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-            .add(layout.createSequentialGroup()
-                .addContainerGap()
-                .add(applyToMDACheckBox_)
-                .addContainerGap(135, Short.MAX_VALUE))
-            .add(layout.createSequentialGroup()
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.TRAILING)
-                    .add(org.jdesktop.layout.GroupLayout.LEADING, layout.createSequentialGroup()
-                        .add(9, 9, 9)
-                        .add(lrRadioButton))
-                    .add(org.jdesktop.layout.GroupLayout.LEADING, layout.createSequentialGroup()
-                        .addContainerGap()
-                        .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-                            .add(layout.createSequentialGroup()
-                                .add(21, 21, 21)
-                                .add(snapButton)
-                                .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED))
-                            .add(topLeftColorButton, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 121, Short.MAX_VALUE))))
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-                    .add(layout.createSequentialGroup()
-                        .add(18, 18, 18)
-                        .add(tbRadioButton)
-                        .addContainerGap())
-                    .add(org.jdesktop.layout.GroupLayout.TRAILING, layout.createSequentialGroup()
-                        .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-                            .add(layout.createSequentialGroup()
-                                .add(21, 21, 21)
-                                .add(liveButton))
-                            .add(bottomRightColorButton, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 130, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE))
-                        .addContainerGap())))
-        );
-        layout.setVerticalGroup(
-            layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-            .add(layout.createSequentialGroup()
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
-                    .add(lrRadioButton)
-                    .add(tbRadioButton))
-                .addPreferredGap(org.jdesktop.layout.LayoutStyle.UNRELATED)
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
-                    .add(topLeftColorButton)
-                    .add(bottomRightColorButton))
-                .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED)
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
-                    .add(liveButton)
-                    .add(snapButton))
-                .addPreferredGap(org.jdesktop.layout.LayoutStyle.UNRELATED)
-                .add(applyToMDACheckBox_)
-                .addContainerGap(org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-        );
-
-        pack();
-    }// </editor-fold>//GEN-END:initComponents
+      pack();
+   }// </editor-fold>//GEN-END:initComponents
 
     private void lrRadioButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_lrRadioButtonActionPerformed
+       processor_.setOrientation(LR);
        orientation_ = LR;
        prefs_.put(ORIENTATION, LR);
        topLeftColorButton.setText("Left Color");
@@ -478,6 +447,7 @@ public class SplitViewFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_lrRadioButtonActionPerformed
 
     private void tbRadioButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_tbRadioButtonActionPerformed
+       processor_.setOrientation(TB);
        orientation_ = TB;
        prefs_.put(ORIENTATION, TB);
        topLeftColorButton.setText("Top Color");
@@ -495,12 +465,12 @@ public class SplitViewFrame extends javax.swing.JFrame {
     private void liveButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_liveButtonActionPerformed
        if (timer_.isRunning()) {
           enableLiveMode(false);
-          liveButton.setIcon(SwingResourceManager.getIcon(MMStudioMainFrame.class, "/org/micromanager/icons/camera_go.png"));
+          liveButton.setIcon(SwingResourceManager.getIcon(MMStudio.class, "/org/micromanager/icons/camera_go.png"));
 
        } else {
           timer_.setDelay((int) interval_);
           enableLiveMode(true);
-          liveButton.setIcon(SwingResourceManager.getIcon(MMStudioMainFrame.class, "/org/micromanager/icons/cancel.png"));
+          liveButton.setIcon(SwingResourceManager.getIcon(MMStudio.class, "/org/micromanager/icons/cancel.png"));
        }
     }//GEN-LAST:event_liveButtonActionPerformed
 
@@ -537,34 +507,15 @@ public class SplitViewFrame extends javax.swing.JFrame {
        return myColors;
     }
     
-   private void applyToMDACheckBox_StateChanged(javax.swing.event.ChangeEvent evt) {//GEN-FIRST:event_applyToMDACheckBox_StateChanged
-       
-      Object source = evt.getSource();
-      
-      if (source != applyToMDACheckBox_)
-         return;
-      
-      if (applyToMDACheckBox_.isSelected() && !appliedToMDA_) {
-         mmImageProcessor_ = new SplitViewProcessor(this);
-         mmImageProcessor_.setName("SplitView");
-         gui_.getAcquisitionEngine().addImageProcessor(mmImageProcessor_);
-         appliedToMDA_ = true;
-      } else if (!applyToMDACheckBox_.isSelected() && appliedToMDA_) {
-         if (mmImageProcessor_ != null)
-            gui_.getAcquisitionEngine().removeImageProcessor(mmImageProcessor_);
-         appliedToMDA_ = false;
-      }
-   }//GEN-LAST:event_applyToMDACheckBox_StateChanged
-    // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JCheckBox applyToMDACheckBox_;
-    private javax.swing.JButton bottomRightColorButton;
-    private javax.swing.ButtonGroup buttonGroup1;
-    private javax.swing.ButtonGroup buttonGroup2;
-    private javax.swing.ButtonGroup buttonGroup3;
-    private javax.swing.JButton liveButton;
-    private javax.swing.JRadioButton lrRadioButton;
-    private javax.swing.JButton snapButton;
-    private javax.swing.JRadioButton tbRadioButton;
-    private javax.swing.JButton topLeftColorButton;
-    // End of variables declaration//GEN-END:variables
+   // Variables declaration - do not modify//GEN-BEGIN:variables
+   private javax.swing.JButton bottomRightColorButton;
+   private javax.swing.ButtonGroup buttonGroup1;
+   private javax.swing.ButtonGroup buttonGroup2;
+   private javax.swing.ButtonGroup buttonGroup3;
+   private javax.swing.JButton liveButton;
+   private javax.swing.JRadioButton lrRadioButton;
+   private javax.swing.JButton snapButton;
+   private javax.swing.JRadioButton tbRadioButton;
+   private javax.swing.JButton topLeftColorButton;
+   // End of variables declaration//GEN-END:variables
 }

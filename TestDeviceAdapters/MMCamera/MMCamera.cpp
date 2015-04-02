@@ -36,24 +36,6 @@ const char* g_CameraModelProperty = "Model";
 const char* g_CameraModel_A = "A";
 const char* g_CameraModel_B = "B";
 
-// windows DLL entry code
-#ifdef WIN32
-BOOL APIENTRY DllMain(  HANDLE /*hModule*/, 
-                        DWORD  ul_reason_for_call, 
-                        LPVOID /*lpReserved*/ )
-{
-   switch (ul_reason_for_call)
-   {
-   case DLL_PROCESS_ATTACH:
-   case DLL_THREAD_ATTACH:
-   case DLL_THREAD_DETACH:
-   case DLL_PROCESS_DETACH:
-      break;
-   }
-   return TRUE;
-}
-#endif
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
@@ -64,7 +46,7 @@ BOOL APIENTRY DllMain(  HANDLE /*hModule*/,
  */
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_CameraName, "Micro-manager example camera");
+   RegisterDevice(g_CameraName, MM::CameraDevice, "Micro-manager example camera");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)

@@ -62,14 +62,14 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_XYStageDeviceName, "Tango XY Stage");
-   AddAvailableDeviceName(g_ZStageDeviceName,  "Tango Z Axis");
-   AddAvailableDeviceName(g_AStageDeviceName,  "Tango A Axis");
-   AddAvailableDeviceName(g_ShutterName,       "Tango TTL Shutter");
-   AddAvailableDeviceName(g_LED1Name,          "Tango LED100-1 [0..100%]"); 
-   AddAvailableDeviceName(g_LED2Name,          "Tango LED100-2 [0..100%]"); 
-   AddAvailableDeviceName(g_DACName,           "Tango DAC [0..10V]"); 
-   AddAvailableDeviceName(g_ADCName,           "Tango ADC [0..5V]"); 
+   RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice,  "Tango XY Stage");
+   RegisterDevice(g_ZStageDeviceName,  MM::StageDevice,    "Tango Z Axis");
+   RegisterDevice(g_AStageDeviceName,  MM::StageDevice,    "Tango A Axis");
+   RegisterDevice(g_ShutterName,       MM::ShutterDevice,  "Tango TTL Shutter");
+   RegisterDevice(g_LED1Name,          MM::ShutterDevice,  "Tango LED100-1 [0..100%]");
+   RegisterDevice(g_LED2Name,          MM::ShutterDevice,  "Tango LED100-2 [0..100%]");
+   RegisterDevice(g_DACName,           MM::SignalIODevice, "Tango DAC [0..10V]");
+   RegisterDevice(g_ADCName,           MM::SignalIODevice, "Tango ADC [0..5V]");
 }                                                                            
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)                  
@@ -102,9 +102,10 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 TangoBase::TangoBase(MM::Device *device) :
    initialized_(false),
    Configuration_(0),
-   port_("Undefined")
+   port_("Undefined"),
+   device_(device),
+   core_(0)
 {
-   device_ = static_cast<TangoDeviceBase *>(device);
 }
 
 TangoBase::~TangoBase()
@@ -122,7 +123,7 @@ int TangoBase::ClearPort(void)
    int ret;
    while ((int) read == bufSize)
    {
-      ret = device_->ReadFromComPort(port_.c_str(), clear, bufSize, read);
+      ret = core_->ReadFromSerial(device_, port_.c_str(), clear, bufSize, read);
       if (ret != DEVICE_OK)
          return ret;
    }
@@ -139,7 +140,7 @@ int TangoBase::SendCommand(const char *command) const
    std::string base_command = "";
    base_command += command;
    // send command
-   ret = device_->SendSerialCommand(port_.c_str(), base_command.c_str(), g_TxTerm);
+   ret = core_->SetSerialCommand(device_, port_.c_str(), base_command.c_str(), g_TxTerm);
    return ret;
 }
 
@@ -156,7 +157,10 @@ int TangoBase::QueryCommand(const char *command, std::string &answer) const
    if (ret != DEVICE_OK)
       return ret;
    // block/wait for acknowledge (or until we time out)
-   ret = device_->GetSerialAnswer(port_.c_str(), g_RxTerm, answer);
+   const size_t BUFSIZE = 2048;
+   char buf[BUFSIZE] = {'\0'};
+   ret = core_->GetSerialAnswer(device_, port_.c_str(), BUFSIZE, buf, g_RxTerm);
+   answer = buf;
    return ret;
 }
 
@@ -201,10 +205,8 @@ int TangoBase::CheckDeviceStatus(void)
 */
 
 XYStage::XYStage() :
-   CXYStageBase<XYStage>(),
    TangoBase(this),
    range_measured_(false),
-   answerTimeoutMs_(2000),
    stepSizeXUm_(0.0012), //=1000*pitch[mm]/gear/(motorsteps*4096)  (assume gear=1 motorsteps=200 => stepsize=pitch/819.2)
    stepSizeYUm_(0.0012),
    speedX_(20.0), //[mm/s]
@@ -261,8 +263,11 @@ MM::DeviceDetectionStatus XYStage::DetectDevice(void)
  */
 int XYStage::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    int NumberOfAxes = (Configuration_ >> 4) &0x0f;
    if (NumberOfAxes < 2) return DEVICE_NOT_CONNECTED; 
@@ -1199,14 +1204,12 @@ int XYStage::OnBacklashY(MM::PropertyBase* pProp, MM::ActionType eAct)
  * Single axis stage.
  */
 ZStage::ZStage() :
-   CStageBase<ZStage>(),
    TangoBase(this),
    range_measured_(false),
-   answerTimeoutMs_(2000),
+   stepSizeUm_(0.1),
    speedZ_(20.0), //[mm/s]
    accelZ_(0.2), //[m/s²]
    originZ_(0),
-   stepSizeUm_(0.1),
    sequenceable_(false),
    nrEvents_(1024)
 
@@ -1254,8 +1257,11 @@ MM::DeviceDetectionStatus ZStage::DetectDevice(void)
 
 int ZStage::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    int NumberOfAxes = (Configuration_ >> 4) &0x0f;
    if (NumberOfAxes < 3) return DEVICE_NOT_CONNECTED; 
@@ -2033,10 +2039,8 @@ int ZStage::OnStepSize(MM::PropertyBase* pProp, MM::ActionType eAct)
  * Single axis stage.
  */
 AStage::AStage() :
-   CStageBase<AStage>(),
    TangoBase(this),
    range_measured_(false),
-   answerTimeoutMs_(2000),
    speed_(20.0), //[mm/s]
    accel_(0.2), //[m/s²]
    origin_(0),
@@ -2083,8 +2087,11 @@ MM::DeviceDetectionStatus AStage::DetectDevice(void)
 
 int AStage::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    int NumberOfAxes = (Configuration_ >> 4) &0x0f;
    if (NumberOfAxes < 4) return DEVICE_NOT_CONNECTED; 
@@ -2643,10 +2650,8 @@ int AStage::OnStepSize(MM::PropertyBase* pProp, MM::ActionType eAct)
 // ~~~~~~~
 
 Shutter::Shutter() : 
-   CShutterBase<Shutter>(),
    TangoBase(this),
-   name_(g_ShutterName), 
-   answerTimeoutMs_(2000)
+   name_(g_ShutterName)
 {
    InitializeDefaultErrorMessages();
 
@@ -2683,8 +2688,11 @@ MM::DeviceDetectionStatus Shutter::DetectDevice(void)
 
 int Shutter::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    // set property list
    // -----------------
@@ -2864,13 +2872,10 @@ int Shutter::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 // Tango LED100
 ///////////////////////////////////////////////////////////////////////////////
 LED100::LED100 (const char* name, int id) :
-   CShutterBase<LED100>(),
    TangoBase(this),
    name_ (name),
    id_(id), 
    intensity_(0),
-   answerTimeoutMs_(2000),
-   usec_(0),
    fireT_(0)
 {
    InitializeDefaultErrorMessages();
@@ -2948,8 +2953,11 @@ MM::DeviceDetectionStatus LED100::DetectDevice(void)
 
 int LED100::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
    CPropertyAction* pAct;
 
    // Name
@@ -3172,12 +3180,10 @@ int LED100::OnFire(MM::PropertyBase* pProp, MM::ActionType eAct)
 // Tango DAC
 ///////////////////////////////////////////////////////////////////////////////
 DAC::DAC () :
-   CSignalIOBase<DAC>(),
    TangoBase(this),
-   name_ (g_DACName),
    DACPort_(0),
-   open_(false),
-   answerTimeoutMs_(2000)
+   name_ (g_DACName),
+   open_(false)
 {
    InitializeDefaultErrorMessages();
 
@@ -3266,8 +3272,11 @@ MM::DeviceDetectionStatus DAC::DetectDevice(void)
 
 int DAC::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    // Name
    ret = CreateProperty(MM::g_Keyword_Name, name_.c_str(), MM::String, true);
@@ -3453,12 +3462,10 @@ int DAC::OnDACPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 // Tango ADC
 ///////////////////////////////////////////////////////////////////////////////
 ADC::ADC () :
-   CSignalIOBase<ADC>(),
    TangoBase(this),
    name_ (g_ADCName),
    volts_(0.0),
-   ADCPort_(0),
-   answerTimeoutMs_(2000)
+   ADCPort_(0)
 {
    InitializeDefaultErrorMessages();
 
@@ -3534,8 +3541,11 @@ MM::DeviceDetectionStatus ADC::DetectDevice(void)
 
 int ADC::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    // Name
    ret = CreateProperty(MM::g_Keyword_Name, name_.c_str(), MM::String, true);

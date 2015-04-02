@@ -25,14 +25,32 @@ import java.awt.Panel;
 import org.json.JSONObject;
 
 public abstract class DisplayControls extends Panel {
+
+   public DisplayControls() {};
+
+   public DisplayControls(java.awt.LayoutManager manager) {
+      super(manager);
+   }
    
    abstract public void imagesOnDiskUpdate(boolean onDisk);
    
    abstract public void acquiringImagesUpdate(boolean acquiring);
    
-   abstract public void setStatusLabel(String text);
-   
+   abstract public void setImageInfoLabel(String text);
+
    abstract public void newImageUpdate(JSONObject tags);
    
-   
+   abstract public void prepareForClose();
+
+   public void setChannel(int c) {}
+
+   public int getPosition() {
+      return 0;
+   }
+
+   public void setPosition(int p) {}
+
+   public int getNumPositions() {
+      return 1;
+   }
 }

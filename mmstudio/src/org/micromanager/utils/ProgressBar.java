@@ -19,7 +19,7 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: ProgressBar.java 12081 2013-11-06 21:27:25Z nico $
 //
 package org.micromanager.utils;
 
@@ -30,7 +30,6 @@ import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
-import javax.swing.SwingUtilities;
 
 
 public class ProgressBar extends JPanel {
@@ -43,20 +42,19 @@ public class ProgressBar extends JPanel {
       
       frame = new JFrame(windowName);
       frame.setDefaultCloseOperation (JFrame.DISPOSE_ON_CLOSE);
+      frame.setBounds(0,0,150 + 6 * windowName.length() ,100);
 
       progressBar = new JProgressBar(start,end);
       progressBar.setValue(0);
-      JPanel panel = new JPanel();
-      panel.add(progressBar);
-      add(panel, BorderLayout.PAGE_START);
+      JPanel panel = new JPanel(new BorderLayout());
+      panel.add(progressBar, BorderLayout.CENTER);
+      add(panel, BorderLayout.CENTER);
       panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
       JComponent newContentPane = panel;
       newContentPane.setOpaque(true);
       frame.setContentPane(newContentPane);
 
-      frame.pack();
-      frame.setBounds(0,0,250,100);
       frame.setLocationRelativeTo(null);
       frame.setVisible(true);
    }
@@ -66,6 +64,7 @@ public class ProgressBar extends JPanel {
       progressBar.repaint();
    }
 
+   @Override
    public void setVisible(boolean visible) {
       frame.setVisible(visible);
    }

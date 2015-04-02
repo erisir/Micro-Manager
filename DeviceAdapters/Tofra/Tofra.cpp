@@ -28,6 +28,7 @@
 #endif
 
 #include "Tofra.h"
+#include <boost/lexical_cast.hpp>
 #include <cstdio>
 #include <string>
 #include <math.h>
@@ -42,6 +43,7 @@ const char* g_ZStageDeviceName = "TOFRA Z-Drive";
 const char* g_XYStageDeviceName = "TOFRA XYStage";
 const char* g_SliderDeviceName = "TOFRA Cube Slider";
 const char* g_rgbLEDDeviceName = "TOFRA RGB LED";
+const char* g_RGBLEDShutterDeviceName = "TOFRA RGB LED Shutter";
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,11 +52,13 @@ const char* g_rgbLEDDeviceName = "TOFRA RGB LED";
 
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_WheelDeviceName, "TOFRA Filter Wheel with Integrated Controller");
-   AddAvailableDeviceName(g_ZStageDeviceName, "TOFRA Z-Drive with Integrated Controller");
-   AddAvailableDeviceName(g_XYStageDeviceName, "TOFRA XYStage with Integrated Controller");
-   AddAvailableDeviceName(g_SliderDeviceName, "TOFRA Filter Cube Slider with Integrated Controller");
-   AddAvailableDeviceName(g_rgbLEDDeviceName, "TOFRA RGB LED Light Source");
+   RegisterDevice(g_WheelDeviceName, MM::StateDevice, "TOFRA Filter Wheel with Integrated Controller");
+   RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "TOFRA Z-Drive with Integrated Controller");
+   RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "TOFRA XYStage with Integrated Controller");
+   RegisterDevice(g_SliderDeviceName, MM::StateDevice, "TOFRA Filter Cube Slider with Integrated Controller");
+   RegisterDevice(g_rgbLEDDeviceName, MM::StateDevice, "TOFRA RGB LED Light Source");
+	RegisterDevice(g_RGBLEDShutterDeviceName, MM::ShutterDevice,
+			"TOFRA RGB LED as Shutter");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -81,6 +85,9 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
 		// create rgbLED
 		return new rgbLED();
 	}
+	else if (strcmp(deviceName, g_RGBLEDShutterDeviceName) == 0) {
+		return new RGBLEDShutter();
+	}
 	// ...supplied name not recognized
 	return 0;
 }
@@ -103,7 +110,6 @@ TofraFilterWheel::TofraFilterWheel() :
 	HoldCurrent(5), // in % of max (which is 2A)
 	RunCurrent (60),
 	NumPos(10), 
-	busy_(false), 
 	initialized_(false), 
 	changedTime_(0.0),
 	position_(0),
@@ -120,23 +126,9 @@ TofraFilterWheel::TofraFilterWheel() :
 	// Com port
 	pAct = new CPropertyAction (this, &TofraFilterWheel::OnCOMPort);
 	CreateProperty(MM::g_Keyword_Port, "", MM::String, false, pAct, true);
-	// State
-	pAct = new CPropertyAction (this, &TofraFilterWheel::OnState);
-	CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct, true);
-	// Label
-	pAct = new CPropertyAction (this, &CStateBase::OnLabel);
-	CreateProperty(MM::g_Keyword_Label, "", MM::String, false, pAct, true);
 	// Number of positions
 	pAct = new CPropertyAction (this, &TofraFilterWheel::OnNumPos);
 	CreateProperty("NumPos", "10", MM::Integer, false, pAct, true);
-	// Create default positions and labels
-	const int bufSize = 1024;
-	char buf[bufSize];
-	for (long i=0; i<NumPos; i++)
-	{
-		snprintf(buf, bufSize, "Filter-%.2ld", i + 1);
-		SetPositionLabel(i, buf);
-	}
 	// ControllerName - Name (number) of the motor controller on the serial line
 	pAct = new CPropertyAction (this, &TofraFilterWheel::OnControllerName);
 	CreateProperty("ControllerName", "1", MM::String, false, pAct, true);
@@ -158,8 +150,6 @@ TofraFilterWheel::TofraFilterWheel() :
 	// RunCurrent
 	pAct = new CPropertyAction (this, &TofraFilterWheel::OnRunCurrent);
 	CreateProperty("RunCurrent", "60", MM::Integer, false, pAct, true);
-
-	EnableDelay(); // signals that the delay setting will be used
 }
 
 TofraFilterWheel::~TofraFilterWheel()
@@ -175,6 +165,26 @@ void TofraFilterWheel::GetName(char* Name) const
 int TofraFilterWheel::Initialize()
 {
 	int ret;
+	CPropertyAction* pAct;
+
+	// State
+	pAct = new CPropertyAction (this, &TofraFilterWheel::OnState);
+	ret = CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+
+	// Label
+	pAct = new CPropertyAction (this, &CStateBase::OnLabel);
+	ret = CreateProperty(MM::g_Keyword_Label, "", MM::String, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+
+	// Create default positions and labels
+	const int bufSize = 1024;
+	char buf[bufSize];
+	for (long i=0; i<NumPos; i++)
+	{
+		snprintf(buf, bufSize, "Filter-%.2ld", i + 1);
+		SetPositionLabel(i, buf);
+	}
 
 	// Update Status 
 	ret = UpdateStatus();
@@ -248,21 +258,34 @@ int TofraFilterWheel::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 		if (position_ == pos) return DEVICE_OK;
 		
 		// form relative move command
-		int msteps,d1,d2;
 		double mstepsperfilt;
+		int msfiltpos[50],d1,d2,d;
 		const int bufSize = 40;
+		const int turnmsteps = 3200;
 		char buf[bufSize];
-	  	mstepsperfilt = (double)3200./NumPos;
-		d1 = pos - position_;
-		if (d1<0) d1 = d1 + NumPos;
-		d2 = position_ - pos;
-		if (d2<0) d2 = d2 + NumPos;
-		if (d1<=d2) {
-			msteps = (int)floor(d1*mstepsperfilt+0.5);
-			snprintf(buf, bufSize, "/%sP%dR", ControllerName.c_str(), msteps);
+		mstepsperfilt = (double)turnmsteps/(double)NumPos;
+		for (int i=0; i<NumPos; i++)
+		{
+			msfiltpos[i] = (int)floor(mstepsperfilt*(double)i+0.5);
+		}
+		d1 = msfiltpos[pos] - msfiltpos[position_];
+		if (d1>0) {
+			d2 = d1-turnmsteps;
+		}
+		else {
+			d2 = turnmsteps - d1;
+		}
+		if(abs(d1)>abs(d2)) {
+			d = d2;
+		}
+		else {
+			d = d1;
+		}
+
+		if (d>0) {
+			snprintf(buf, bufSize, "/%sP%dR", ControllerName.c_str(), d);
 		} else {
-			msteps = (int)floor(d2*mstepsperfilt+0.5);
-			snprintf(buf, bufSize, "/%sD%dR", ControllerName.c_str(), msteps);
+			snprintf(buf, bufSize, "/%sD%dR", ControllerName.c_str(), -d);
 		}
 
 		// Clear serial port from previous stuff
@@ -530,7 +553,6 @@ ZStage::ZStage() :
 	WithLimits(0),	 // 1 if Z-drive includes limits
 	Position(""),	 // Numeric or symbolic (ORIGIN, HOME, LIM1, LIM2) position
 	Speed(0),		 // Speed for continuous move in microns/sec; to stop set to 0
-	busy_(false),   
 	initialized_(false),
 	changedTime_(0.0),   
 	stepSizeUm_(0.0009765625), //assuming 100um full turn of focus knob and 400 step motor; actual value is calculated
@@ -574,8 +596,6 @@ ZStage::ZStage() :
 	// WithLimits
 	pAct = new CPropertyAction (this, &ZStage::OnWithLimits);
 	CreateProperty("WithLimits", "0", MM::Integer, false, pAct, true);
-
-	//EnableDelay(); // signals that the delay setting will be used ????
 }
 
 ZStage::~ZStage()
@@ -1137,11 +1157,6 @@ XYStage::XYStage() :
 	Out2Y(0),	// Output 2
 	LimitPolarityY(0), // limit polarity: 0 normally closed, 1 mormally open
 	stepSizeUmY_(0.01953125), // assuming 1000um lead and 200 step motor; actual value is calculated
-	//originX_(0),
-	//originY_(0),
-	//mirrorX_(false),
-	//mirrorY_(false),
-	busy_(false),   
 	initialized_(false),
 	changedTime_(0.0),   
 	port_("")
@@ -1208,8 +1223,6 @@ XYStage::XYStage() :
 	CreateProperty("LimitPolarityX", "", MM::Integer, false, pAct, true);
 	pAct = new CPropertyAction (this, &XYStage::OnLimitPolarityY);
 	CreateProperty("LimitPolarityY", "", MM::Integer, false, pAct, true);
-
-	//EnableDelay(); // signals that the delay setting will be used ????
 }
 XYStage::~XYStage()
 {
@@ -2284,7 +2297,6 @@ CubeSlider::CubeSlider() :
 	LeadUm(25400),		 // microns of linear motion per full motor turn
 	MotorSteps(200),	 // steps in one revolution
 	StepDivide(16),		 // microsteps in one full step
-	busy_(false), 
 	initialized_(false), 
 	changedTime_(0.0),
 	position_(0),
@@ -2301,23 +2313,9 @@ CubeSlider::CubeSlider() :
 	// Com port
 	pAct = new CPropertyAction (this, &CubeSlider::OnCOMPort);
 	CreateProperty(MM::g_Keyword_Port, "", MM::String, false, pAct, true);
-	// State
-	pAct = new CPropertyAction (this, &CubeSlider::OnState);
-	CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct, true);
-	// Label
-	pAct = new CPropertyAction (this, &CStateBase::OnLabel);
-	CreateProperty(MM::g_Keyword_Label, "", MM::String, false, pAct, true);
 	// Number of positions
 	pAct = new CPropertyAction (this, &CubeSlider::OnNumPos);
 	CreateProperty("NumPos", "6", MM::Integer, false, pAct, true);
-	// Create default positions and labels
-	const int bufSize = 1024;
-	char buf[bufSize];
-	for (long i=0; i<NumPos; i++)
-	{
-		snprintf(buf, bufSize, "Cube-%.2ld", i + 1);
-		SetPositionLabel(i, buf);
-	}
 	// ControllerName - Name (number) of the motor controller on the serial line
 	pAct = new CPropertyAction (this, &CubeSlider::OnControllerName);
 	CreateProperty("ControllerName", "6", MM::String, false, pAct, true);
@@ -2360,8 +2358,6 @@ CubeSlider::CubeSlider() :
 	// StepDivide
 	pAct = new CPropertyAction (this, &CubeSlider::OnStepDivide);
 	CreateProperty("StepDivide", "16", MM::Integer, false, pAct, true);
-
-	EnableDelay(); // signals that the delay setting will be used
 }
 
 CubeSlider::~CubeSlider()
@@ -2377,6 +2373,26 @@ void CubeSlider::GetName(char* Name) const
 int CubeSlider::Initialize()
 {
 	int ret;
+	CPropertyAction* pAct;
+
+	// State
+	pAct = new CPropertyAction (this, &CubeSlider::OnState);
+	ret = CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+
+	// Label
+	pAct = new CPropertyAction (this, &CStateBase::OnLabel);
+	ret = CreateProperty(MM::g_Keyword_Label, "", MM::String, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+
+	// Create default positions and labels
+	const int bufSize = 1024;
+	char buf[bufSize];
+	for (long i=0; i<NumPos; i++)
+	{
+		snprintf(buf, bufSize, "Cube-%.2ld", i + 1);
+		SetPositionLabel(i, buf);
+	}
 
 	// Update Status 
 	ret = UpdateStatus();
@@ -2710,7 +2726,6 @@ int CubeSlider::InitializeCubeSlider()
 ///////////////////////////////////////////////////////////////////////////////
 
 rgbLED::rgbLED() : 
-	busy_(false),
 	initialized_(false), 
 	changedTime_(0.0),
 	position_(0),
@@ -2734,35 +2749,9 @@ rgbLED::rgbLED() :
 	// Com port
 	pAct = new CPropertyAction (this, &rgbLED::OnCOMPort);
 	CreateProperty(MM::g_Keyword_Port, "", MM::String, false, pAct, true);
-	// State
-	pAct = new CPropertyAction (this, &rgbLED::OnState);
-	CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct, true);
-	// Label
-	pAct = new CPropertyAction (this, &CStateBase::OnLabel);
-	CreateProperty(MM::g_Keyword_Label, "", MM::String, false, pAct, true);
 	// Number of positions
 	pAct = new CPropertyAction (this, &rgbLED::OnNumPos);
 	CreateProperty("NumPos", "5", MM::Integer, false, pAct, true);
-	// Create default positions and labels
-	SetPositionLabel(0, "Off");
-	SetPositionLabel(1, "R");
-	SetPositionLabel(2, "G");
-	SetPositionLabel(3, "B");
-	SetPositionLabel(4, "A");
-	// Channel1Intensity
-	pAct = new CPropertyAction (this, &rgbLED::OnChannel1Intensity);
-	CreateProperty("Channel1Intensity", "0", MM::Float, false, pAct, true);
-	// Channel2Intensity
-	pAct = new CPropertyAction (this, &rgbLED::OnChannel2Intensity);
-	CreateProperty("Channel2Intensity", "0", MM::Float, false, pAct, true);
-	// Channel3Intensity
-	pAct = new CPropertyAction (this, &rgbLED::OnChannel3Intensity);
-	CreateProperty("Channel3Intensity", "0", MM::Float, false, pAct, true);
-	// Channel4Intensity
-	pAct = new CPropertyAction (this, &rgbLED::OnChannel4Intensity);
-	CreateProperty("Channel4Intensity", "0", MM::Float, false, pAct, true);
-
-	EnableDelay(); // signals that the delay setting will be used
 }
 
 rgbLED::~rgbLED()
@@ -2777,9 +2766,57 @@ void rgbLED::GetName(char* Name) const
 int rgbLED::Initialize()
 {
 	int ret;
+	CPropertyAction* pAct;
+
+	// State
+	pAct = new CPropertyAction (this, &rgbLED::OnState);
+	ret = CreateProperty(MM::g_Keyword_State, "0", MM::Integer, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+
+	// Label
+	pAct = new CPropertyAction (this, &CStateBase::OnLabel);
+	ret = CreateProperty(MM::g_Keyword_Label, "", MM::String, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+
+	// Create default positions and labels
+	SetPositionLabel(0, "Off");
+	SetPositionLabel(1, "R");
+	SetPositionLabel(2, "G");
+	SetPositionLabel(3, "B");
+	SetPositionLabel(4, "A");
+
+	// Channel1Intensity
+	pAct = new CPropertyAction (this, &rgbLED::OnChannel1Intensity);
+	ret = CreateProperty("Channel1Intensity", "0", MM::Float, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+	ret = SetPropertyLimits("Channel1Intensity", 0.0, 1.0);
+	if (ret != DEVICE_OK) return ret;
+
+	// Channel2Intensity
+	pAct = new CPropertyAction (this, &rgbLED::OnChannel2Intensity);
+	ret = CreateProperty("Channel2Intensity", "0", MM::Float, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+	ret = SetPropertyLimits("Channel2Intensity", 0.0, 1.0);
+	if (ret != DEVICE_OK) return ret;
+
+	// Channel3Intensity
+	pAct = new CPropertyAction (this, &rgbLED::OnChannel3Intensity);
+	ret = CreateProperty("Channel3Intensity", "0", MM::Float, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+	ret = SetPropertyLimits("Channel3Intensity", 0.0, 1.0);
+	if (ret != DEVICE_OK) return ret;
+
+	// Channel4Intensity
+	pAct = new CPropertyAction (this, &rgbLED::OnChannel4Intensity);
+	ret = CreateProperty("Channel4Intensity", "0", MM::Float, false, pAct);
+	if (ret != DEVICE_OK) return ret;
+	ret = SetPropertyLimits("Channel4Intensity", 0.0, 1.0);
+	if (ret != DEVICE_OK) return ret;
+
 	// Update Status 
 	ret = UpdateStatus();
 	if (ret != DEVICE_OK) return ret;
+
 	// Initialize
 	position_ = 0;
 	ret = InitializergbLED();
@@ -2910,7 +2947,8 @@ int rgbLED::OnChannel1Intensity(MM::PropertyBase* pProp, MM::ActionType eAct)
 	}
 	else if (eAct == MM::AfterSet) {
 		pProp->Get(Channel1Intensity);  
-		ChannelIntensity(1,Channel1Intensity);
+		int ret = ChannelIntensity(1,Channel1Intensity);
+		if (ret != DEVICE_OK) return ret;
    }                                                                         
    return DEVICE_OK;                                                         
 } 
@@ -2921,7 +2959,8 @@ int rgbLED::OnChannel2Intensity(MM::PropertyBase* pProp, MM::ActionType eAct)
 	}
 	else if (eAct == MM::AfterSet) {
 		pProp->Get(Channel2Intensity);
-		ChannelIntensity(2,Channel2Intensity);
+		int ret = ChannelIntensity(2,Channel2Intensity);
+		if (ret != DEVICE_OK) return ret;
    }                                                                         
    return DEVICE_OK;                                                         
 } 
@@ -2932,7 +2971,8 @@ int rgbLED::OnChannel3Intensity(MM::PropertyBase* pProp, MM::ActionType eAct)
 	}
 	else if (eAct == MM::AfterSet) {
 		pProp->Get(Channel3Intensity);
-		ChannelIntensity(3,Channel3Intensity);
+		int ret = ChannelIntensity(3,Channel3Intensity);
+		if (ret != DEVICE_OK) return ret;
    }                                                                         
    return DEVICE_OK;                                                         
 } 
@@ -2943,7 +2983,8 @@ int rgbLED::OnChannel4Intensity(MM::PropertyBase* pProp, MM::ActionType eAct)
 	}
 	else if (eAct == MM::AfterSet) {
 		pProp->Get(Channel4Intensity);
-		ChannelIntensity(4,Channel4Intensity);
+		int ret = ChannelIntensity(4,Channel4Intensity);
+		if (ret != DEVICE_OK) return ret;
    }                                                                         
    return DEVICE_OK;                                                         
 } 
@@ -2990,6 +3031,237 @@ int rgbLED::ChannelIntensity(long channel, double intensity)
 	ret = SendSerialCommand(port_.c_str(),cbuf,"\r");
 	if (ret != DEVICE_OK) return ret;
 	// Wait
+	CDeviceUtils::SleepMs(delay_);
+
+	return DEVICE_OK;
+}
+
+
+//
+// RGBLEDShutter Implementation
+//
+
+RGBLEDShutter::RGBLEDShutter() :
+	initialized_(false),
+	open_(false)
+{
+	for (unsigned i = 0; i < nChannels_; ++i) {
+		channelIntensities_[i] = 0.20;
+	}
+
+	InitializeDefaultErrorMessages();
+
+	CPropertyAction* pAct =
+		new CPropertyAction(this, &RGBLEDShutter::OnCOMPort);
+	CreateStringProperty(MM::g_Keyword_Port, "", false, pAct, true);
+}
+
+
+RGBLEDShutter::~RGBLEDShutter()
+{
+}
+
+
+int
+RGBLEDShutter::Initialize()
+{
+	int err;
+
+	err = SetOpen(false);
+	if (err != DEVICE_OK)
+		return err;
+
+	if (initialized_)
+		return DEVICE_OK;
+
+	err = CreateStringProperty(MM::g_Keyword_Name, g_RGBLEDShutterDeviceName, true);
+	if (err != DEVICE_OK)
+		return err;
+
+	err = CreateStringProperty(MM::g_Keyword_Description, "TOFRA RGB LED as Shutter", true);
+	if (err != DEVICE_OK)
+		return err;
+
+	err = CreateIntegerProperty(MM::g_Keyword_State, 0, false,
+			new CPropertyAction(this, &RGBLEDShutter::OnState));
+	if (err != DEVICE_OK)
+		return err;
+	err = SetPropertyLimits(MM::g_Keyword_State, 0, 1);
+	if (err != DEVICE_OK)
+		return err;
+
+	for (unsigned i = 0; i < nChannels_; ++i)
+	{
+		const std::string propName = "Channel" +
+			boost::lexical_cast<std::string>(i + 1) + "Intensity";
+
+		err = CreateFloatProperty(propName.c_str(),
+				channelIntensities_[i], false,
+				new CPropertyActionEx(this,
+					&RGBLEDShutter::OnChannelIntensity, i));
+		if (err != DEVICE_OK)
+			return err;
+
+		err = SetPropertyLimits(propName.c_str(), 0.0, 1.0);
+		if (err != DEVICE_OK)
+			return err;
+	}
+
+	initialized_ = true;
+	return DEVICE_OK;
+}
+
+
+int
+RGBLEDShutter::Shutdown()
+{
+	if (!initialized_)
+		return DEVICE_OK;
+
+	int err = SetOpen(false);
+	if (err != DEVICE_OK)
+		return err;
+
+	initialized_ = false;
+	return DEVICE_OK;
+}
+
+
+void
+RGBLEDShutter::GetName(char* name) const
+{
+   CDeviceUtils::CopyLimitedString(name, g_RGBLEDShutterDeviceName);
+}
+
+
+bool
+RGBLEDShutter::Busy()
+{
+	return false;
+}
+
+
+int
+RGBLEDShutter::GetOpen(bool& open)
+{
+	open = open_;
+	return DEVICE_OK;
+}
+
+
+int
+RGBLEDShutter::SetOpen(bool open)
+{
+	int err = ApplyIntensities(open);
+	if (err != DEVICE_OK)
+		return err;
+	open_ = open;
+	return DEVICE_OK;
+}
+
+
+int
+RGBLEDShutter::OnCOMPort(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(port_.c_str());
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		if (initialized_)
+		{
+			// Don't allow change after initialization
+			pProp->Set(port_.c_str());
+			return DEVICE_ERR;
+		}
+		pProp->Get(port_);
+	}
+	return DEVICE_OK;
+}
+
+
+int
+RGBLEDShutter::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(open_ ? 1L : 0L);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		long val;
+		pProp->Get(val);
+		int err = SetOpen(val != 0);
+		if (err != DEVICE_OK)
+			return err;
+	}
+	return DEVICE_OK;
+}
+
+
+int
+RGBLEDShutter::OnChannelIntensity(MM::PropertyBase* pProp,
+		MM::ActionType eAct, long chan)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(channelIntensities_[chan]);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		double val;
+		pProp->Get(val);
+		channelIntensities_[chan] = val;
+		if (open_)
+		{
+			int err = ApplyIntensities(true);
+			if (err != DEVICE_OK)
+				return err;
+		}
+	}
+	return DEVICE_OK;
+}
+
+
+int
+RGBLEDShutter::ApplyIntensities(bool open)
+{
+	int err;
+	for (unsigned i = 0; i < nChannels_; ++i)
+	{
+		err = SetChannelIntensity(i, open ? channelIntensities_[i] : 0.0);
+		if (err != DEVICE_OK)
+			return err;
+	}
+	return DEVICE_OK;
+}
+
+
+int
+RGBLEDShutter::SetChannelIntensity(int chan, double intensity)
+{
+	if (intensity > 1.0 || intensity < 0.0)
+		return DEVICE_INVALID_PROPERTY_VALUE;
+
+	int ret;
+	ret = PurgeComPort(port_.c_str());
+	if (ret != DEVICE_OK)
+		return ret;
+
+	int deviceIntensity = static_cast<int>(
+			500.0 * (1.0 - intensity));
+
+	char deviceChannel = 'A' + chan;
+
+	const int bufSize = 32;
+	char cbuf[bufSize];
+	snprintf(cbuf, bufSize, "AV%c%.3d", deviceChannel, deviceIntensity);
+
+	ret = SendSerialCommand(port_.c_str(), cbuf, "\r");
+	if (ret != DEVICE_OK)
+		return ret;
+
 	CDeviceUtils::SleepMs(delay_);
 
 	return DEVICE_OK;

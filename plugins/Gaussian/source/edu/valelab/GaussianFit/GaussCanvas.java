@@ -3,8 +3,10 @@
  * 
  * Copyright UCSF, 2012.  BSD license
  */
-package edu.valelab.GaussianFit;
+package edu.valelab.gaussianfit;
 
+import edu.valelab.gaussianfit.datasettransformations.SpotDataFilter;
+import edu.valelab.gaussianfit.data.RowData;
 import ij.ImagePlus;
 import ij.gui.ImageCanvas;
 import ij.gui.ImageWindow;
@@ -16,7 +18,7 @@ import java.awt.Rectangle;
  * @author Nico Stuurman
  */
 public class GaussCanvas extends ImageCanvas {
-   DataCollectionForm.MyRowData rowData_;
+   RowData rowData_;
    int renderMethod_;
    ImagePlus originalIP_;
    ImageWindow iw_;
@@ -27,7 +29,7 @@ public class GaussCanvas extends ImageCanvas {
    SpotDataFilter sf_;
    
 
-   public GaussCanvas(ImagePlus sp, DataCollectionForm.MyRowData rowData,
+   public GaussCanvas(ImagePlus sp, RowData rowData,
            int renderMode, double initialMag, SpotDataFilter sf) {
       super(sp);
       rowData_ = rowData;

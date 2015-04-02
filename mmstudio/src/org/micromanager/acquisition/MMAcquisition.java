@@ -22,33 +22,38 @@
 package org.micromanager.acquisition;
 
 import ij.ImagePlus;
+
 import java.awt.Color;
 import java.io.File;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Iterator;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.prefs.Preferences;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import mmcorej.CMMCore;
 
+import mmcorej.CMMCore;
 import mmcorej.TaggedImage;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONException;
-import org.micromanager.AcqControlDlg;
-import org.micromanager.MMStudioMainFrame;
-import org.micromanager.api.AcquisitionEngine;
+import org.micromanager.MMStudio;
 import org.micromanager.api.ImageCache;
-
 import org.micromanager.api.TaggedImageStorage;
+import org.micromanager.dialogs.AcqControlDlg;
+import org.micromanager.imagedisplay.VirtualAcquisitionDisplay;
 import org.micromanager.utils.ImageUtils;
 import org.micromanager.utils.JavaUtils;
 import org.micromanager.utils.MDUtils;
+import org.micromanager.utils.MMException;
 import org.micromanager.utils.MMScriptException;
 import org.micromanager.utils.ReportingUtils;
 
@@ -61,6 +66,12 @@ public class MMAcquisition {
    public static final Color[] DEFAULT_COLORS = {Color.red, Color.green, Color.blue,
       Color.pink, Color.orange, Color.yellow};
    
+   /** 
+    * Final queue of images immediately prior to insertion into the ImageCache.
+    * Only used when running in asynchronous mode.
+    */
+   private BlockingQueue<TaggedImage> outputQueue_ = null;
+   private boolean isAsynchronous_ = false;
    private int numFrames_ = 0;
    private int numChannels_ = 0;
    private int numSlices_ = 0;
@@ -73,7 +84,7 @@ public class MMAcquisition {
    protected int multiCamNumCh_ = 1;
    private boolean initialized_ = false;
    private long startTimeMs_;
-   private String comment_ = "";
+   private final String comment_ = "";
    private String rootDirectory_;
    private VirtualAcquisitionDisplay virtAcq_;
    private ImageCache imageCache_;
@@ -102,7 +113,8 @@ public class MMAcquisition {
       virtual_ = diskCached;
    }
 
-   public MMAcquisition(String name, JSONObject summaryMetadata, boolean diskCached, AcquisitionEngine eng, boolean show) {
+   public MMAcquisition(String name, JSONObject summaryMetadata, boolean diskCached, 
+           AcquisitionEngine eng, boolean show) {
       TaggedImageStorage imageFileManager;
       name_ = name;
       virtual_ = diskCached;
@@ -117,23 +129,21 @@ public class MMAcquisition {
                imageFileManager = ImageUtils.newImageStorageInstance(acqPath, true, (JSONObject) null);
                imageCache_ = new MMImageCache(imageFileManager);
                if (!virtual_) {
-                  imageCache_.saveAs(new TaggedImageStorageRam(null), true);
+                  imageCache_.saveAs(new TaggedImageStorageRamFast(null), true);
                }
             } catch (Exception e) {
                ReportingUtils.showError(e, "Unable to create directory for saving images.");
                eng.stop(true);
-               imageFileManager = null;
                imageCache_ = null;
             }
          } else {
-            imageFileManager = MMStudioMainFrame.getInstance().getFastStorageOption() ? 
-                    new TaggedImageStorageRamFast(null) : new TaggedImageStorageRam(null);
+            imageFileManager = new TaggedImageStorageRamFast(null);
             imageCache_ = new MMImageCache(imageFileManager);
          }
   
       imageCache_.setSummaryMetadata(summaryMetadata);
       if (show_) {
-         virtAcq_ = new VirtualAcquisitionDisplay(imageCache_, eng);
+         virtAcq_ = new VirtualAcquisitionDisplay(imageCache_, eng, name, false);
          imageCache_.addImageCacheListener(virtAcq_);
       }
          this.summary_ = summaryMetadata;
@@ -175,7 +185,7 @@ public class MMAcquisition {
    public void setImagePhysicalDimensions(int width, int height,
            int byteDepth, int bitDepth, int multiCamNumCh) throws MMScriptException {
       if (initialized_) {
-         throw new MMScriptException("Can't image change dimensions - the acquisition is already initialized");
+         throw new MMScriptException("Can't change image dimensions - the acquisition is already initialized");
       }
       width_ = width;
       height_ = height;
@@ -247,17 +257,18 @@ public class MMAcquisition {
          throw new MMScriptException("Acquisition is already initialized");
       }
 
-      TaggedImageStorage imageFileManager = new TaggedImageStorageRam(null);
+      TaggedImageStorage imageFileManager = new TaggedImageStorageLive();
       MMImageCache imageCache = new MMImageCache(imageFileManager);
 
       if (!existing_) {
-         createDefaultAcqSettings(name_, imageCache);
+         createDefaultAcqSettings(imageCache);
       }
-      MMStudioMainFrame.createSimpleDisplay(name_, imageCache);
+      MMStudio.getInstance().getSnapLiveManager().createSnapLiveDisplay(name_, imageCache);
       if (show_) {
-          virtAcq_ = MMStudioMainFrame.getSimpleDisplay();
-          virtAcq_.show();
-          imageCache_ = virtAcq_.getImageCache();
+         virtAcq_ = MMStudio.getInstance().getSnapLiveManager().getSnapLiveDisplay();
+         virtAcq_.show();
+         imageCache_ = virtAcq_.getImageCache();
+         imageCache_.addImageCacheListener(virtAcq_);
       }
 
       initialized_ = true;
@@ -272,12 +283,11 @@ public class MMAcquisition {
 
       TaggedImageStorage imageFileManager;
       String name = name_;
-
+      
       if (virtual_ && existing_) {
          String dirName = rootDirectory_ + File.separator + name;
-         boolean multipageTiff = false;
          try {
-            multipageTiff = MultipageTiffReader.isMMMultipageTiff(dirName);
+            boolean multipageTiff = MultipageTiffReader.isMMMultipageTiff(dirName);
             if (multipageTiff) {
                imageFileManager = new TaggedImageStorageMultipageTiff(dirName, false, null);
             } else {
@@ -297,6 +307,8 @@ public class MMAcquisition {
                String acqDirectory = createAcqDirectory(rootDirectory_, name_);
                if (summary_ != null) {
                   summary_.put("Prefix", acqDirectory);
+                  summary_.put("Channels", numChannels_);
+                  MDUtils.setPixelTypeFromByteDepth(summary_, byteDepth_);
                }
                dirName = rootDirectory_ + File.separator + acqDirectory;
             } catch (Exception ex) {
@@ -309,7 +321,7 @@ public class MMAcquisition {
       }
 
       if (!virtual_ && !existing_) {
-         imageFileManager = new TaggedImageStorageRam(null);
+         imageFileManager = new TaggedImageStorageRamFast(null);
          imageCache_ = new MMImageCache(imageFileManager);
       }
 
@@ -328,17 +340,17 @@ public class MMAcquisition {
             throw new MMScriptException(ex);
          }
 
-         System.gc();
          imageCache_ = new MMImageCache(tempImageFileManager);
          if (tempImageFileManager.getDataSetSize() > 0.9 * JavaUtils.getAvailableUnusedMemory()) {
             throw new MMScriptException("Not enough room in memory for this data set.\nTry opening as a virtual data set instead.");
          }
-         imageFileManager = new TaggedImageStorageRam(null);
+         TaggedImageStorageRamFast ramStore = new TaggedImageStorageRamFast(null);
+         ramStore.setDiskLocation(tempImageFileManager.getDiskLocation());
+         imageFileManager = ramStore;
          imageCache_.saveAs(imageFileManager);
       }
 
-      
-      CMMCore core = MMStudioMainFrame.getInstance().getCore();
+      CMMCore core = MMStudio.getInstance().getCore();
       if (!existing_) {
          int camCh = (int) core.getNumberOfCameraChannels();
          if (camCh > 1) {
@@ -350,16 +362,22 @@ public class MMAcquisition {
          } else {
             for (int i = 0; i < numChannels_; i++) {
                if (channelNames_.length() < (1+i)) {
-                  this.setChannelName(i, "Default");
+                  this.setChannelName(i, "Default" + i);
                }
             }
          }
-         createDefaultAcqSettings(name, imageCache_);
+         // If we don't ensure that bit depth is initialized, then the
+         // histograms will have problems down the road.
+         if (bitDepth_ == 0) {
+            bitDepth_ = (int) core.getImageBitDepth();
+         }
+         createDefaultAcqSettings(imageCache_);
       }
 
       if (imageCache_.getSummaryMetadata() != null) {
          if (show_) {
-            virtAcq_ = new VirtualAcquisitionDisplay(imageCache_, null, name);
+            virtAcq_ = new VirtualAcquisitionDisplay(imageCache_, null, name, true);
+            imageCache_.addImageCacheListener(virtAcq_);
             virtAcq_.show();
          }
 
@@ -369,7 +387,7 @@ public class MMAcquisition {
    }
    
   
-   private void createDefaultAcqSettings(String name, ImageCache imageCache) {
+   private void createDefaultAcqSettings(ImageCache imageCache) {
 
       String keys[] = new String[summary_.length()];
       Iterator<String> it = summary_.keys();
@@ -381,7 +399,7 @@ public class MMAcquisition {
 
       try {
          JSONObject summaryMetadata = new JSONObject(summary_, keys);
-         CMMCore core = MMStudioMainFrame.getInstance().getCore();
+         CMMCore core = MMStudio.getInstance().getCore();
 
          summaryMetadata.put("BitDepth", bitDepth_);
          summaryMetadata.put("Channels", numChannels_);
@@ -416,7 +434,7 @@ public class MMAcquisition {
          }
          summaryMetadata.put("IJType", ijType);
          summaryMetadata.put("MetadataVersion", 10);
-         summaryMetadata.put("MicroManagerVersion", MMStudioMainFrame.getInstance().getVersion());
+         summaryMetadata.put("MicroManagerVersion", MMStudio.getInstance().getVersion());
          summaryMetadata.put("NumComponents", 1);
          summaryMetadata.put("Positions", numPositions_);
          summaryMetadata.put("Source", "Micro-Manager");
@@ -442,12 +460,11 @@ public class MMAcquisition {
       Preferences root = Preferences.userNodeForPackage(AcqControlDlg.class);
       Preferences colorPrefs = root.node(root.absolutePath() + "/" + AcqControlDlg.COLOR_SETTINGS_NODE);
       int color = DEFAULT_COLORS[index % DEFAULT_COLORS.length].getRGB();
-      String channelGroup = MMStudioMainFrame.getInstance().getCore().getChannelGroup();
+      String channelGroup = MMStudio.getInstance().getCore().getChannelGroup();
       if (channelGroup == null)
          channelGroup = "";
       color = colorPrefs.getInt("Color_Camera_" + channelName, colorPrefs.getInt("Color_" + channelGroup
                  + "_" + channelName, color));
-      
       return color;
    }
 
@@ -456,26 +473,68 @@ public class MMAcquisition {
       JSONArray channelMaxes = new JSONArray();
       JSONArray channelMins = new JSONArray(); 
 
-      // Both channelColors_ and channelNames_ may, or may not yet contain values
-      // Since we don't know the size in the constructor, we can not pre-initialize
-      // the data.  Therefore, fill in the blanks with defaults here:
-      channelColors_ = new JSONArray();
-      
-      if (numChannels_ == 1)
+      // Both channelColors_ and channelNames_ may, or may not yet contain 
+      // values (currently they should only contain values we actually care 
+      // about if a Beanshell script sets them prior to adding any images to
+      // the acquisition). Augment any existing values with additional
+      // defaults, if not enough information is provided. But first make
+      // certain we don't have more entries than we have channels.
+      // If we upgraded our JSON library then we could use the .remove() method
+      // of JSONArray instead of having to build separate arrays that only
+      // include the elements we want; however, the new version raises an
+      // exception in JSONObject.getString() if the object isn't a string,
+      // which breaks us rather horribly.
+      JSONArray newColors = new JSONArray();
+      JSONArray newNames = new JSONArray();
+      for (int i = 0; i < numChannels_; ++i) {
          try {
-            channelColors_.put(0, Color.white.getRGB());
-            channelNames_.put(0,"Default");
+            if (i < channelColors_.length()) {
+               newColors.put(i, channelColors_.get(i));
+            }
+            if (i < channelNames_.length()) {
+               newNames.put(i, channelNames_.get(i));
+            }
+         }
+         catch (JSONException e) {
+            // Should never happen since we're doing our own bounds checking.
+            ReportingUtils.logError(e, "Couldn't copy over names and colors!");
+         }
+      }
+      channelColors_ = newColors;
+      channelNames_ = newNames;
+      if (numChannels_ == 1) {
+         try {
+            if (channelColors_.length() == 0) {
+               // No preset color for this channel.
+               channelColors_.put(0, Color.white.getRGB());
+            }
+            if (channelNames_.length() == 0) {
+               // No preset name for this channel.
+               channelNames_.put(0, "Default");
+            }
+            try {
+               CMMCore core = MMStudio.getInstance().getCore();
+               String name = core.getCurrentConfigFromCache(core.getChannelGroup());
+               // Only use empty-string names (caused by having a null channel
+               // group) if we don't already have a better name.
+               if (!name.equals("") || channelNames_.length() == 0) {
+                  channelNames_.put(0, name);
+               }
+            } catch (Exception e) {}
             channelMins.put(0);
             channelMaxes.put( Math.pow(2, md.getInt("BitDepth"))-1 );
          } catch (JSONException ex) {
             ReportingUtils.logError(ex);
          }
-      else
-         for (Integer i = 0; i < numChannels_; i++) {
-            try {
-               channelColors_.put(getMultiCamDefaultChannelColor(i, channelNames_.getString(i)));
-            } catch (JSONException ex) {
-               ReportingUtils.logError(ex);
+      }
+      else {
+         for (int i = 0; i < numChannels_; i++) {
+            if (channelColors_.length() > i) {
+               try {
+                  channelColors_.put(i, getMultiCamDefaultChannelColor(i, channelNames_.getString(i)));
+               } catch (JSONException ex) {
+                  ReportingUtils.logError(ex);
+               }
             }
             
             try {
@@ -490,22 +549,28 @@ public class MMAcquisition {
             try {
                channelMaxes.put(Math.pow(2, md.getInt("BitDepth")) - 1);
                channelMins.put(0);
-            } catch (Exception e) {
+            } catch (JSONException e) {
                ReportingUtils.logError(e);
             }
          }
+      }
       try {
          md.put("ChColors", channelColors_);
          md.put("ChNames", channelNames_);
          md.put("ChContrastMax", channelMaxes);
          md.put("ChContrastMin", channelMins);
-      } catch (Exception e) {
+      } catch (JSONException e) {
          ReportingUtils.logError(e);
       }
    }
 
    /**
-    * @deprecated transition towards the use of TaggedImaged rather than raw pixel data
+    * @param pixels
+    * @param frame
+    * @param channel
+    * @param slice
+    * @throws org.micromanager.utils.MMScriptException
+    * @Deprecated transition towards the use of TaggedImaged rather than raw pixel data
     */
    public void insertImage(Object pixels, int frame, int channel, int slice)
            throws MMScriptException {
@@ -513,7 +578,7 @@ public class MMAcquisition {
    }
 
    /**
-    * @deprecated transition towards the use of TaggedImaged rather than raw pixel data
+    * @Deprecated transition towards the use of TaggedImaged rather than raw pixel data
     */
    public void insertImage(Object pixels, int frame, int channel, int slice, int position) throws MMScriptException {
       if (!initialized_) {
@@ -525,18 +590,17 @@ public class MMAcquisition {
 
          JSONObject tags = new JSONObject();
 
-         tags.put("Channel", getChannelName(channel));
-         tags.put("ChannelIndex", channel);
-         tags.put("Frame", frame);
-         tags.put("Height", height_);
-         tags.put("PositionIndex", position);
+         MDUtils.setChannelName(tags, getChannelName(channel));
+         MDUtils.setChannelIndex(tags, channel);
+         MDUtils.setFrameIndex(tags, frame);
+         MDUtils.setPositionIndex(tags, position);
          // the following influences the format data will be saved!
          if (numPositions_ > 1) {
-            tags.put("PositionName", "Pos" + position);
+            MDUtils.setPositionName(tags, "Pos" + position);
          }
-         tags.put("Slice", slice);
-         tags.put("SliceIndex", slice);
-         tags.put("Width", width_);
+         MDUtils.setSliceIndex(tags, slice);
+         MDUtils.setHeight(tags, height_);
+         MDUtils.setWidth(tags, width_);
          MDUtils.setPixelTypeFromByteDepth(tags, byteDepth_);
 
          TaggedImage tg = new TaggedImage(pixels, tags);
@@ -546,6 +610,7 @@ public class MMAcquisition {
       }
    }
 
+   // Somebody please comment on why this is a separate method from insertImage.
    public void insertTaggedImage(TaggedImage taggedImg, int frame, int channel, int slice)
            throws MMScriptException {
       if (!initialized_) {
@@ -556,12 +621,11 @@ public class MMAcquisition {
       try {
          JSONObject tags = taggedImg.tags;
 
-         tags.put("FrameIndex", frame);
-         tags.put("Frame", frame);
-         tags.put("ChannelIndex", channel);
-         tags.put("SliceIndex", slice);
+         MDUtils.setFrameIndex(tags, frame);
+         MDUtils.setChannelIndex(tags, channel);
+         MDUtils.setSliceIndex(tags, slice);
          MDUtils.setPixelTypeFromByteDepth(tags, byteDepth_);
-         tags.put("PositionIndex", 0);
+         MDUtils.setPositionIndex(tags, 0);
          insertImage(taggedImg);
       } catch (JSONException e) {
          throw new MMScriptException(e);
@@ -570,28 +634,31 @@ public class MMAcquisition {
 
    public void insertImage(TaggedImage taggedImg, int frame, int channel, int slice,
            int position) throws MMScriptException, JSONException {
-      taggedImg.tags.put("FrameIndex", frame);
-      taggedImg.tags.put("ChannelIndex", channel);
-      taggedImg.tags.put("SliceIndex", slice);
-      taggedImg.tags.put("PositionIndex", position);
+      JSONObject tags = taggedImg.tags;
+      MDUtils.setFrameIndex(tags, frame);
+      MDUtils.setChannelIndex(tags, channel);
+      MDUtils.setSliceIndex(tags, slice);
+      MDUtils.setPositionIndex(tags, position);
       insertImage(taggedImg, show_);
    }
 
    public void insertImage(TaggedImage taggedImg, int frame, int channel, int slice,
            int position, boolean updateDisplay) throws MMScriptException, JSONException {
-      taggedImg.tags.put("FrameIndex", frame);
-      taggedImg.tags.put("ChannelIndex", channel);
-      taggedImg.tags.put("SliceIndex", slice);
-      taggedImg.tags.put("PositionIndex", position);
+      JSONObject tags = taggedImg.tags;
+      MDUtils.setFrameIndex(tags, frame);
+      MDUtils.setChannelIndex(tags, channel);
+      MDUtils.setSliceIndex(tags, slice);
+      MDUtils.setPositionIndex(tags, position);
       insertImage(taggedImg, updateDisplay, true);
    }
 
    public void insertImage(TaggedImage taggedImg, int frame, int channel, int slice,
            int position, boolean updateDisplay, boolean waitForDisplay) throws MMScriptException, JSONException {
-      taggedImg.tags.put("FrameIndex", frame);
-      taggedImg.tags.put("ChannelIndex", channel);
-      taggedImg.tags.put("SliceIndex", slice);
-      taggedImg.tags.put("PositionIndex", position);
+      JSONObject tags = taggedImg.tags;
+      MDUtils.setFrameIndex(tags, frame);
+      MDUtils.setChannelIndex(tags, channel);
+      MDUtils.setSliceIndex(tags, slice);
+      MDUtils.setPositionIndex(tags, position);
       insertImage(taggedImg, updateDisplay, waitForDisplay);
    }
 
@@ -627,17 +694,40 @@ public class MMAcquisition {
             throw new MMScriptException("Pixel type does not match MMAcquisition.");
          }
 
-         int channel = tags.getInt("ChannelIndex");
-         int frame = MDUtils.getFrameIndex(tags);
          if (!MDUtils.getPixelType(tags).startsWith("RGB")) {
-            tags.put("Channel", getChannelName(channel));
+            int channel = MDUtils.getChannelIndex(tags);
+            MDUtils.setChannelName(tags, getChannelName(channel));
          }
          long elapsedTimeMillis = System.currentTimeMillis() - startTimeMs_;
-         tags.put("ElapsedTime-ms", elapsedTimeMillis);
-         tags.put("Time", MDUtils.getCurrentTime());
+         MDUtils.setElapsedTimeMs(tags, elapsedTimeMillis);
+         MDUtils.setImageTime(tags, MDUtils.getCurrentTime());
          
-         imageCache_.putImage(taggedImg);
-      } catch (Exception ex) {
+         if (isAsynchronous_) {
+            if (outputQueue_ == null) {
+               // Set up our output queue now.
+               outputQueue_ = new LinkedBlockingQueue<TaggedImage>(1);
+               DefaultTaggedImageSink sink = new DefaultTaggedImageSink(
+                     outputQueue_, imageCache_);
+               sink.start();
+            }
+            if (!outputQueue_.offer(taggedImg, 1L, TimeUnit.SECONDS)) {
+               throw new IllegalStateException("Queue full");
+            }
+         }
+         else {
+            imageCache_.putImage(taggedImg);
+         }
+      } catch (IOException ex) {
+         throw new MMScriptException(ex);
+      } catch (IllegalStateException ex) {
+         throw new MMScriptException(ex);
+      } catch (InterruptedException ex) {
+         throw new MMScriptException(ex);
+      } catch (JSONException ex) {
+         throw new MMScriptException(ex);
+      } catch (MMException ex) {
+         throw new MMScriptException(ex);
+      } catch (MMScriptException ex) {
          throw new MMScriptException(ex);
       }
       
@@ -651,7 +741,7 @@ public class MMAcquisition {
          if (updateDisplay) {
             try {
                if (virtAcq_ != null) {
-                  virtAcq_.showImage(taggedImg.tags, waitForDisplay);
+                  virtAcq_.updateDisplay(taggedImg);
                }
             } catch (Exception e) {
                ReportingUtils.logError(e);
@@ -667,6 +757,14 @@ public class MMAcquisition {
             virtAcq_.abort();
          }
       }
+      if (outputQueue_ != null) {
+         // Ensure our queue consumer cleans up after themselves.
+         outputQueue_.add(TaggedImageQueue.POISON);
+         outputQueue_ = null;
+      }
+      if (imageCache_ != null && !imageCache_.isFinished()) {
+         imageCache_.finished();
+      }
    }
 
    public boolean isInitialized() {
@@ -675,49 +773,19 @@ public class MMAcquisition {
 
    /**
     * Same as close(), but also closes the display
+    * @return false if canceled by user, true otherwise
     */
-   public void closeImageWindow() {
-      close();
+   public boolean closeImageWindow() {
       if (virtAcq_ != null) {
-         virtAcq_.close();
-      }
-   }
-
-   /**
-    * Brings the window displaying this acquisition to the front
-    */
-   public void toFront() {
-      if (show_) {
-         virtAcq_.getHyperImage().getWindow().toFront();
-      }
-   }
-
-   /**
-    * Adds a comment to the metadata associated with this acquisition
-    * @param comment Comment that will be added
-    * @throws MMScriptException 
-    */
-   public void setComment(String comment) throws MMScriptException {
-      if (isInitialized()) {
-         try {
-            imageCache_.getSummaryMetadata().put("COMMENT", comment);
-         } catch (JSONException e) {
-            throw new MMScriptException("Failed to set Comment");
+         if (!virtAcq_.close()) {
+            return false;
          }
-      } else {
-         comment_ = comment;
       }
-
+      close();
+      return true;
    }
 
-   /**
-    * @deprecated 
-    * @return AcquisitionData
-    */
-   public AcquisitionData getAcqData() {
-      return null;
-   }
-
+   
    public ImageCache getImageCache() {
       return imageCache_;
    }
@@ -736,17 +804,16 @@ public class MMAcquisition {
 
    public String getChannelName(int channel) {
       if (isInitialized()) {
-         String name = "";
          try {
             JSONArray chNames =  getSummaryMetadata().getJSONArray("ChNames");
             if (chNames == null || channel >= chNames.length() )
                return "";
-            name = chNames.getString(channel);
+            String name = chNames.getString(channel);
+            return name;
          } catch (JSONException e) {
             ReportingUtils.logError(e);
             return "";
          }
-         return name;
       } else {
          try {
             return channelNames_.getString(channel);
@@ -785,7 +852,7 @@ public class MMAcquisition {
             imageCache_.getSummaryMetadata().getJSONArray("ChColors").put(channel, rgb);
             if (show_) {
                virtAcq_.updateChannelNamesAndColors();
-               virtAcq_.updateAndDraw();
+               virtAcq_.updateAndDraw(true);
             }
          } catch (JSONException ex) {
             throw new MMScriptException(ex);
@@ -832,6 +899,9 @@ public class MMAcquisition {
 
    /**
     * Sets a property in summary metadata
+    * @param propertyName
+    * @param value
+    * @throws org.micromanager.utils.MMScriptException
     */
    public void setProperty(String propertyName, String value) throws MMScriptException {
       if (isInitialized()) {
@@ -845,25 +915,6 @@ public class MMAcquisition {
             summary_.put(propertyName, value);
          } catch (JSONException e) {
             throw new MMScriptException("Failed to set property: " + propertyName);
-         }
-      }
-   }
-
-   /**
-    * Gets a property from the summary metadata
-    */
-   public String getProperty(String propertyName) throws MMScriptException {
-      if (isInitialized()) {
-         try {
-            return imageCache_.getSummaryMetadata().getString(propertyName);
-         } catch (JSONException e) {
-            throw new MMScriptException("Failed to get property: " + propertyName);
-         }
-      } else {
-         try {
-            return summary_.getString(propertyName);
-         } catch (JSONException e) {
-            throw new MMScriptException("Failed to get property: " + propertyName);
          }
       }
    }
@@ -892,45 +943,6 @@ public class MMAcquisition {
       }
    }
 
-   public void setSystemState(int frame, int channel, int slice, JSONObject state) throws MMScriptException {
-      if (isInitialized()) {
-         try {
-            JSONObject tags = imageCache_.getImage(channel, slice, frame, 0).tags;
-            Iterator<String> iState = state.keys();
-            while (iState.hasNext()) {
-               String key = iState.next();
-               tags.put(key, state.get(key));
-            }
-         } catch (JSONException e) {
-            throw new MMScriptException(e);
-         }
-      } else {
-         throw new MMScriptException("Can not set system state before acquisition is initialized");
-      }
-   }
-
-   public String getProperty(int frame, int channel, int slice, String propName) throws MMScriptException {
-      if (isInitialized()) {
-         try {
-            JSONObject tags = imageCache_.getImage(channel, slice, frame, 0).tags;
-            return tags.getString(propName);
-         } catch (JSONException ex) {
-            throw new MMScriptException(ex);
-         }
-
-      } else {
-      }
-      return "";
-   }
-
-   public boolean hasActiveImage5D() {
-      if (show_) {
-         return virtAcq_.windowClosed();
-      } else {
-         return false;
-      }
-   }
-
    public void setSummaryProperties(JSONObject md) throws MMScriptException {
       if (isInitialized()) {
          try {
@@ -940,7 +952,7 @@ public class MMAcquisition {
                String key = iState.next();
                tags.put(key, md.get(key));
             }
-         } catch (Exception ex) {
+         } catch (JSONException ex) {
             throw new MMScriptException(ex);
          }
       } else {
@@ -950,12 +962,17 @@ public class MMAcquisition {
                String key = iState.next();
                summary_.put(key, md.get(key));
             }
-         } catch (Exception ex) {
+         } catch (JSONException ex) {
             throw new MMScriptException(ex);
          }
       }
    }
 
+   /**
+    * Tests whether the window associated with this acquisition is closed
+    * 
+    * @return true when acquisition has an open window, false otherwise 
+    */
    public boolean windowClosed() {
       if (!show_ || !initialized_) {
          return false;
@@ -966,6 +983,12 @@ public class MMAcquisition {
       return true;
    }
    
+   /**
+    * Returns show flag, indicating whether this acquisition was opened with
+    * a request to show the image in a window
+    * 
+    * @return flag for request to display image in window
+    */
    public boolean getShow() {
       return show_;
    }
@@ -990,5 +1013,9 @@ public class MMAcquisition {
 
    public VirtualAcquisitionDisplay getAcquisitionWindow() {
       return virtAcq_;
+   }
+
+   public void setAsynchronous() {
+      isAsynchronous_ = true;
    }
 }

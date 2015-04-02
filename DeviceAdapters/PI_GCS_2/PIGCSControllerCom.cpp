@@ -19,17 +19,12 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id: PIGCSControllerCom.cpp,v 1.8, 2010-12-09 13:54:01Z, Rachel Bach$
+// CVS:           $Id: PIGCSControllerCom.cpp,v 1.13, 2014-03-31 12:51:24Z, Steffen Rau$
 //
 
-#ifdef WIN32
-   #include <windows.h>
-   #define snprintf _snprintf 
-#endif
 
 #include "PIGCSControllerCom.h"
 #include "PI_GCS_2.h"
-#include "../../MMDevice/ModuleInterface.h"
 #include <algorithm>
 #include <sstream>
 
@@ -38,19 +33,31 @@ const char* PIGCSControllerComDevice::DeviceName_ = "PI_GCSController";
 const char* PIGCSControllerComDevice::UmToDefaultUnitName_ = "um in default unit";
 
 PIGCSControllerComDevice::PIGCSControllerComDevice()
-: port_(""),
-initialized_(false),
-lastError_(DEVICE_OK),
-umToDefaultUnit_(0.001),
-bShowProperty_UmToDefaultUnit_(true),
-ctrl_(NULL)
+: umToDefaultUnit_(0.001)
+, port_("")
+, lastError_(DEVICE_OK)
+, initialized_(false)
+, bShowProperty_UmToDefaultUnit_(true)
+, ctrl_(NULL)
 {
-   InitializeDefaultErrorMessages();
+   InitializeDefaultErrorMessages ();
+   SetErrorText (ERR_GCS_PI_CNTR_POS_OUT_OF_LIMITS,              g_msg_CNTR_POS_OUT_OF_LIMITS);
+   SetErrorText (ERR_GCS_PI_CNTR_MOVE_WITHOUT_REF_OR_NO_SERVO,   g_msg_CNTR_MOVE_WITHOUT_REF_OR_NO_SERVO);
+   SetErrorText (ERR_GCS_PI_CNTR_AXIS_UNDER_JOYSTICK_CONTROL,    g_msg_CNTR_AXIS_UNDER_JOYSTICK_CONTROL);
+   SetErrorText (ERR_GCS_PI_CNTR_INVALID_AXIS_IDENTIFIER,        g_msg_CNTR_INVALID_AXIS_IDENTIFIER);
+   SetErrorText (ERR_GCS_PI_CNTR_ILLEGAL_AXIS,                   g_msg_CNTR_ILLEGAL_AXIS);
+   SetErrorText (ERR_GCS_PI_CNTR_VEL_OUT_OF_LIMITS,              g_msg_CNTR_VEL_OUT_OF_LIMITS);
+   SetErrorText (ERR_GCS_PI_CNTR_ON_LIMIT_SWITCH,                g_msg_CNTR_ON_LIMIT_SWITCH);
+   SetErrorText (ERR_GCS_PI_CNTR_MOTION_ERROR,                   g_msg_CNTR_MOTION_ERROR);
+   SetErrorText (ERR_GCS_PI_MOTION_ERROR,                        g_msg_MOTION_ERROR);
+   SetErrorText (ERR_GCS_PI_CNTR_PARAM_OUT_OF_RANGE,             g_msg_CNTR_PARAM_OUT_OF_RANGE);
+   SetErrorText (ERR_GCS_PI_NO_CONTROLLER_FOUND,                 g_msg_NO_CONTROLLER_FOUND);
 }
 
 PIGCSControllerComDevice::~PIGCSControllerComDevice()
 {
 	Shutdown();
+    ctrl_ = NULL;
 }
 
 void PIGCSControllerComDevice::SetFactor_UmToDefaultUnit(double dUmToDefaultUnit, bool bHideProperty)
@@ -131,7 +138,7 @@ int PIGCSControllerComDevice::Initialize()
 
 	char szLabel[MM::MaxStrLength];
 	GetLabel(szLabel);
-	ctrl_ = new PIGCSControllerCom(szLabel, this); 
+	ctrl_ = new PIGCSControllerCom(szLabel, this, GetCoreCallback()); 
 
    int ret = ctrl_->Connect();
    if (ret != DEVICE_OK)
@@ -171,8 +178,7 @@ int PIGCSControllerComDevice::Initialize()
       {
          std::vector<int> outputChannels(nrOutputChannels);
          std::vector<int> values(nrOutputChannels, 1);
-         size_t i = 0;
-         for (; i<size_t(nrOutputChannels); i++)
+         for (int i = 0; i < nrOutputChannels; i++)
          {
             outputChannels[i] = i+1;
          }
@@ -208,26 +214,24 @@ void PIGCSControllerComDevice::GetName(char* Name) const
 
 bool PIGCSControllerComDevice::SendGCSCommand(unsigned char singlebyte)
 {
-	printf("=>WriteToComPort:%u",singlebyte);
    int ret = WriteToComPort(port_.c_str(), &singlebyte, 1);
    if (ret != DEVICE_OK)
    {
 	   lastError_ = ret;
       return false;
    }
-	return true;
+   return true;
 }
 
 bool PIGCSControllerComDevice::SendGCSCommand(const std::string command)
 {
-	LogMessage(std::string("=>SendGCSCommand: ") + command);
    int ret = SendSerialCommand(port_.c_str(), command.c_str(), "\n");
    if (ret != DEVICE_OK)
    {
 	   lastError_ = ret;
       return false;
    }
-	return true;
+   return true;
 }
 
 bool PIGCSControllerComDevice::GCSCommandWithAnswer(const std::string command, std::vector<std::string>& answer, int nExpectedLines)
@@ -246,63 +250,82 @@ bool PIGCSControllerComDevice::GCSCommandWithAnswer(unsigned char singlebyte, st
 
 bool PIGCSControllerComDevice::ReadGCSAnswer(std::vector<std::string>& answer, int nExpectedLines)
 {
-	answer.clear();
-   std::string line;
-   do
-   {
-	   // block/wait for acknowledge, or until we time out;
-	   int ret = GetSerialAnswer(port_.c_str(), "\n", line);
-	   if (ret != DEVICE_OK)
-	   {
-		   lastError_ = ret;
-		  return false;
-	   }
-	   answer.push_back(line);
-   } while( !line.empty() && line[line.length()-1] == ' ' );
-   LogMessage(std::string("<=ReadCGSAnswer: ") + answer[0]);
-   if (nExpectedLines >=0 && answer.size() != nExpectedLines)
-	   return false;
-	return true;
+    answer.clear();
+    std::string line;
+    do
+    {
+        // block/wait for acknowledge, or until we time out;
+        int ret = GetSerialAnswer(port_.c_str(), "\n", line);
+        if (ret != DEVICE_OK)
+        {
+            lastError_ = ret;
+            return false;
+        }
+        answer.push_back(line);
+    } while( !line.empty() && line[line.length()-1] == ' ' );
+    if ( (nExpectedLines >=0) && (int(answer.size()) != nExpectedLines) )
+    {
+        return false;
+    }
+    return true;
 }
 
 int PIGCSControllerComDevice::OnJoystick1(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
 	return ctrl_->OnJoystick(pProp, eAct, 1);
 }
 
 int PIGCSControllerComDevice::OnJoystick2(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
 	return ctrl_->OnJoystick(pProp, eAct, 2);
 }
 
 int PIGCSControllerComDevice::OnJoystick3(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
 	return ctrl_->OnJoystick(pProp, eAct, 3);
 }
 
 int PIGCSControllerComDevice::OnJoystick4(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
+    if (NULL == ctrl_)
+    {
+        return DEVICE_ERR;
+    }
 	return ctrl_->OnJoystick(pProp, eAct, 4);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////
-PIGCSControllerCom::PIGCSControllerCom(const std::string& label, PIGCSControllerComDevice* proxy):
-PIController(label),
-deviceProxy_(proxy),
-hasCST_(false),
-hasINI_(false),
-hasSVO_(true),
-hasJON_(true),
-hasVEL_(true),
-has_qTPC_(true),
-hasONL_(true)
+PIGCSControllerCom::PIGCSControllerCom(const std::string& label, PIGCSControllerComDevice* proxy, MM::Core* logsink)
+    : PIController(label)
+    , deviceProxy_(proxy)
+    , hasCST_   (false)
+    , hasSVO_   (true)
+    , hasINI_   (false)
+    , hasJON_   (true)
+    , hasVEL_   (true)
+    , has_qTPC_ (true)
+    , hasONL_   (true)
 {
+	PIController::logsink_  = logsink;
+	PIController::logdevice_= proxy;
 }
 
 PIGCSControllerCom::~PIGCSControllerCom()
 {
-	Close();
+    deviceProxy_ = NULL;
 }
 
 int PIGCSControllerCom::Connect()
@@ -310,22 +333,9 @@ int PIGCSControllerCom::Connect()
 	std::string answer;
 	if (!qIDN(answer))
 	{
-		Close();
 		return deviceProxy_->GetLastError();
 	}
 
-	//if (!qHLP(answer))
-	//{
-	//	Close();
-	//	return deviceProxy_->GetLastError();
-	//}
-
-
-	return DEVICE_OK;
-}
-
-int PIGCSControllerCom::Close()
-{
 	return DEVICE_OK;
 }
 
@@ -340,11 +350,6 @@ bool PIGCSControllerCom::qIDN(std::string& sIDN)
 	return true;
 }
 
-//bool PIGCSControllerCom::qHLP(std::string& sHLP)
-//{
-//	return deviceProxy_->GetGCSAnswer("HLP?", sHLP);
-//}
-
 bool PIGCSControllerCom::INI(const std::string& axis)
 {
 	if (!hasINI_)
@@ -352,7 +357,7 @@ bool PIGCSControllerCom::INI(const std::string& axis)
 		return false;
 	}
 	std::ostringstream command;
-   command << "INI " << axis;
+    command << "INI " << axis;
 	if (!deviceProxy_->SendGCSCommand( command.str() ))
 	{
 		return false;
@@ -384,7 +389,7 @@ bool PIGCSControllerCom::SVO(const std::string& axis, BOOL svo)
 		return false;
 	}
 	std::ostringstream command;
-	command << "SVO " << axis<<" "<< (svo==TRUE)?"1":"0";
+	command << "SVO " << axis<<" "<< ((svo==TRUE)?"1":"0");
 	if (!deviceProxy_->SendGCSCommand( command.str() ))
 	{
 		return false;
@@ -395,6 +400,12 @@ bool PIGCSControllerCom::SVO(const std::string& axis, BOOL svo)
 
 int PIGCSControllerCom::GetError()
 {
+	if (PI_CNTR_NO_ERROR != m_ControllerError)
+	{
+		int error = m_ControllerError;
+		m_ControllerError = PI_CNTR_NO_ERROR;
+		return error;
+	}
 	std::vector<std::string> answer;
 	if (!deviceProxy_->GCSCommandWithAnswer("ERR?", answer))
 		return false;
@@ -412,7 +423,14 @@ bool PIGCSControllerCom::CheckError(bool &hasCmdFlag)
 		hasCmdFlag = false;
 		return true;
 	}
+	m_ControllerError = err;
 	return ( err == PI_CNTR_NO_ERROR );
+}
+
+bool PIGCSControllerCom::CheckError(void)
+{
+	m_ControllerError = GetError();
+	return ( m_ControllerError == PI_CNTR_NO_ERROR );
 }
 
 bool PIGCSControllerCom::IsControllerReady( BOOL* ready)
@@ -424,7 +442,7 @@ bool PIGCSControllerCom::IsControllerReady( BOOL* ready)
 	return true;
 }
 
-bool PIGCSControllerCom::IsMoving(const std::string& axes, BOOL* moving)
+bool PIGCSControllerCom::IsMoving(const std::string& /*axes*/, BOOL* moving)
 {
 	std::vector<std::string> answer;
 	if (!deviceProxy_->GCSCommandWithAnswer( (unsigned char)(5), answer, 1))
@@ -475,6 +493,7 @@ bool PIGCSControllerCom::MOV(const std::string& axis, const double* target)
 	{
 		return false;
 	}
+	//No error check due to performance issues
 	return true;
 }
 
@@ -486,6 +505,7 @@ bool PIGCSControllerCom::MOV(const std::string& axis1, const std::string& axis2,
 	{
 		return false;
 	}
+	//No error check due to performance issues
 	return true;
 }
 
@@ -497,7 +517,7 @@ bool PIGCSControllerCom::FRF(const std::string& axes)
 	{
 		return false;
 	}
-	return true;
+	return CheckError();
 }
 
 bool PIGCSControllerCom::REF(const std::string& axes)
@@ -508,7 +528,7 @@ bool PIGCSControllerCom::REF(const std::string& axes)
 	{
 		return false;
 	}
-	return true;
+	return CheckError();
 }
 
 bool PIGCSControllerCom::MNL(const std::string& axes)
@@ -519,7 +539,7 @@ bool PIGCSControllerCom::MNL(const std::string& axes)
 	{
 		return false;
 	}
-	return true;
+	return CheckError();
 }
 
 bool PIGCSControllerCom::FNL(const std::string& axes)
@@ -530,7 +550,7 @@ bool PIGCSControllerCom::FNL(const std::string& axes)
 	{
 		return false;
 	}
-	return true;
+	return CheckError();
 }
 
 bool PIGCSControllerCom::FPL(const std::string& axes)
@@ -541,7 +561,7 @@ bool PIGCSControllerCom::FPL(const std::string& axes)
 	{
 		return false;
 	}
-	return true;
+	return CheckError();
 }
 
 bool PIGCSControllerCom::MPL(const std::string& axes)
@@ -552,7 +572,7 @@ bool PIGCSControllerCom::MPL(const std::string& axes)
 	{
 		return false;
 	}
-	return true;
+	return CheckError();
 }
 
 std::string PIGCSControllerCom::ConvertToAxesStringWithSpaces(const std::string& axes) const
@@ -667,22 +687,22 @@ bool PIGCSControllerCom::qTPC(int& nrOutputChannels)
 
 bool PIGCSControllerCom::ONL(const std::vector<int> outputChannels, const std::vector<int> values)
 {
-   size_t nrChannels = outputChannels.size();
+    size_t nrChannels = outputChannels.size();
 
-   if (nrChannels < 1)
-      return true;
+    if (nrChannels < 1)
+        return true;
 
-	std::ostringstream command;
-	command << "ONL";
+    std::ostringstream command;
+    command << "ONL";
 
-   size_t i = 0;
-   for (; i < nrChannels; i++)
-   {
-      command << " " << outputChannels[i] << " " << values[i];
-   }
-	if (!deviceProxy_->SendGCSCommand( command.str() ))
-	{
-		return false;
-	}
-	return CheckError(hasONL_);
+    size_t i = 0;
+    for (; i < nrChannels; i++)
+    {
+        command << " " << outputChannels[i] << " " << values[i];
+    }
+    if (!deviceProxy_->SendGCSCommand( command.str() ))
+    {
+        return false;
+    }
+    return CheckError(hasONL_);
 }

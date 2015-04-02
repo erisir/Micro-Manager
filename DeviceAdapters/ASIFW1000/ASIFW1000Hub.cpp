@@ -39,9 +39,7 @@
 #include <string>
 #include "ASIFW1000Hub.h"
 
-#ifdef WIN32
-#include <windows.h>
-#endif
+#include "../../MMDevice/DeviceUtils.h"
 
 using namespace std;
 
@@ -49,8 +47,6 @@ ASIFW1000Hub::ASIFW1000Hub ()  :
 	oldProtocol_(false),
 	port_("Undefined")
 {
-   expireTimeUs_ = 5000000; // each command will finish within 5sec
-
    ClearRcvBuf();
 }
 
@@ -95,11 +91,7 @@ int ASIFW1000Hub::GetVersion(MM::Device& device, MM::Core& core, char* version)
    version[i-3] = '\0'; // terminate the string
 
    // Don't know why, but we need a little break after asking for version number:
-   #ifdef WIN32
-   Sleep(100);
-   #else
-   usleep(100000);
-   #endif
+   CDeviceUtils::SleepMs(100);
 
    if (strlen(rcvBuf_) < 3)
    {

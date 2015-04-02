@@ -10,7 +10,7 @@
 // COPYRIGHT:     University of California, San Francisco, 2006
 //                Physik Instrumente (PI) GmbH & Co. KG, 2008
 // LICENSE:       This file is distributed under the BSD license.
-//                License text is included with the source distribution.
+//                License text is included with the source distribution.
 //
 //                This file is distributed in the hope that it will be useful,
 //                but WITHOUT ANY WARRANTY; without even the implied warranty
@@ -19,7 +19,7 @@
 //                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
-// CVS:           $Id: PIZStage_DLL.h,v 1.5, 2011-10-12 11:48:46Z, Steffen Rau$
+// CVS:           $Id: PIZStage_DLL.h,v 1.7, 2014-05-27 07:22:43Z, Steffen Rau$
 //
 
 #ifndef _PI_ZSTAGE_DLL_H_
@@ -54,35 +54,28 @@ public:
   int SetOrigin();
   int GetLimits(double& min, double& max);
 
+   int IsStageSequenceable(bool& isSequenceable) const { isSequenceable = false; return DEVICE_OK; }
+   bool IsContinuousFocusDrive() const { return false; }
+
    // action interface
    // ----------------
-   int OnControllerName(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnControllerName(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnStepSizeUm(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnAxisName(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnAxisLimit(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnAxisTravelRange(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnPosition(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnStageType(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnHoming(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct);
-
-   // Sequence functions
-   int IsStageSequenceable(bool& isSequenceable) const {isSequenceable = false; return DEVICE_OK;}
-   int GetStageSequenceMaxLength(long& nrEvents) const  {nrEvents = 0; return DEVICE_OK;}
-   int StartStageSequence() {return DEVICE_OK;}
-   int StopStageSequence() {return DEVICE_OK;}
-   int LoadStageSequence(std::vector<double> positions) {return DEVICE_OK;}
-
-   bool IsContinuousFocusDrive() const {return false;}
-
 
 private:
    std::string axisName_;
    double stepSizeUm_;
    bool initialized_;
    double axisLimitUm_;
+   bool invertTravelRange_;
    std::string stageType_;
-   // homing not (yet) implemented in micro-manager
-   //std::string homingMode_;
    std::string controllerName_;
    PIController* ctrl_;
 };

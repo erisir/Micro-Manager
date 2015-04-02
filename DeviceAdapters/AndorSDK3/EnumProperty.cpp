@@ -17,24 +17,31 @@ TEnumProperty::TEnumProperty(const string & MM_name, IEnum * enum_feature, CAndo
   snapShotController_(snapShotController),
   callBackRegistered_(needsCallBack)
 {
-   CPropertyAction * pAct = new CPropertyAction (this, &TEnumProperty::OnEnum);
-   camera_->CreateProperty(MM_name_.c_str(), "", MM::String, readOnly, pAct);
-
-   try
+   if (enum_feature->IsImplemented())
    {
-      if (needsCallBack)
+      CPropertyAction * pAct = new CPropertyAction (this, &TEnumProperty::OnEnum);
+      camera_->CreateProperty(MM_name_.c_str(), "", MM::String, readOnly, pAct);
+
+      try
       {
-         enum_feature_->Attach(this);
+         if (needsCallBack)
+         {
+            enum_feature_->Attach(this);
+         }
+         else
+         {
+            Update(NULL);
+         }
       }
-      else
+      catch (exception & e)
       {
-         Update(NULL);
+         // Callback not implemented for this feature
+         camera_->LogMessage(e.what());
       }
    }
-   catch (exception & e)
+   else
    {
-      // Callback not implemented for this feature
-      camera_->LogMessage(e.what());
+      callBackRegistered_ = false;
    }
 }
 
@@ -80,11 +87,26 @@ void TEnumProperty::Update(ISubject * /*Subject*/)
    char buf[MAX_CHARS_ENUM_VALUE_BUFFER];
    for (int i = 0; i < enum_feature_->Count(); i++)
    {
-      if (enum_feature_->IsIndexAvailable(i))
+      if (enum_feature_->IsIndexImplemented(i))
       {
-         wstring value_ws = enum_feature_->GetStringByIndex(i);
-         allowed_values.push_back(convertFromWString(value_ws, buf, MAX_CHARS_ENUM_VALUE_BUFFER));
+         if (enum_feature_->IsIndexAvailable(i))
+         {
+            wstring value_ws = enum_feature_->GetStringByIndex(i);
+            allowed_values.push_back(convertFromWString(value_ws, buf, MAX_CHARS_ENUM_VALUE_BUFFER));
+         }
+         //else
+         //{
+         //   stringstream ss("Enum feature ");
+         //   ss << MM_name_ << "; Index " << i << " Not Available";
+         //   camera_->LogMessage(ss.str().c_str(), true);
+         //}
       }
+      //else
+      //{
+      //   stringstream ss("Enum feature ");
+      //   ss << MM_name_ << "; Index " << i << " Not Implemented";
+      //   camera_->LogMessage(ss.str().c_str(), true);
+      //}
    }
    camera_->SetAllowedValues(MM_name_.c_str(), allowed_values);
 }

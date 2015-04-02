@@ -21,10 +21,11 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:           $Id$
+// CVS:           $Id: CoreProperty.cpp 13831 2014-07-16 03:49:21Z mark $
 //
 
 #include "CoreProperty.h"
+#include "CoreUtils.h"
 #include "MMCore.h"
 #include "Error.h"
 #include "../MMDevice/DeviceUtils.h"
@@ -75,13 +76,15 @@ void CorePropertyCollection::Set(const char* propName, const char* value)
 {
    map<string, CoreProperty>::iterator it = properties_.find(propName);
    if (it == properties_.end())
-      throw CMMError(propName, core_->getCoreErrorText(MMERR_InvalidCoreProperty).c_str(), MMERR_InvalidCoreProperty);
+      throw CMMError("Cannot set invalid Core property (" + ToString(propName) +
+            ") to value \"" + ToString(value) + "\"",
+            MMERR_InvalidCoreProperty);
 
    if (!it->second.IsAllowed(value) || it->second.IsReadOnly())
    {
-      std::stringstream msg;
-      msg << "Attempted to set \"Core-" << propName << "\" to \"" << value << "\".";
-      throw CMMError(msg.str().c_str(), core_->getCoreErrorText(MMERR_InvalidCoreValue).c_str(), MMERR_InvalidCoreValue);
+      throw CMMError("Cannot set Core property " + ToString(propName) +
+            " to invalid value \"" + ToString(value) + "\"",
+            MMERR_InvalidCoreValue);
    }
 
    // execute property set command
@@ -145,6 +148,10 @@ void CorePropertyCollection::Execute(const char* propName, const char* value)
    {
       core_->setSLMDevice(value);
    }
+   else if (strcmp(propName, MM::g_Keyword_CoreGalvo) == 0)
+   {
+      core_->setGalvoDevice(value);
+   }
    else if (strcmp(propName, MM::g_Keyword_CoreTimeoutMs) == 0)
    {
       core_->setTimeoutMs(atol(value));
@@ -170,7 +177,9 @@ string CorePropertyCollection::Get(const char* propName) const
 {
    map<string, CoreProperty>::const_iterator it = properties_.find(propName);
    if (it == properties_.end())
-      throw CMMError(propName, core_->getCoreErrorText(MMERR_InvalidCoreProperty).c_str(), MMERR_InvalidCoreProperty);
+      throw CMMError("Cannot get value of invalid Core property (" +
+            ToString(propName) + ")",
+            MMERR_InvalidCoreProperty);
 
    return it->second.Get();
 }
@@ -223,6 +232,9 @@ void CorePropertyCollection::Refresh()
    // SLM
    Set(MM::g_Keyword_CoreSLM, core_->getSLMDevice().c_str());
 
+   // Galvo
+   Set(MM::g_Keyword_CoreGalvo, core_->getGalvoDevice().c_str());
+
    // Timeout for Device Busy checking
    Set(MM::g_Keyword_CoreTimeoutMs, CDeviceUtils::ConvertToString(core_->getTimeoutMs()));
 
@@ -235,7 +247,8 @@ bool CorePropertyCollection::IsReadOnly(const char* propName) const
 {
    map<string, CoreProperty>::const_iterator it = properties_.find(propName);
    if (it == properties_.end())
-      throw CMMError(propName, core_->getCoreErrorText(MMERR_InvalidCoreProperty).c_str(), MMERR_InvalidCoreProperty);
+      throw CMMError("Invalid Core property (" + ToString(propName) + ")",
+            MMERR_InvalidCoreProperty);
 
    return it->second.IsReadOnly();
 }
@@ -244,7 +257,8 @@ vector<string> CorePropertyCollection::GetAllowedValues(const char* propName) co
 {
    map<string, CoreProperty>::const_iterator it = properties_.find(propName);
    if (it == properties_.end())
-      throw CMMError(propName, core_->getCoreErrorText(MMERR_InvalidCoreProperty).c_str(), MMERR_InvalidCoreProperty);
+      throw CMMError("Invalid Core property (" + ToString(propName) + ")",
+            MMERR_InvalidCoreProperty);
 
    return it->second.GetAllowedValues();
 }
@@ -253,7 +267,8 @@ void CorePropertyCollection::ClearAllowedValues(const char* propName)
 {
    map<string, CoreProperty>::iterator it = properties_.find(propName);
    if (it == properties_.end())
-      throw CMMError(propName, core_->getCoreErrorText(MMERR_InvalidCoreProperty).c_str(), MMERR_InvalidCoreProperty);
+      throw CMMError("Invalid Core property (" + ToString(propName) + ")",
+            MMERR_InvalidCoreProperty);
 
    it->second.ClearAllowedValues();
 }
@@ -262,7 +277,8 @@ void CorePropertyCollection::AddAllowedValue(const char* propName, const char* v
 {
    map<string, CoreProperty>::iterator it = properties_.find(propName);
    if (it == properties_.end())
-      throw CMMError(propName, core_->getCoreErrorText(MMERR_InvalidCoreProperty).c_str(), MMERR_InvalidCoreProperty);
+      throw CMMError("Invalid Core property (" + ToString(propName) + ")",
+            MMERR_InvalidCoreProperty);
 
    it->second.AddAllowedValue(value);
 }

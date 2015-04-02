@@ -20,7 +20,7 @@
 //CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 
-//CVS:          $Id$
+//CVS:          $Id: ConfigGroupPad.java 14678 2014-11-21 00:24:28Z mark $
 
 package org.micromanager;
 
@@ -39,6 +39,7 @@ import mmcorej.Configuration;
 import mmcorej.StrVector;
 
 import org.micromanager.api.ScriptInterface;
+import org.micromanager.dialogs.PresetEditor;
 import org.micromanager.utils.*;
 
 
@@ -54,7 +55,7 @@ public class ConfigGroupPad extends JScrollPane{
    private StateTableData data_;
    private ScriptInterface parentGUI_;
    Preferences prefs_;
-   private String COLUMN_WIDTH = "group_col_width";
+   private final String COLUMN_WIDTH = "group_col_width";
    public PresetEditor presetEditor_ = null;
    public String groupName_ = "";
 
@@ -101,7 +102,7 @@ public class ConfigGroupPad extends JScrollPane{
 
    public void refreshStructure(boolean fromCache) {
       if (data_ != null) {
-         data_.updateStatus(fromCache);
+         data_.rebuildModel(fromCache);
          data_.fireTableStructureChanged();
          table_.repaint();
       }
@@ -115,7 +116,7 @@ public class ConfigGroupPad extends JScrollPane{
       }
    }
 
-   public String getGroup() {
+   public String getSelectedGroup() {
       int idx = table_.getSelectedRow();
       if (idx<0 || data_.getRowCount()<=0) {
          return "";
@@ -124,7 +125,7 @@ public class ConfigGroupPad extends JScrollPane{
       }
    }
 
-   public void setGroup(String groupName) {
+   public void setSelectedGroup(String groupName) {
       for (int i=0;i<data_.getRowCount();i++) {
          if(data_.getValueAt(i,0).toString().contentEquals(groupName)) {
             table_.setRowSelectionInterval(i,i);
@@ -132,7 +133,7 @@ public class ConfigGroupPad extends JScrollPane{
       }
    }
    
-   public String getPreset() {
+   public String getPresetForSelectedGroup() {
       int idx = table_.getSelectedRow();
       if (idx<0 || data_.getRowCount()<=0) {
          return "";
@@ -140,7 +141,6 @@ public class ConfigGroupPad extends JScrollPane{
          try {
             return data_.core_.getCurrentConfig((String) data_.getValueAt(idx, 0));
          } catch (Exception e) {
-            // TODO Auto-generated catch block
             ReportingUtils.logError(e);
             return null;
          }
@@ -161,17 +161,18 @@ public class ConfigGroupPad extends JScrollPane{
       };
       ArrayList<StateItem> groupList_ = new ArrayList<StateItem>();
       private CMMCore core_ = null;
-      private boolean configDirty_;
 
       public StateTableData(CMMCore core) {
          core_ = core;
-         updateStatus(false);
-         configDirty_ = false;
+         rebuildModel(false);
       }
+
+      @Override
       public int getRowCount() {
          return groupList_.size();
       }
 
+      @Override
       public int getColumnCount() {
          return columnNames_.length;
       }
@@ -180,6 +181,7 @@ public class ConfigGroupPad extends JScrollPane{
          return groupList_.get(row);
       }
 
+      @Override
       public Object getValueAt(int row, int col) {
          StateItem item = groupList_.get(row);
          if (col == 0)
@@ -214,7 +216,6 @@ public class ConfigGroupPad extends JScrollPane{
                   } else {
                      core_.setConfig(item.group, value.toString());
                      core_.waitForConfig(item.group, value.toString());
-                     
                   }
                   
                   // Associate exposure time with presets in current channel group
@@ -224,9 +225,24 @@ public class ConfigGroupPad extends JScrollPane{
                   }
                   
                   refreshStatus();
-                  repaint();
-                  if (parentGUI_ != null)
-                     parentGUI_.updateGUI(false);
+                  table_.repaint();
+                  if (parentGUI_ != null) {
+                     // This is a little superfluous, but it is nice that we
+                     // are depending only on ScriptInterface, not MMStudio
+                     // directly, so keep it that way.
+                     if (parentGUI_ instanceof MMStudio) {
+                        // But it appears to be important for performance that
+                        // we use the non-config-pad-updating version of
+                        // MMStudio.refreshGUI(). Calling updateGUI(ture) or,
+                        // equivalently, refreshGUI(), results in a system
+                        // state cache update, which can be very slow.
+                        MMStudio parentGUI = (MMStudio) parentGUI_;
+                        parentGUI.updateGUI(false);
+                     }
+                     else {
+                        parentGUI_.refreshGUI();
+                     }
+                  }
                   
                   if (restartLive)
                        parentGUI_.enableLiveMode(true);
@@ -250,8 +266,9 @@ public class ConfigGroupPad extends JScrollPane{
          return true;
       }
 
-      public void updateStatus(boolean fromCache) {
+      public void rebuildModel(boolean fromCache) {
          try {
+            ReportingUtils.logMessage("Rebuilding config group table");
             StrVector groups = core_.getAvailableConfigGroups();
             HashMap<String, String> oldGroupHash = new HashMap<String, String>();
             for (StateItem group : groupList_) {
@@ -304,15 +321,18 @@ public class ConfigGroupPad extends JScrollPane{
 
                groupList_.add(item);
             }
+            ReportingUtils.logMessage("Finished rebuilding config group table");
          } catch (Exception e) {
             handleException(e);
          }
       }
 
+      // Update the current presets for each config group, without updating
+      // the list of config groups and presets.
       public void refreshStatus() {
          try {
-            for (int i = 0; i < groupList_.size(); i++) {
-               StateItem item = groupList_.get(i);
+            ReportingUtils.logMessage("Refreshing config group table");
+            for (StateItem item : groupList_) {
                if (item.singleProp) {
                   item.config = core_.getProperty(item.device, item.name);
                } else {
@@ -326,6 +346,7 @@ public class ConfigGroupPad extends JScrollPane{
                   }
                }
             }
+            ReportingUtils.logMessage("Finished refreshing config group table");
          } catch (Exception e) {
             handleException(e);
          }
@@ -333,8 +354,7 @@ public class ConfigGroupPad extends JScrollPane{
 
       public void refreshGroup(String groupName, String configName) {
          try {
-            for (int i = 0; i < groupList_.size(); i++) {
-               StateItem item = groupList_.get(i);
+            for (StateItem item : groupList_) {
                if (item.group.equals(groupName)) {
                   item.config = configName;
                }
@@ -342,10 +362,6 @@ public class ConfigGroupPad extends JScrollPane{
          } catch (Exception e) {
             handleException(e);
          }
-      }
-
-      public boolean isConfigDirty() {
-         return configDirty_;
       }
    }
 }

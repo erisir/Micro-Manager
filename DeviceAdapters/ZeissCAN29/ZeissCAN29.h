@@ -139,6 +139,9 @@ struct ZeissDeviceInfo {
       lowerHardwareStop = 0;
       status = 0;
       measuringOrigin = 0;
+      trajectoryVelocity = 0;
+      trajectoryAcceleration = 0;
+      hasTrajectoryInfo = false;
       busy = false;
       present = false;
    }
@@ -155,6 +158,9 @@ struct ZeissDeviceInfo {
    ZeissLong typeDeviation;
    ZeissLong maxDeviation;
    ZeissLong measuringOrigin;
+   ZeissLong trajectoryVelocity;
+   ZeissLong trajectoryAcceleration;
+   bool hasTrajectoryInfo;
    ZeissULong status;
    std::vector<std::string> deviceScalings;
    std::map<std::string, std::vector<ZeissLong> > nativeScale;
@@ -340,20 +346,12 @@ class ColibriModel
    private:
       MMThreadLock dfLock_;
       ZeissShort calibrationValue_[NRLEDS];
-      ZeissShort calibrationReferenceValue_[NRLEDS];
       ZeissShort brightness_[NRLEDS];
-      ZeissULong duration_[NRLEDS];
-      ZeissByte triggerChannel_[NRLEDS];
       ZeissByte onOff_[NRLEDS];
       std::string name_[NRLEDS];
       ZeissByte operationMode_;
       ZeissULong status_;
       ZeissByte externalShutterState_;
-      ZeissByte triggerSignalSignIn_;
-      ZeissByte triggerSignalSignOut_;
-      ZeissByte shutterTriggerChannel_;
-      ZeissByte triggerBufferPointer_;
-      TriggerBufferEntry triggerBufferEntry_[NRLEDS];
       bool busy_[NRLEDS];
       bool busyExternal_;
 };
@@ -384,6 +382,9 @@ class ZeissHub
       int GetModelMaxPosition(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& maxPosition);
       int GetModelStatus(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissULong& status);
       int GetModelPresent(MM::Device& device, MM::Core& core, ZeissUByte devId, bool &present);
+      int GetModelTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& velocity);
+      int HasModelTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, bool &hasTV);
+      int GetModelTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& acceleration);
       int GetModelBusy(MM::Device& device, MM::Core& core, ZeissUByte devId, bool &busy);
       int GetUpperHardwareStop(ZeissUByte devId, ZeissLong& position);
       int GetLowerHardwareStop(ZeissUByte devId, ZeissLong& position);
@@ -426,6 +427,8 @@ class ZeissHub
       int SetUpperHardwareStop(ZeissUByte devId, ZeissLong position);
       int SetLowerHardwareStop(ZeissUByte devId, ZeissLong position);
       int SetModelStatus(ZeissUByte devId, ZeissULong status);
+      int SetTrajectoryVelocity(ZeissUByte devId, ZeissLong velocity);
+      int SetTrajectoryAcceleration(ZeissUByte devId, ZeissLong acceleration);
 
       // Helper function for GetAnswer
       bool signatureFound(unsigned char* answer, unsigned char* signature, unsigned long signatureStart, unsigned long signatureLength);
@@ -436,6 +439,8 @@ class ZeissHub
       int GetDeviceScalings(MM::Device& device, MM::Core& core, ZeissUByte commandGroup, ZeissUByte devId, ZeissDeviceInfo& deviceInfo);
       int GetScalingTable(MM::Device& device, MM::Core& core, ZeissUByte commandGroup, ZeissUByte devId, ZeissDeviceInfo& deviceInfo, std::string unit);
       int GetMeasuringOrigin(MM::Device& device, MM::Core& core, ZeissUByte commandGroup, ZeissUByte devId, ZeissDeviceInfo& deviceInfo);
+      int GetTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte commandGroup, ZeissUByte devId, ZeissDeviceInfo& deviceInfo);
+      int GetTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte commandGroup, ZeissUByte devId, ZeissDeviceInfo& deviceInfo);
       int GetPermanentParameter(MM::Device& device, MM::Core& core, ZeissUShort descriptor, ZeissByte entry, ZeissUByte& dataType, unsigned char* data, unsigned char& dataLength);
       int GetReflectorLabels(MM::Device& device, MM::Core& core);
       int GetObjectiveLabels(MM::Device& device, MM::Core& core);
@@ -466,13 +471,14 @@ class ZeissHub
       // vector to store CAN nodes present in the system
       std::vector<ZeissByte> canNodes_;
 
-      MM_THREAD_GUARD mutex;
+      MMThreadLock mutex_;
       MMThreadLock executeLock_;
-      ZeissMonitoringThread* monitoringThread_;
-      MM::MMTime timeOutTime_;
-      unsigned char targetDevice_;
       std::vector<ZeissUByte > availableDevices_;
       std::string version_;
+
+      unsigned char targetDevice_;
+      ZeissMonitoringThread* monitoringThread_;
+      MM::MMTime timeOutTime_;
       bool scopeInitialized_;
 };
 
@@ -509,7 +515,6 @@ class ZeissMonitoringThread : public MMDeviceThreadBase
 
    private:
       ZeissDeviceInfo * deviceInfo_;
-      MM_THREAD_HANDLE thread_;
       void interpretMessage(unsigned char* message);
       MM::Device& device_;
       MM::Core& core_;
@@ -582,7 +587,11 @@ class ZeissAxis : public ZeissDevice
       int SetRelativePosition(MM::Device& device, MM::Core& core, ZeissUByte devId, long increment, ZeissByte moveMode);
       int FindHardwareStop(MM::Device& device, MM::Core& core, ZeissUByte devId, HardwareStops stop);
       int StopMove(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissByte moveMode);
-      ZeissUByte devId_;
+      int HasTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, bool& hasTV);
+      int SetTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, long velocity);
+      int SetTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte devId, long acceleration);
+      int GetTrajectoryVelocity(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& velocity);
+      int GetTrajectoryAcceleration(MM::Device& device, MM::Core& core, ZeissUByte devId, ZeissLong& acceleration);
 
    private:
       const static ZeissUByte commandGroup_ = 0xA3;
@@ -609,7 +618,6 @@ class ZeissScope : public CGenericBase<ZeissScope>
    private:
       bool initialized_;
       std::string port_;
-      double answerTimeoutMs_;
 };
 
 
@@ -793,10 +801,10 @@ public:
    int OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
+   ZeissUByte devId_;
    //int GetUpperLimit();
    //int GetLowerLimit();
    double stepSize_um_;
-   bool busy_;
    bool initialized_;
    double lowerLimit_;
    double upperLimit_;
@@ -804,7 +812,7 @@ private:
    long velocity_;
    std::string name_;
    std::string description_;
-   std::string direct_, uni_, biSup_, biAlways_, fast_, smooth_;
+   std::string direct_, uni_, biSup_, biAlways_, default_, fast_, smooth_;
    long busyCounter_;
 
 };
@@ -841,22 +849,17 @@ public:
    // ----------------
    int OnMoveMode(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnTrajectoryVelocity(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnTrajectoryAcceleration(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 private:
-   ZeissAxis xAxis_;
-   ZeissAxis yAxis_;
    double stepSize_um_;
-   bool busy_;
    bool initialized_;
-   double lowerLimitX_;
-   double upperLimitX_;
-   double lowerLimitY_;
-   double upperLimitY_;
    long moveMode_;
    long velocity_;
    std::string name_;
    std::string description_;
-   std::string direct_, uni_, biSup_, biAlways_, fast_, smooth_;
+   std::string direct_, uni_, biSup_, biAlways_, default_, fast_, smooth_;
 };
 
 class DefiniteFocus : public CAutoFocusBase<DefiniteFocus>
@@ -944,8 +947,6 @@ private:
    MM::AutoFocus* autoFocusDevice_;
    std::string autoFocusDeviceName_;
    bool initialized_;
-   double pos_;
-   double originPos_;
 };
 
 class Colibri : public CShutterBase<Colibri>

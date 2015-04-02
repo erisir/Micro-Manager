@@ -42,31 +42,12 @@ const char* g_DeviceName = "FreeSerialPort";
 #define ERR_DEVICE_NOT_FOUND         10005
 
 
-
-#ifdef WIN32
-BOOL APIENTRY DllMain( HANDLE /*hModule*/, 
-					  DWORD  ul_reason_for_call, 
-					  LPVOID /*lpReserved*/
-					  )
-{
-	switch (ul_reason_for_call)
-	{
-	case DLL_PROCESS_ATTACH:
-	case DLL_THREAD_ATTACH:
-	case DLL_THREAD_DETACH:
-	case DLL_PROCESS_DETACH:
-		break;
-	}
-	return TRUE;
-}
-#endif
-
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-	AddAvailableDeviceName(g_DeviceName, "Free-form communication Serial Port.");
+   RegisterDevice(g_DeviceName, MM::GenericDevice, "Free-form communication Serial Port.");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -90,7 +71,9 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // FreeSerialPort implementation
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-FreeSerialPort::FreeSerialPort() : busy_(false), initialized_(false), detailedLog_(true)
+FreeSerialPort::FreeSerialPort() :
+   busy_(false),
+   initialized_(false)
 {
 	InitializeDefaultErrorMessages();
 

@@ -36,13 +36,15 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
 import javax.swing.DefaultComboBoxModel;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import org.micromanager.MMStudioMainFrame;
-import org.micromanager.acquisition.VirtualAcquisitionDisplay;
+import org.micromanager.MMStudio;
+import org.micromanager.imagedisplay.VirtualAcquisitionDisplay;
 import org.micromanager.internalinterfaces.Histograms;
 import org.micromanager.api.ImageCache;
 import org.micromanager.graph.HistogramPanel.CursorListener;
@@ -54,6 +56,8 @@ import org.micromanager.utils.NumberUtils;
  * A single histogram and a few controls for manipulating image contrast 
  * and histogram display
  * 
+ * More LUTS can easily be added.  Look at the fire LUT for an example
+ * 
  */
 public class SingleChannelHistogram extends JPanel implements Histograms, CursorListener {
 
@@ -62,6 +66,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
    
    private long lastUpdateTime_;
    private JComboBox histRangeComboBox_;
+   private JComboBox lutComboBox_;
    private HistogramPanel histogramPanel_;
    private JLabel maxLabel_;
    private JLabel minLabel_;
@@ -84,6 +89,31 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
    private VirtualAcquisitionDisplay display_;
    private ImagePlus img_;
    private ImageCache cache_;
+   
+   private static final byte[][] fireLUT_;
+   static {
+      fireLUT_ = new byte[3][256];
+      int l = fire(fireLUT_[0], fireLUT_[1], fireLUT_[2]);
+      if (l < 256) {
+         interpolate (fireLUT_[0], fireLUT_[1], fireLUT_[2], l);
+      }
+   }
+   private static final byte[][] redHotLUT_;
+   static {
+      redHotLUT_ = new byte[3][256];
+      int l = redhot(redHotLUT_[0], redHotLUT_[1], redHotLUT_[2]);
+      if (l < 256) {
+         interpolate(redHotLUT_[0], redHotLUT_[1], redHotLUT_[2], l);
+      }
+   }
+   private static final byte[][] spectrumLUT_;
+   static {
+      spectrumLUT_ = new byte[3][256];
+      int l = spectrum(spectrumLUT_[0], spectrumLUT_[1], spectrumLUT_[2]);
+      if (l < 256) {
+         interpolate(spectrumLUT_[0], spectrumLUT_[1], spectrumLUT_[2], l);
+      }
+   }
 
    public SingleChannelHistogram(VirtualAcquisitionDisplay disp) {
       super();
@@ -104,6 +134,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
 
       histogramPanel_ = new HistogramPanel() {
 
+         @Override
          public void paint(Graphics g) {
             super.paint(g);
             //For drawing max label
@@ -113,10 +144,8 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
             g.drawString(label, this.getSize().width - 7 * label.length(), this.getSize().height);
          }
       };
-      histogramPanel_.setMargins(8, 10);
+      histogramPanel_.setMargins(12, 10);
       histogramPanel_.setTraceStyle(true, Color.white);
-      histogramPanel_.setTextVisible(false);
-      histogramPanel_.setGridVisible(false);
       histogramPanel_.addCursorListener(this);
       this.add(histogramPanel_, BorderLayout.CENTER);
 
@@ -124,10 +153,46 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       JPanel controlHolder = new JPanel(new BorderLayout());
       controlHolder.add(controls, BorderLayout.PAGE_START);
       this.add(controlHolder, BorderLayout.LINE_START);
+      
+      
+      // generate ImageIcons for LUT dropdown     
+      final int iconWidth = 128;
+      final int iconHeight = 10;
+      byte[] r = new byte[256];
+      byte[] g = new byte[256];
+      byte[] b = new byte[256];
+      for (int i = 0; i < 256; i++) {
+         r[i] = (byte) i; g[i] = (byte) i; b[i] = (byte) i;
+      }
+      ImageIcon grayIcon = getIcon(r, g, b, iconWidth, iconHeight);
+      // extend the ends of glow over/under so that they become visible in the icon
+      for (int i = 0; i < 6; i++) {
+         r[i] = (byte) 0; g[i] = (byte) 0; b[i] = (byte) 255;
+         r[255 - i] = (byte) 255; g[255 - i] = (byte) 0; b[255 - i] = (byte) 0;
+      }
+      ImageIcon glowOverUnderIcon = getIcon(r, g, b, iconWidth, iconHeight);
+      ImageIcon fireIcon = getIcon(fireLUT_[0], fireLUT_[1], fireLUT_[2], iconWidth, 
+              iconHeight);
+      ImageIcon redHotIcon = getIcon(redHotLUT_[0], redHotLUT_[1], redHotLUT_[2], iconWidth, 
+              iconHeight);
+      ImageIcon spectrumIcon = getIcon(spectrumLUT_[0], spectrumLUT_[1], spectrumLUT_[2],
+              iconWidth, iconHeight);
+      Object[] items =
+        {grayIcon, glowOverUnderIcon, fireIcon, redHotIcon, spectrumIcon};
+      lutComboBox_ = new JComboBox(items);
+      lutComboBox_.setFont(new Font("", Font.PLAIN, 10));
+      lutComboBox_.addActionListener(new ActionListener() {
+         @Override
+         public void actionPerformed(final ActionEvent e) {
+            lutComboAction();
+         }
+      });
 
+      
       JButton fullScaleButton = new JButton();
       fullScaleButton.addActionListener(new ActionListener() {
 
+         @Override
          public void actionPerformed(final ActionEvent e) {
             fullButtonAction();
          }
@@ -139,6 +204,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       final JButton autoScaleButton = new JButton();
       autoScaleButton.addActionListener(new ActionListener() {
 
+         @Override
          public void actionPerformed(final ActionEvent e) {
             autoButtonAction();
          }
@@ -158,19 +224,21 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
 
 
       JButton zoomInButton = new JButton();
-      zoomInButton.setIcon(SwingResourceManager.getIcon(MMStudioMainFrame.class,
+      zoomInButton.setIcon(SwingResourceManager.getIcon(MMStudio.class,
               "/org/micromanager/icons/zoom_in.png"));
       JButton zoomOutButton = new JButton();
-      zoomOutButton.setIcon(SwingResourceManager.getIcon(MMStudioMainFrame.class,
+      zoomOutButton.setIcon(SwingResourceManager.getIcon(MMStudio.class,
               "/org/micromanager/icons/zoom_out.png"));
       zoomInButton.addActionListener(new ActionListener() {
 
+         @Override
          public void actionPerformed(ActionEvent e) {
             zoomInAction();
          }
       });
       zoomOutButton.addActionListener(new ActionListener() {
 
+         @Override
          public void actionPerformed(ActionEvent e) {
             zoomOutAction();
          }
@@ -191,6 +259,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       histRangeComboBox_.setFont(new Font("", Font.PLAIN, 10));
       histRangeComboBox_.addActionListener(new ActionListener() {
 
+         @Override
          public void actionPerformed(final ActionEvent e) {
             histRangeComboAction();
          }
@@ -203,7 +272,6 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
 
 
       GridBagLayout layout = new GridBagLayout();
-      GridBagConstraints gbc = new GridBagConstraints();
       controls.setLayout(layout);
 
 
@@ -219,15 +287,24 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       histZoomLine.add(zoomOutButton);
       histZoomLine.add(zoomInButton);
 
-      gbc = new GridBagConstraints();
+      
+      GridBagConstraints gbc = new GridBagConstraints();
       gbc.gridy = 0;
       gbc.weightx = 0;
       gbc.gridwidth = 2;
       gbc.fill = GridBagConstraints.BOTH;
       controls.add(new JLabel(" "), gbc);
-
+   
       gbc = new GridBagConstraints();
       gbc.gridy = 1;
+      gbc.weightx = 1;
+      gbc.gridwidth = 2;
+      gbc.fill = GridBagConstraints.HORIZONTAL;
+      controls.add(lutComboBox_, gbc);
+      
+      gbc = new GridBagConstraints();
+      gbc.gridy = 2;
+      gbc.gridx = 0;
       gbc.weightx = 1;
       gbc.ipadx = 4;
       gbc.ipady = 4;
@@ -235,7 +312,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       controls.add(fullScaleButton, gbc);
 
       gbc = new GridBagConstraints();
-      gbc.gridy = 1;
+      gbc.gridy = 2;
       gbc.gridx = 1;
       gbc.weightx = 1;
       gbc.ipadx = 4;
@@ -244,21 +321,21 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       controls.add(autoScaleButton, gbc);
 
       gbc = new GridBagConstraints();
-      gbc.gridy = 2;
+      gbc.gridy = 3;
       gbc.weightx = 1;
       gbc.gridwidth = 2;
       gbc.fill = GridBagConstraints.HORIZONTAL;
       controls.add(histZoomLine, gbc);
 
       gbc = new GridBagConstraints();
-      gbc.gridy = 3;
+      gbc.gridy = 4;
       gbc.weightx = 1;
       gbc.gridwidth = 2;
       gbc.fill = GridBagConstraints.HORIZONTAL;
       controls.add(histRangeComboBox_, gbc);
 
       gbc = new GridBagConstraints();
-      gbc.gridy = 4;
+      gbc.gridy = 5;
       gbc.weightx = 1;
       gbc.gridwidth = 2;
 
@@ -269,7 +346,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       
    private void loadDisplaySettings() {
       contrastMax_ = cache_.getChannelMax(0);
-      if (contrastMax_ < 0) {
+      if (contrastMax_ < 0 || contrastMax_ > maxIntensity_) {
          contrastMax_ = maxIntensity_;
       }
       contrastMin_ = cache_.getChannelMin(0);
@@ -297,16 +374,25 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       setHistMaxAndBinSize();     
       calcAndDisplayHistAndStats(true);
    }
+   
+   // todo: implement!
+   private void lutComboAction () {
+      applyLUTToImage();
+      display_.drawWithoutUpdate();
+   }
 
+   @Override
    public void rejectOutliersChangeAction() {
       calcAndDisplayHistAndStats(true);
       autoButtonAction();
    }
 
+   @Override
    public void autoscaleAllChannels() {
       autoButtonAction();
    }
 
+   @Override
    public void applyLUTToImage() {
       if (img_ == null) {
          return;
@@ -316,30 +402,174 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
          return;
       }
 
-      double maxValue = 255.0;
-      byte[] r = new byte[256];
-      byte[] g = new byte[256];
-      byte[] b = new byte[256];
-      for (int i = 0; i < 256; i++) {
-         double val = Math.pow((double) i / maxValue, gamma_) * (double) maxValue;
-         r[i] = (byte) val;
-         g[i] = (byte) val;
-         b[i] = (byte) val;
+      final double maxValue = 255.0;
+      final int length = 256;
+      byte[] r = new byte[length];
+      byte[] g = new byte[length];
+      byte[] b = new byte[length];
+      
+      // Gray scale and glow over/under
+      if (lutComboBox_.getSelectedIndex() < 2) {
+         for (int i = 0; i < length; i++) {
+            double val = Math.pow((double) i / maxValue, gamma_) * maxValue;
+            r[i] = (byte) val;
+            g[i] = (byte) val;
+            b[i] = (byte) val;
+         }
+
+         if (lutComboBox_.getSelectedIndex() == 1) {
+            // glow over/under LUT
+            r[0] = (byte) 0;
+            g[0] = (byte) 0;
+            b[0] = (byte) 255;
+            r[255] = (byte) 255;
+            g[255] = (byte) 0;
+            b[255] = (byte) 0;
+         }
       }
+      
+      // Fire
+      if (lutComboBox_.getSelectedIndex() == 2) {
+         for (int i = 0; i < length; i++) {
+            double val = Math.pow((double) i / maxValue, gamma_) * maxValue;
+            r[i] = fireLUT_[0][(int) val];
+            g[i] = fireLUT_[1][(int) val];
+            b[i] = fireLUT_[2][(int) val];
+         }
+      }
+      
+      // redHot
+      if (lutComboBox_.getSelectedIndex() == 3) {
+         for (int i = 0; i < length; i++) {
+            double val = Math.pow((double) i / maxValue, gamma_) * maxValue;
+            r[i] = redHotLUT_[0][(int) val];
+            g[i] = redHotLUT_[1][(int) val];
+            b[i] = redHotLUT_[2][(int) val];
+         }
+      }
+      
+      // Spectrum
+      if (lutComboBox_.getSelectedIndex() == 4) {
+         for (int i = 0; i < length; i++) {
+            double val = Math.pow((double) i / maxValue, gamma_) * maxValue;
+            r[i] = spectrumLUT_[0][(int) val];
+            g[i] = spectrumLUT_[1][(int) val];
+            b[i] = spectrumLUT_[2][(int) val];
+         }
+      }
+      
       //apply gamma and contrast to image
-      ip.setColorModel(new LUT(8, 256, r, g, b));    //doesnt explicitly redraw
+      ip.setColorModel(new LUT(8, length, r, g, b));    //doesnt explicitly redraw
       ip.setMinAndMax(contrastMin_, contrastMax_);   //doesnt explicitly redraw
 
       saveDisplaySettings();
 
       updateHistogram();
    }
+   
+   /**
+    * Generate small fire lut data.  
+    * Copied from ImageJ source
+    */
+   public static int fire(byte[] reds, byte[] greens, byte[] blues) {
+		int[] r = {0,0,1,25,49,73,98,122,146,162,173,184,195,207,217,229,240,252,255,255,255,255,255,255,255,255,255,255,255,255,255,255};
+		int[] g = {0,0,0,0,0,0,0,0,0,0,0,0,0,14,35,57,79,101,117,133,147,161,175,190,205,219,234,248,255,255,255,255};
+		int[] b = {0,61,96,130,165,192,220,227,210,181,151,122,93,64,35,5,0,0,0,0,0,0,0,0,0,0,0,35,98,160,223,255};
+		for (int i=0; i<r.length; i++) {
+			reds[i] = (byte)r[i];
+			greens[i] = (byte)g[i];
+			blues[i] = (byte)b[i];
+		}
+		return r.length;
+	}
+   
+   /**
+    * Generate small redhot lut data
+    * constructed by Nico Stuurman based on LUT included with ImageJ
+    */
+   public static int redhot(byte[] reds, byte[] greens, byte[] blues) {
+		int[] r = {0,1,27,52,78,103,130,155,181,207,233,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255};
+		int[] g = {0,1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  3, 29, 55, 81,106,133,158,184,209,236,255,255,255,255,255,255,255,255,255,255,255};
+		int[] b = {0,1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  6, 32, 58, 84,110,135,161,187,160,213,255};
+		for (int i=0; i<r.length; i++) {
+			reds[i] = (byte)r[i];
+			greens[i] = (byte)g[i];
+			blues[i] = (byte)b[i];
+		}
+		return r.length;
+	}
+   
+   public static int spectrum(byte[] reds, byte[] greens, byte[] blues) {
+		Color c;
+		for (int i=0; i<256; i++) {
+			c = Color.getHSBColor(i/255f, 1f, 1f);
+			reds[i] = (byte)c.getRed();
+			greens[i] = (byte)c.getGreen();
+			blues[i] = (byte)c.getBlue();
+		}
+		return 256;
+	}
+
+   /**
+    * Interpolate small LUTs into larger ones by interpolation
+    * Copied from ImageJ source
+    */
+   public static void interpolate(byte[] reds, byte[] greens, byte[] blues, int nColors) {
+		byte[] r = new byte[nColors]; 
+		byte[] g = new byte[nColors]; 
+		byte[] b = new byte[nColors];
+		System.arraycopy(reds, 0, r, 0, nColors);
+		System.arraycopy(greens, 0, g, 0, nColors);
+		System.arraycopy(blues, 0, b, 0, nColors);
+		double scale = nColors/256.0;
+		int i1, i2;
+		double fraction;
+		for (int i=0; i<256; i++) {
+			i1 = (int)(i*scale);
+			i2 = i1+1;
+			if (i2==nColors) i2 = nColors-1;
+			fraction = i*scale - i1;
+			reds[i] = (byte)((1.0-fraction)*(r[i1]&255) + fraction*(r[i2]&255));
+			greens[i] = (byte)((1.0-fraction)*(g[i1]&255) + fraction*(g[i2]&255));
+			blues[i] = (byte)((1.0-fraction)*(b[i1]&255) + fraction*(b[i2]&255));
+		}
+	}
+   
+   /**
+    * Generates ImageIcon from LUTs.
+    * Byte Arrays are expected to be 256 in size
+    * @param r - red byte array (length 256)
+    * @param g - green byte array (length 256)
+    * @param b - blue byte array (length 256)
+    * @param width - desired width of image
+    * @param height - desired height of image
+    * @return - generated ImageIcon
+    */
+   public static ImageIcon getIcon(byte[] r, byte[] g, byte[] b, int width, int height) {
+      int[] pixels = new int[width * height];
+      double ratio = (double) 256 / (double) width;
+      for (int y = 0; y < height; y++) {
+         for (int x = 0; x < width; x++) {
+            int index = (int) (ratio * x);
+            int ri = 0xff & r[index];
+            int rg = 0xff & g[index];
+            int rb = 0xff & b[index];
+            pixels[y * width + x] = ((0xff << 24) | (ri << 16)
+                    | (rg << 8) | (rb) );
+         }
+      }
+      BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+      image.setRGB(0, 0, width, height, pixels, 0, width);
+      return new ImageIcon(image);
+   }
+   
 
    public void saveDisplaySettings() {
-      int histMax = histRangeComboBox_.getSelectedIndex() == 0 ? histMax = -1 : histMax_;
-      cache_.storeChannelDisplaySettings(0, (int) contrastMin_, (int) contrastMax_, gamma_, histMax, 1);
+      int histMax = histRangeComboBox_.getSelectedIndex() == 0 ? -1 : histMax_;
+      display_.storeChannelHistogramSettings(0,  contrastMin_, contrastMax_, gamma_, histMax, 1);
    }
 
+   @Override
    public void setChannelHistogramDisplayMax(int channelIndex, int histMax) {
       if (channelIndex != 0) {
          return;
@@ -349,6 +579,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
    }
 
    private void updateHistogram() {
+      histogramPanel_.setCursorText(contrastMin_+"", contrastMax_+"");
       histogramPanel_.setCursors(contrastMin_ / binSize_, (contrastMax_+1) / binSize_, gamma_);
       histogramPanel_.repaint();
    }
@@ -389,7 +620,10 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       saveDisplaySettings();
    }
 
-   //Calculates autostretch, doesnt apply or redraw
+   /**
+    * Calculates autostretch, doesnt apply or redraw
+    */
+   @Override
    public void autostretch() {
       contrastMin_ = pixelMin_;
       contrastMax_ = pixelMax_;
@@ -426,10 +660,11 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       contrastMax_ = histMax_;
    }
 
+   @Override
     public void imageChanged() {
         boolean update = true;
-        if ( display_.acquisitionIsRunning()
-                || (MMStudioMainFrame.getInstance().isLiveModeOn() && display_.isSimpleDisplay()) ) {
+        if (display_.acquisitionIsRunning() ||
+                (MMStudio.getInstance().isLiveModeOn())) {
             if (display_.getHistogramControlsState().slowHist) {
                 long time = System.currentTimeMillis();
                 if (time - lastUpdateTime_ < SLOW_HIST_UPDATE_INTERVAL_MS) {
@@ -449,6 +684,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
         }
     }
 
+   @Override
    public void calcAndDisplayHistAndStats(boolean drawHist) {
        if (img_ == null || img_.getProcessor() == null) {
          return;
@@ -490,7 +726,9 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
          if (img_.getProcessor().getMin() == 0) {
             histogram[0] = imgWidth * imgHeight;
          } else {
-            histogram[numBins - 1] = imgWidth * imgHeight;
+            if (numBins > 0) {
+               histogram[numBins - 1] = imgWidth * imgHeight;
+            }
          }
       }
       if (drawHist) {
@@ -507,8 +745,8 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
          histogramPanel_.setAutoScale();
          histogramPanel_.setToolTipText("Click and drag curve to adjust gamma");
 
-         maxLabel_.setText("Max: " + NumberUtils.intToDisplayString((int) pixelMax_));
-         minLabel_.setText("Min: " + NumberUtils.intToDisplayString((int) pixelMin_));
+         maxLabel_.setText("Max: " + NumberUtils.intToDisplayString(pixelMax_));
+         minLabel_.setText("Min: " + NumberUtils.intToDisplayString(pixelMin_));
          meanLabel_.setText("Mean: " + NumberUtils.intToDisplayString((int) mean_));
          stdDevLabel_.setText("Std Dev: " + NumberUtils.intToDisplayString((int) stdDev_));
 
@@ -517,15 +755,52 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
 
    }
 
+   @Override
    public void setChannelContrast(int channelIndex, int min, int max, double gamma) {
       if (channelIndex != 0) {
          return;
       }
-      contrastMax_ = max;
+      contrastMax_ = Math.min(maxIntensity_,max);
       contrastMin_ = min;
       gamma_ = gamma;
    }
+   
+   @Override
+   public void contrastMinInput(int min) {     
+      display_.disableAutoStretchCheckBox();
+      
+      contrastMin_ = min;
+      if (contrastMin_ >= maxIntensity_) {
+         contrastMin_ = maxIntensity_ - 1;
+      }
+      if (contrastMin_ < 0) {
+         contrastMin_ = 0;
+      }
+      if (contrastMax_ < contrastMin_) {
+         contrastMax_ = contrastMin_ + 1;
+      }
+      applyLUTToImage();
+      display_.drawWithoutUpdate();
+   }
+   
+   @Override
+   public void contrastMaxInput(int max) {     
+      display_.disableAutoStretchCheckBox();
+      contrastMax_ = max;
+      if (contrastMax_ > maxIntensity_) {
+         contrastMax_ = maxIntensity_;
+      }
+      if (contrastMax_ < 0) {
+         contrastMax_ = 0;
+      }
+      if (contrastMin_ > contrastMax_) {
+         contrastMin_ = contrastMax_;
+      }
+      applyLUTToImage();
+      display_.drawWithoutUpdate();
+   }
 
+   @Override
    public void onLeftCursor(double pos) {
       display_.disableAutoStretchCheckBox();
       
@@ -540,10 +815,14 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       display_.drawWithoutUpdate();
    }
 
+   @Override
    public void onRightCursor(double pos) {
       display_.disableAutoStretchCheckBox();
 
       contrastMax_ = (int) (Math.min(255, pos) * binSize_);
+      if (contrastMax_ < 1) {
+         contrastMax_ = 1;
+      }
       if (contrastMin_ > contrastMax_) {
          contrastMin_ = contrastMax_;
       }
@@ -551,6 +830,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       display_.drawWithoutUpdate();
    }
 
+   @Override
    public void onGammaCurve(double gamma) {
       if (gamma != 0) {
          if (gamma > 0.9 & gamma < 1.1) {
@@ -563,9 +843,11 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       }
    }
 
+   @Override
    public void setupChannelControls(ImageCache cache) {
    }
 
+   @Override
    public ContrastSettings getChannelContrastSettings(int channel) {
       if (channel != 0) {
          return null;
@@ -573,6 +855,7 @@ public class SingleChannelHistogram extends JPanel implements Histograms, Cursor
       return new ContrastSettings(contrastMin_, contrastMax_, gamma_);
    }
 
+   @Override
    public int getNumberOfChannels() {
       return 1;
    }

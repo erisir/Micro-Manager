@@ -56,8 +56,8 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_XYStageDeviceName, "LStep XY Stage");
-   AddAvailableDeviceName(g_ZStageDeviceName,  "LStep Z Axis");
+   RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "LStep XY Stage");
+   RegisterDevice(g_ZStageDeviceName,  MM::StageDevice,   "LStep Z Axis");
 }                                                                            
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)                  
@@ -81,9 +81,10 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 LStepBase::LStepBase(MM::Device *device) :
    initialized_(false),
    Configuration_(0),
-   port_("Undefined")
+   port_("Undefined"),
+   device_(device),
+   core_(0)
 {
-   device_ = static_cast<LStepDeviceBase *>(device);
 }
 
 LStepBase::~LStepBase()
@@ -101,7 +102,7 @@ int LStepBase::ClearPort(void)
    int ret;
    while ((int) read == bufSize)
    {
-      ret = device_->ReadFromComPort(port_.c_str(), clear, bufSize, read);
+      ret = core_->ReadFromSerial(device_, port_.c_str(), clear, bufSize, read);
       if (ret != DEVICE_OK)
          return ret;
    }
@@ -118,7 +119,7 @@ int LStepBase::SendCommand(const char *command) const
    std::string base_command = "";
    base_command += command;
    // send command
-   ret = device_->SendSerialCommand(port_.c_str(), base_command.c_str(), g_TxTerm);
+   ret = core_->SetSerialCommand(device_, port_.c_str(), base_command.c_str(), g_TxTerm);
    return ret;
 }
 
@@ -135,7 +136,10 @@ int LStepBase::QueryCommand(const char *command, std::string &answer) const
    if (ret != DEVICE_OK)
       return ret;
    // block/wait for acknowledge (or until we time out)
-   ret = device_->GetSerialAnswer(port_.c_str(), g_RxTerm, answer);
+   const size_t BUFSIZE = 2048;
+   char buf[BUFSIZE] = {'\0'};
+   ret = core_->GetSerialAnswer(device_, port_.c_str(), BUFSIZE, buf, g_RxTerm);
+   answer = buf;
    return ret;
 }
 
@@ -182,10 +186,8 @@ int LStepBase::CheckDeviceStatus(void)
 */
 
 XYStage::XYStage() :
-   CXYStageBase<XYStage>(),
    LStepBase(this),
    range_measured_(false),
-   answerTimeoutMs_(2000),
 
    stepSizeXUm_(0.02), //=1000*pitch[mm]/gear/(motorsteps*250)  (assume gear=1 motorsteps=200 => stepsize=pitch/50.0)
    stepSizeYUm_(0.02),
@@ -239,8 +241,11 @@ void XYStage::GetName(char* Name) const
  */
 int XYStage::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    int NumberOfAxes = (Configuration_ >> 4) &0x0f;
    if (NumberOfAxes < 2) return DEVICE_NOT_CONNECTED; 
@@ -1087,14 +1092,12 @@ int XYStage::OnAccelY(MM::PropertyBase* pProp, MM::ActionType eAct)
  * Single axis stage.
  */
 ZStage::ZStage() :
-   CStageBase<ZStage>(),
    LStepBase(this),
    range_measured_(false),
-   answerTimeoutMs_(2000),
+   stepSizeUm_(0.1),
    speedZ_(20.0), //[mm/s]
    accelZ_(0.2), //[m/s²]
    originZ_(0),
-   stepSizeUm_(0.1),
    pitchZ_(1)
 
 
@@ -1134,8 +1137,11 @@ void ZStage::GetName(char* Name) const
 
 int ZStage::Initialize()
 {
+   core_ = GetCoreCallback();
+
    int ret = CheckDeviceStatus();
-   if (ret != DEVICE_OK) ret;
+   if (ret != DEVICE_OK) 
+      return ret;
 
    int NumberOfAxes = (Configuration_ >> 4) &0x0f;
    if (NumberOfAxes < 3) return DEVICE_NOT_CONNECTED; // Controller hardware without Z axis

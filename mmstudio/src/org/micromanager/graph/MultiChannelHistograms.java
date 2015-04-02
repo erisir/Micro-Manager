@@ -5,8 +5,8 @@ import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.util.ArrayList;
 import javax.swing.JPanel;
-import org.micromanager.MMStudioMainFrame;
-import org.micromanager.acquisition.VirtualAcquisitionDisplay;
+import org.micromanager.MMStudio;
+import org.micromanager.imagedisplay.VirtualAcquisitionDisplay;
 import org.micromanager.internalinterfaces.Histograms;
 import org.micromanager.api.ImageCache;
 import org.micromanager.utils.ContrastSettings;
@@ -53,6 +53,7 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
       setupChannelControls(cache_);
    }
 
+   @Override
    public synchronized void setupChannelControls(ImageCache cache) {
       this.removeAll();
       this.invalidate();
@@ -119,6 +120,7 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
       display_.drawWithoutUpdate();
    }
 
+   @Override
    public ContrastSettings getChannelContrastSettings(int channel) {
       if (ccpList_ == null || ccpList_.size() - 1 > channel) {
          return null;
@@ -170,6 +172,7 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
       ccpList_.get(channelIndex).setDisplayComboIndex(index);
    }
 
+   @Override
    public void applyLUTToImage() {
       if (ccpList_ == null) {
          return;
@@ -182,8 +185,8 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
    @Override
    public void imageChanged() {
      boolean update = true;
-        if ( display_.acquisitionIsRunning()
-                || (MMStudioMainFrame.getInstance().isLiveModeOn() && display_.isSimpleDisplay()) ) {
+        if (display_.acquisitionIsRunning() ||
+                (MMStudio.getInstance().isLiveModeOn())) {
             if (display_.getHistogramControlsState().slowHist) {
                 long time = System.currentTimeMillis();
                 if (time - lastUpdateTime_ < SLOW_HIST_UPDATE_INTERVAL_MS) {
@@ -230,6 +233,7 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
       display_.setDisplayMode(mode);
    }
 
+   @Override
    public void autoscaleAllChannels() {
       if (ccpList_ != null && ccpList_.size() > 0) {
          for (ChannelControlPanel c : ccpList_) {
@@ -238,6 +242,7 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
       }
    }
 
+   @Override
    public void rejectOutliersChangeAction() {
       if (ccpList_ != null && ccpList_.size() > 0) {
          for (ChannelControlPanel c : ccpList_) {
@@ -247,6 +252,7 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
       }
    }
 
+   @Override
    public void calcAndDisplayHistAndStats(boolean drawHist) {
       if (ccpList_ != null) {
          for (ChannelControlPanel c : ccpList_) {
@@ -264,6 +270,7 @@ public final class MultiChannelHistograms extends JPanel implements Histograms {
       }
    }
 
+   @Override
    public int getNumberOfChannels() {
       return ccpList_.size();
    }

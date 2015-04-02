@@ -31,7 +31,9 @@
 #include "ErrorCodes.h"
 #include "Error.h"
 
+#ifdef WIN32
 #pragma warning( disable : 4290 ) // exception declaration warning
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -46,6 +48,8 @@ class CircularBuffer
 public:
    CircularBuffer(unsigned int memorySizeMB);
    ~CircularBuffer();
+
+   unsigned GetMemorySizeMB() const { return memorySizeMB_; }
 
    bool Initialize(unsigned channels, unsigned slices, unsigned int xSize, unsigned int ySize, unsigned int pixDepth);
    unsigned long GetSize() const;
@@ -65,7 +69,6 @@ public:
    const ImgBuffer* GetNextImageBuffer(unsigned channel, unsigned slice);
    void Clear() {MMThreadGuard guard(g_bufferLock); insertIndex_=0; saveIndex_=0; overflow_ = false;}
 
-   double GetAverageIntervalMs() const;
    bool Overflow() {MMThreadGuard guard(g_bufferLock); return overflow_;}
 
 private:
@@ -80,7 +83,6 @@ private:
    unsigned int numChannels_;
    unsigned int numSlices_;
    bool overflow_;
-   long estimatedIntervalMs_;
    std::vector<FrameBuffer> frameArray_;
 
    unsigned long GetClockTicksMs() const;

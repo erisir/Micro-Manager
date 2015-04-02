@@ -32,8 +32,7 @@ import java.awt.dnd.DropTargetEvent;
 import java.awt.dnd.DropTargetListener;
 import java.io.File;
 import java.io.IOException;
-import javax.swing.SwingUtilities;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 
 /**
  * DragDropUtil
@@ -46,18 +45,22 @@ import org.micromanager.MMStudioMainFrame;
  */
 public class DragDropUtil implements DropTargetListener {
 
+   @Override
    public void dragEnter(DropTargetDragEvent dtde) {
       //throw new UnsupportedOperationException("Not supported yet.");
    }
 
+   @Override
    public void dragOver(DropTargetDragEvent dtde) {
       //throw new UnsupportedOperationException("Not supported yet.");
    }
 
+   @Override
    public void dropActionChanged(DropTargetDragEvent dtde) {
       //throw new UnsupportedOperationException("Not supported yet.");
    }
 
+   @Override
    public void dragExit(DropTargetEvent dte) {
       //throw new UnsupportedOperationException("Not supported yet.");
    }
@@ -65,15 +68,16 @@ public class DragDropUtil implements DropTargetListener {
    /**
     * This function does the actual work
     */
+   @Override
    public void drop(final DropTargetDropEvent dtde) {
 
       try {
          Transferable tr = dtde.getTransferable();
          DataFlavor[] flavors = tr.getTransferDataFlavors();
          for (int i = 0; i < flavors.length; i++) {
-            
+
             if (flavors[i].isFlavorJavaFileListType()) {
-               
+
                dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);
 
                java.util.List list = (java.util.List) tr.getTransferData(flavors[i]);
@@ -84,19 +88,19 @@ public class DragDropUtil implements DropTargetListener {
                      dirtmp = f.getParent();
                   }
                   final String dir = dirtmp;
-                  // to not block the UI of the OS, open in a separate thread
-                  SwingUtilities.invokeLater(new Runnable() {
 
+                  // to not block the UI of the OS, open in a separate thread          
+                  new Thread() {
                      @Override
                      public void run() {
                         try {
-                           MMStudioMainFrame.getInstance().openAcquisitionData(dir, true);
+                           MMStudio.getInstance().openAcquisitionData(dir, true);
                         } catch (MMScriptException ex) {
                            ReportingUtils.showError(ex);
                         }
                      }
-                  });
-                 
+                  }.start();
+
                }
                dtde.dropComplete(true);
                return;

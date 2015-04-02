@@ -8,16 +8,12 @@ import ij.process.ShortProcessor;
 import java.awt.Color;
 import java.util.prefs.Preferences;
 import java.util.Date;
-import java.lang.System;
 import java.awt.Rectangle;
 
-import mmcorej.MMCoreJ;
 import mmcorej.StrVector;
 
 import org.micromanager.api.Autofocus;
 import org.micromanager.api.ScriptInterface;
-import org.micromanager.acquisition.AcquisitionData;
-import org.micromanager.utils.AutofocusManager;
 import org.micromanager.utils.AutofocusBase;
 import org.micromanager.utils.MMException;
 import org.micromanager.utils.PropertyItem;
@@ -181,7 +177,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
       //######################## START THE ROUTINE ###########
 
       try {
-         IJ.write("Autofocus TB started.");
+         IJ.log("Autofocus TB started.");
          //########System setup##########
          if (!CHANNEL1.equals(NOCHANNEL) && channelGroup_ != null) 
             core_.setConfig(channelGroup_,CHANNEL1); 
@@ -212,7 +208,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
          //core_.setShutterOpen(true);
          //core_.setAutoShutter(false);
 
-         IJ.write("Before rough search: " + String.valueOf(curDist));
+         IJ.log("Before rough search: " + String.valueOf(curDist));
 
          //Rough search
          for (int i = 0; i < 2 * NUM_FIRST + 1; i++) {
@@ -227,7 +223,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
             // indx =0;
 
 
-            curSh = sharpNess(ipCurrent_);
+            curSh = computeScore(ipCurrent_);
 
             if (curSh > bestSh) {
                bestSh = curSh;
@@ -265,7 +261,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
             snapSingleImage();
             // indx =0;
 
-            curSh = sharpNess(ipCurrent_);
+            curSh = computeScore(ipCurrent_);
 
             if (curSh > bestSh) {
                bestSh = curSh;
@@ -278,7 +274,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
             //===IJ.write(String.valueOf(curDist)+" "+String.valueOf(curSh)+" "+String.valueOf(tcur));
          }
 
-         IJ.write("BEST_DIST_SECOND= " + String.valueOf(bestDist) + " BEST_SH_SECOND= " + String.valueOf(bestSh));
+         IJ.log("BEST_DIST_SECOND= " + String.valueOf(bestDist) + " BEST_SH_SECOND= " + String.valueOf(bestSh));
 
          core_.setPosition(core_.getFocusDevice(), bestDist);
          // indx =1;
@@ -287,7 +283,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
          //core_.setShutterOpen(false);
          //core_.setAutoShutter(true);
 
-         IJ.write("Total Time: " + String.valueOf(System.currentTimeMillis() - t0));
+         IJ.log("Total Time: " + String.valueOf(System.currentTimeMillis() - t0));
       } catch (Exception e) {
          IJ.error(e.getMessage());
       }
@@ -311,7 +307,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
          implus.getProcessor().setPixels(img);
          ipCurrent_ = implus.getProcessor();
       } catch (Exception e) {
-         IJ.write(e.getMessage());
+         IJ.log(e.getMessage());
          IJ.error(e.getMessage());
          return false;
       }
@@ -403,7 +399,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
     *@param  impro  Description of the Parameter
     *@return        Description of the Return Value
     */
-   private double sharpNess(ImageProcessor impro) {
+   public double computeScore(final ImageProcessor impro) {
 
       int width = (int) (CROP_SIZE * core_.getImageWidth());
       int height = (int) (CROP_SIZE * core_.getImageHeight());
@@ -540,7 +536,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
     *@return    The verboseStatus value
     */
    public String getVerboseStatus() {
-      return new String("OK");
+      return "OK";
    }
 
 
@@ -566,6 +562,7 @@ public class AutofocusTB extends AutofocusBase implements Autofocus {
    /**
     *  Description of the Method
     */
+   @Override
    public PropertyItem[] getProperties() {
 
       channelGroup_ = core_.getChannelGroup();

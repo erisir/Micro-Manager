@@ -48,8 +48,8 @@ LeicaDMSTCHub g_hub;
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-   AddAvailableDeviceName(g_LeicaDMSTCHub,"LeicaDMSTC Controller");
-   AddAvailableDeviceName(g_LeicaDMSTCXYDrive, "XY Drive");
+   RegisterDevice(g_LeicaDMSTCHub, MM::GenericDevice, "LeicaDMSTC Controller");
+   RegisterDevice(g_LeicaDMSTCXYDrive, MM::XYStageDevice, "XY Drive");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -189,12 +189,9 @@ int Hub::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 ///////////////////////////////////////////////////////////////////////////////
 XYStage::XYStage () :
 	CXYStageBase<XYStage>(),
-	busy_ (false),
 	initialized_ (false),
 	stepSize_um_(10),	
-
-name_ (g_LeicaDMSTCXYDrive)
-
+   name_ (g_LeicaDMSTCXYDrive)
 {
    InitializeDefaultErrorMessages();
    SetErrorText(ERR_DEVICE_NOT_FOUND, "No XY-Drive found in this microscope");

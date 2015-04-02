@@ -20,8 +20,16 @@
 (def MAX-Z-TRIGGER-DIST 5.0)
 
 (defstruct acq-settings :frames :positions :channels :slices :slices-first
-  :time-first :keep-shutter-open-slices :keep-shuftter-open-channels
+  :time-first :keep-shutter-open-slices :keep-shutter-open-channels
   :use-autofocus :autofocus-skip :relative-slices :exposure :interval-ms :custom-intervals-ms)
+
+(defn all-equal?
+  ([coll]
+    (or (empty? coll)
+        (apply = coll)))
+  ([val coll]
+    (or (empty? coll)
+        (apply = val coll))))
 
 (defn pairs
   "Generates a lazy list of pairs in sequence, ending with the last
@@ -56,18 +64,18 @@
   (and
     (not (some false?
            (for [[[d p] s] property-sequences]
-             (or (apply = s)
+             (or (all-equal? s)
                  (and (core isPropertySequenceable d p)
                       (<= (count s) (core getPropertySequenceMaxLength d p)))))))
-    (apply = (map :exposure channels))))
- 
+    (all-equal? (map :exposure channels))))
+
 (defn select-triggerable-sequences
   "Select only those sequences that can and must be triggered."
   [property-sequences]
   (into (sorted-map)
     (filter #(let [[[d p] vs] %]
                (and (core isPropertySequenceable d p)
-                    (not (apply = vs))))
+                    (not (all-equal? vs))))
             property-sequences)))
 
 (defn make-dimensions
@@ -202,6 +210,14 @@
                                    (nth interval (:frame-index e2))
                                    interval)))))
 
+(defn stage-sequenceable? []
+  (let [z-drive (.getFocusDevice mmc)]
+    (when-not (empty? z-drive)
+      (.isStageSequenceable mmc z-drive))))
+
+(defn sequence-fits-stage? [z-drive n-slices]
+  (<= n-slices (.getStageSequenceMaxLength mmc z-drive)))
+
 (defn event-triggerable
   "Returns true if an event can be added to a burst."
   [burst event]
@@ -213,10 +229,10 @@
     (and
       (channels-sequenceable (make-property-sequences props) channels)
       (or (= (e1 :slice) (e2 :slice))
-          (let [z-drive (. mmc getFocusDevice)]
+          (when-let [z-drive (. mmc getFocusDevice)]
             (and
-              (. mmc isStageSequenceable z-drive)
-              (< n (. mmc getStageSequenceMaxLength z-drive))
+              (stage-sequenceable?)
+              (sequence-fits-stage? z-drive (inc n))
               (<= (Math/abs (- (e1 :slice) (e2 :slice))) MAX-Z-TRIGGER-DIST)
               (<= (e1 :slice-index) (e2 :slice-index))))))))
   
@@ -239,7 +255,8 @@
     (merge
       {:properties (-> props make-property-sequences select-triggerable-sequences)}
       (let [slices (map :slice events)]
-        (when-not (apply = slices)  
+        (when (and (not (empty? slices))
+                   (not (all-equal? slices)))
           {:slices (when (-> events first :slice) slices)})))))
 
 (defn accumulate-burst-event
@@ -336,81 +353,118 @@
         [(str d "-" p) v]))))
 
 (defn generate-simple-burst-sequence [numFrames use-autofocus
-                                      channels default-exposure
-                                      triggers position-index]
+                                      channels slices default-exposure
+                                      property-triggers position-index
+                                      relative-slices]
   (let [numChannels (max 1 (count channels))
+        numSlices (max 1 (count slices))
         numFrames (max 1 numFrames)
         exposure (if-not (empty? channels)
                    (:exposure (first channels))
                    default-exposure)
-        events
-        (->> (for [f (range numFrames)
-                   c (range numChannels)]
-               {:frame-index f
-                :channel-index c})
-             (map
-               #(let [f (:frame-index %)
-                      c (:channel-index %)
-                      first-plane (and (zero? f) (zero? c))
-                      last-plane (and (= numFrames (inc f))
-                                      (= numChannels (inc c)))]
-                 (assoc %
-                    :next-frame-index (inc f)
-                    :wait-time-ms 0.0
-                    :exposure exposure
-                    :position-index position-index
-                    :position position-index
-                    :autofocus (if first-plane use-autofocus false)
-                    :channel-index c
-                    :channel (get channels c)
-                    :slice-index 0
-                    :metadata (make-channel-metadata (get channels c))))))]
-    (lazy-seq
-      (list
-        (assoc (first events)
-               :task :burst
-               :burst-data events
-               :burst-length (* numFrames numChannels)
-               :trigger-sequence triggers)))))
+        raw-events
+        (for [f (range numFrames)
+              s (range numSlices)
+              c (range numChannels)]
+          (let [first-plane (and (zero? f) (zero? c))
+                last-plane (and (= numFrames (inc f))
+                                (= numSlices (inc s))
+                                (= numChannels (inc c)))]
+            {:next-frame-index (inc f)
+             :wait-time-ms 0.0
+             :exposure exposure
+             :position-index position-index
+             :position position-index
+             :autofocus (if first-plane use-autofocus false)
+             :channel-index c
+             :channel (get channels c)
+             :slice-index s
+             :slice (get slices s)
+             :frame-index f
+             :metadata (make-channel-metadata (get channels c))}))
+        partitioned-events (if (< 1 numSlices)
+                             (partition-by :frame-index raw-events)
+                             (lazy-seq (list raw-events)))]
+    (map (fn [events]
+           (assoc (first events)
+                  :task :burst
+                  :burst-data events
+                  :burst-length (count events)
+                  :relative-z relative-slices
+                  :trigger-sequence (merge (make-triggers events) property-triggers)))
+         partitioned-events)))
   
 
 (defn generate-multiposition-bursts [positions num-frames use-autofocus
-                                     channels default-exposure triggers]
+                                     channels slices default-exposure triggers
+                                     relative-slices]
   (process-new-position
     (flatten
       (for [pos-index (range (count positions))]
         (map #(assoc % :position-index pos-index
                      :position (nth positions pos-index))
              (generate-simple-burst-sequence
-               num-frames use-autofocus channels default-exposure triggers pos-index))))))
+               num-frames use-autofocus channels slices
+               default-exposure triggers pos-index relative-slices))))))
 
 (defn generate-acq-sequence [settings runnables]
   (let [{:keys [numFrames time-first positions slices channels
                 use-autofocus default-exposure interval-ms
-                autofocus-skip custom-intervals-ms]} settings
-        num-positions (count positions)
-        property-sequences (make-property-sequences (map :properties channels))]
-    (if (and (< 1 numFrames)
-             (or time-first
-                 (> 2 num-positions))
-             (> 2 (count slices))
-             (or (> 2 (count channels))
-                 (and
-                   (channels-sequenceable property-sequences channels)
-                   (apply == 0 (map :skip-frames channels))
-                   (apply = true (map :use-z-stack channels))))
-             (or (not use-autofocus)
-                 (>= autofocus-skip (dec numFrames)))
-             (zero? (count runnables))
-             (not (first custom-intervals-ms))
-             (> default-exposure interval-ms))
+                autofocus-skip custom-intervals-ms slices-first
+                relative-slices]} settings
+        property-sequences (make-property-sequences (map :properties channels))
+        n-slices (count slices)
+        have-multiple-frames (< 1 numFrames)
+        have-multiple-positions (< 1 (count positions))
+        have-multiple-slices (< 1 n-slices)
+        have-multiple-channels (< 1 (count channels))
+        channel-properties-sequenceable (channels-sequenceable property-sequences channels)
+        slices-sequenceable (and (stage-sequenceable?)
+                                 (sequence-fits-stage? (.getFocusDevice mmc) n-slices))
+        no-channel-skips-frames (all-equal? 0 (map :skip-frames channels))
+        all-channels-do-z-stack (all-equal? true (map :use-z-stack channels))
+        channel-total-exposure (if have-multiple-channels
+                                 (reduce + (map :exposure channels))
+                                 default-exposure)]
+    (if
+      (and
+        (or
+          have-multiple-frames
+          have-multiple-slices
+          have-multiple-channels)
+        (or
+          time-first ; time points at each position
+          (not have-multiple-positions))
+        (not (and
+               have-multiple-slices
+               (not slices-sequenceable)))
+        (not (and
+               have-multiple-channels
+               (not channel-properties-sequenceable)))
+        (not (and
+               have-multiple-channels
+               (not no-channel-skips-frames)))
+        (not (and
+               have-multiple-slices
+               have-multiple-channels
+               (not all-channels-do-z-stack)))
+        (not (and
+               have-multiple-slices
+               have-multiple-channels
+               slices-first))
+        (or
+          (not use-autofocus)
+          (>= autofocus-skip (dec numFrames)))
+        (zero? (count runnables))
+        (not (first custom-intervals-ms))
+        ; Really we should sum the exposures for all positions and slices...
+        (< interval-ms channel-total-exposure))
       (let [triggers {:properties (select-triggerable-sequences property-sequences)}]
-        (if (< 1 num-positions)
+        (if have-multiple-positions
           (generate-multiposition-bursts
-            positions numFrames use-autofocus channels
-            default-exposure triggers)
+            positions numFrames use-autofocus channels slices
+            default-exposure triggers relative-slices)
           (generate-simple-burst-sequence
-            numFrames use-autofocus channels
-            default-exposure triggers 0)))
+            numFrames use-autofocus channels slices
+            default-exposure triggers 0 relative-slices)))
       (generate-default-acq-sequence settings runnables))))
-

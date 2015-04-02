@@ -19,16 +19,19 @@
 //               CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //               INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 //
-// CVS:          $Id$
+// CVS:          $Id: MMDialog.java 14898 2015-01-08 18:52:48Z cweisiger $
 //
 package org.micromanager.utils;
 
 import java.awt.Frame;
 import java.awt.Rectangle;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.prefs.Preferences;
 
 import javax.swing.JDialog;
-import org.micromanager.MMStudioMainFrame;
+
+import org.micromanager.MMStudio;
 
 /**
  * Base class for the Micro-Manager dialogs.
@@ -36,7 +39,8 @@ import org.micromanager.MMStudioMainFrame;
  */
 public class MMDialog extends JDialog {
    private static final long serialVersionUID = -3144618980027203294L;
-   private Preferences prefs_;
+   private Preferences mmDialogPrefs_;
+   private final String prefPrefix_;
    private static final String WINDOW_X = "mmdlg_y";
    private static final String WINDOW_Y = "mmdlg_x";
    private static final String WINDOW_WIDTH = "mmdlg_width";
@@ -44,51 +48,140 @@ public class MMDialog extends JDialog {
    
    public MMDialog() {
       super();
-      prefs_ = Preferences.userNodeForPackage(this.getClass());
-      MMStudioMainFrame mfr = MMStudioMainFrame.getInstance();
-      if (mfr != null)
-    	  setBackground(mfr.getBackgroundColor());
-      
+      finishConstructor();
+      prefPrefix_ = "";
+   }
+   public MMDialog(String prefPrefix) {
+      super();
+      finishConstructor();
+      prefPrefix_ = prefPrefix;
    }
    public MMDialog(Frame owner) {
       super(owner);
-      prefs_ = Preferences.userNodeForPackage(this.getClass());
-      MMStudioMainFrame mfr = MMStudioMainFrame.getInstance();
-      if (mfr != null)
-    	  setBackground(mfr.getBackgroundColor());
+      finishConstructor();
+      prefPrefix_ = "";
+   }
+   public MMDialog(Frame owner, boolean isModal) {
+      super(owner, isModal);
+      finishConstructor();
+      prefPrefix_ = "";
+   }
+
+   private void finishConstructor() {
+      mmDialogPrefs_ = Preferences.userNodeForPackage(this.getClass());
+      MMStudio mfr = MMStudio.getInstance();
+      if (mfr != null) {
+         mfr.addMMBackgroundListener(this);
+    	   setBackground(mfr.getBackgroundColor());
+      }
+   }
+
+   /**
+    * Checks whether WINDOW_X and WINDOW_Y coordinates are on the screen(s).
+    * If not then it sets the prefs to the values specified.
+    * Accounts for screen size changes between invocations or if screen
+    * is removed (e.g. had 2 monitors and go to 1).
+    * @param x new WINDOW_X position if current value isn't valid
+    * @param y new WINDOW_Y position if current value isn't valid
+    */
+   private void ensureSafeWindowPosition(int x, int y) {
+      int prefX = mmDialogPrefs_.getInt(prefPrefix_ + WINDOW_X, 0);
+      int prefY = mmDialogPrefs_.getInt(prefPrefix_ + WINDOW_Y, 0);
+      if (GUIUtils.getGraphicsConfigurationContaining(prefX, prefY) == null) {
+         // only reach this code if the pref coordinates are off screen
+         mmDialogPrefs_.putInt(prefPrefix_ + WINDOW_X, x);
+         mmDialogPrefs_.putInt(prefPrefix_ + WINDOW_Y, y);
+      }
+   }
+
+    /**
+    * Load window position and size from preferences if possible.
+    * If not possible then sets them from arguments
+    * Attaches a listener to the window that will save the position when the
+    * window closing event is received
+    * @param x - X position of this dialog if preference value invalid
+    * @param y - y position of this dialog if preference value invalid
+    * @param width - width of this dialog if preference value invalid
+    * @param height - height of this dialog if preference value invalid
+    */
+   protected void loadAndRestorePosition(int x, int y, int width, int height) {
+      loadPosition(x, y, width, height);
+      this.addWindowListener(new WindowAdapter() {
+         @Override
+         public void windowClosing(WindowEvent arg0) {
+            savePosition();
+         }
+      }
+      );
    }
    
+    /**
+    * Load window position from preferences if possible.
+    * If not possible then sets it from arguments
+    * Attaches a listener to the window that will save the position when the
+    * window closing event is received
+    * @param x - X position of this dialog if preference value invalid
+    * @param y - y position of this dialog if preference value invalid
+    */
+   protected void loadAndRestorePosition(int x, int y) {
+      loadPosition(x, y);
+      this.addWindowListener(new WindowAdapter() {
+         @Override
+         public void windowClosing(WindowEvent arg0) {
+            savePosition();
+         }
+      }
+      );
+   }
+   
+   /**
+    * Load window position and size from preferences
+    * Makes sure that the window can be displayed
+    * @param x - X position of this dialog
+    * @param y - y position of this dialog
+    * @param width - width of this dialog
+    * @param height - height of this dialog
+    */
    protected void loadPosition(int x, int y, int width, int height) {
-      setBounds(prefs_.getInt(WINDOW_X, x),
-                prefs_.getInt(WINDOW_Y, y),
-                prefs_.getInt(WINDOW_WIDTH, width),
-                prefs_.getInt(WINDOW_HEIGHT, height));      
+      ensureSafeWindowPosition(x, y);
+      setBounds(mmDialogPrefs_.getInt(prefPrefix_ + WINDOW_X, x),
+                mmDialogPrefs_.getInt(prefPrefix_ + WINDOW_Y, y),
+                mmDialogPrefs_.getInt(prefPrefix_ + WINDOW_WIDTH, width),
+                mmDialogPrefs_.getInt(prefPrefix_ + WINDOW_HEIGHT, height));
+   }
+   
+   @Override
+   public void dispose() {
+      savePosition();
+      super.dispose();
    }
    
    protected void loadPosition(int x, int y) {
-      setLocation(prefs_.getInt(WINDOW_X, x),
-                prefs_.getInt(WINDOW_Y, y));
+      ensureSafeWindowPosition(x, y);
+      setLocation(mmDialogPrefs_.getInt(WINDOW_X, x),
+                mmDialogPrefs_.getInt(WINDOW_Y, y));
    }
 
+   /**
+    * Writes window position and size to preferences
+    */
    protected void savePosition() {
       Rectangle r = getBounds();
-      
-      // save window position
-      prefs_.putInt(WINDOW_X, r.x);
-      prefs_.putInt(WINDOW_Y, r.y);
-      prefs_.putInt(WINDOW_WIDTH, r.width);
-      prefs_.putInt(WINDOW_HEIGHT, r.height);                  
+      if (r != null) {
+         mmDialogPrefs_.putInt(prefPrefix_ + WINDOW_X, r.x);
+         mmDialogPrefs_.putInt(prefPrefix_ + WINDOW_Y, r.y);
+         mmDialogPrefs_.putInt(prefPrefix_ + WINDOW_WIDTH, r.width);
+         mmDialogPrefs_.putInt(prefPrefix_ + WINDOW_HEIGHT, r.height);
+      }
    }
    
    public Preferences getPrefsNode() {
-      return prefs_;
+      return mmDialogPrefs_;
    }
    
    public void setPrefsNode(Preferences p) {
-      prefs_ = p;
+      mmDialogPrefs_ = p;
    }
-   
-   protected void setTopPosition() {
-   }
+
 
 }

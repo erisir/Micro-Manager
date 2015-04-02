@@ -26,14 +26,13 @@ package org.micromanager.conf2;
 
 import java.awt.Color;
 import java.awt.Dialog;
-import java.awt.Frame;
 import java.util.prefs.Preferences;
 
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 
 import mmcorej.CMMCore;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.utils.ReportingUtils;
 
 /**
@@ -54,9 +53,9 @@ public abstract class PagePanel extends JPanel{
    public PagePanel() {
       super();
       title_ = new String();
-      MMStudioMainFrame mmf = MMStudioMainFrame.getInstance();
+      MMStudio mmf = MMStudio.getInstance();
       if (mmf != null)
-    	  setBackground(MMStudioMainFrame.getInstance().getBackgroundColor());
+    	  setBackground(MMStudio.getInstance().getBackgroundColor());
    }
 
    public void setModel(MicroscopeModel model, CMMCore core) {

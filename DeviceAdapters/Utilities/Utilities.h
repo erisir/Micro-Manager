@@ -42,14 +42,14 @@
 #define ERR_NO_AUTOFOCUS_DEVICE            10008
 #define ERR_NO_AUTOFOCUS_DEVICE_FOUND      10009
 #define ERR_NO_AUTOFOCUS_DEVICE_FOUND      10009
-#define ERR_DEFINITE_FOCUS_TIMEOUT         10020
+#define ERR_NO_PHYSICAL_CAMERA             10010
 #define ERR_TIMEOUT                        10021
 
 
 //////////////////////////////////////////////////////////////////////////////
 // Max number of physical cameras
 //
-#define MAX_NUMBER_PHYSICAL_CAMERAS       3
+#define MAX_NUMBER_PHYSICAL_CAMERAS       4
 
 /*
  * MultiShutter: Combines multiple physical shutters into one logical device
@@ -100,7 +100,7 @@ class CameraSnapThread : public MMDeviceThreadBase
       void SetCamera(MM::Camera* camera) {camera_ = camera;};
       int svc();
       void Start();
-      CameraSnapThread & operator = (const CameraSnapThread & ) {}
+      CameraSnapThread & operator = (const CameraSnapThread & ) {return *this;};
 
    private:
       MM::Camera* camera_;
@@ -152,21 +152,66 @@ public:
 
 private:
    int Logical2Physical(int logical);
-   unsigned long bufferSize_;
    unsigned char* imageBuffer_;
 
    std::vector<std::string> availableCameras_;
    std::vector<std::string> usedCameras_;
    std::vector<int> cameraWidths_;
    std::vector<int> cameraHeights_;
-   unsigned  width_;
-   unsigned height_;
    std::vector<MM::Camera*> physicalCameras_;
    unsigned int nrCamerasInUse_;
    bool initialized_;
    ImgBuffer img_;
 };
 
+/**
+ * DAMonochromator: Use DA device as monochromator
+ * Also acts as a shutter (using a particular wavelength as "closed")
+ */
+class DAMonochromator : public CShutterBase<DAMonochromator>
+{
+public:
+   DAMonochromator();
+   ~DAMonochromator();
+
+   // Device API
+   // ----------
+   int Initialize();
+   int Shutdown() {initialized_ = false; return DEVICE_OK;}
+
+   void GetName(char* pszName) const;
+   bool Busy();
+
+   // Shutter API
+   int SetOpen(bool open = true);
+   int GetOpen(bool& open);
+   int Fire (double /* deltaT */) { return DEVICE_UNSUPPORTED_COMMAND;}
+   // ---------
+
+   // action interface
+   // ----------------
+   int OnDADevice(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+   int OnOpenWavelength(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnClosedWavelength(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMinWavelength(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMaxWavelength(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMinVoltage(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnMaxVoltage(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+private:
+   std::vector<std::string> availableDAs_;
+   MM::SignalIO* DADevice_;
+   std::string DADeviceName_;
+   bool initialized_;
+   bool open_;
+   double minVoltage_, maxVoltage_;
+   double minWavelength_, maxWavelength_;
+   double openWavelength_, closedWavelength_;
+   double openVoltage_, closedVoltage_;
+
+};
 
 /**
  * DAShutter: Adds shuttering capabilities to a DA device
@@ -198,8 +243,8 @@ public:
 
 private:
    std::vector<std::string> availableDAs_;
-   std::string DADeviceName_;
    MM::SignalIO* DADevice_;
+   std::string DADeviceName_;
    bool initialized_;
 };
 
@@ -324,12 +369,12 @@ public:
   // int OnPositionY(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnStageMinVoltX(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnStageMaxVoltX(MM::PropertyBase* pProp, MM::ActionType eAct);
-   //int OnStageMinPosX(MM::PropertyBase* pProp, MM::ActionType eAct);
-   //int OnStageMaxPosX(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnStageMinPosX(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnStageMaxPosX(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnStageMinVoltY(MM::PropertyBase* pProp, MM::ActionType eAct);
    int OnStageMaxVoltY(MM::PropertyBase* pProp, MM::ActionType eAct);
-   //int OnStageMinPosY(MM::PropertyBase* pProp, MM::ActionType eAct);
-   //int OnStageMaxPosY(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnStageMinPosY(MM::PropertyBase* pProp, MM::ActionType eAct);
+   int OnStageMaxPosY(MM::PropertyBase* pProp, MM::ActionType eAct);
 
    double stepSizeXUm_;
    double stepSizeYUm_;
@@ -422,8 +467,6 @@ private:
    std::string AutoFocusDeviceName_;
    MM::AutoFocus* AutoFocusDevice_;
    bool initialized_;
-   double pos_;
-   double originPos_;
 };
 
 /**
@@ -459,6 +502,7 @@ private:
    std::string stateDeviceName_;
    MM::State* stateDevice_;
    bool initialized_;
+   MM::MMTime lastMoveStartTime_;
 };
 
 #endif //_UTILITIES_H_
