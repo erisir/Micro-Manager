@@ -3,5 +3,7 @@
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="src" path="test"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/MMAcqEngine.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/MMCoreJ.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

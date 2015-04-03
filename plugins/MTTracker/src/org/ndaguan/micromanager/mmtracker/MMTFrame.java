@@ -1,6 +1,7 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import java.awt.Image;
+
 import java.awt.Toolkit;
 import java.awt.event.ActionListener;
 
@@ -17,7 +18,7 @@ import javax.swing.JSeparator;
 import javax.swing.JToolBar;
 import javax.swing.SwingConstants;
 import com.swtdesigner.SwingResourceManager;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 
 
 public class MMTFrame extends JFrame {
@@ -83,7 +84,7 @@ public class MMTFrame extends JFrame {
 
 	private JButton butFeedback;
 
-	public static MMTFrame getInstance(MMStudioMainFrame app, Listener listener) {
+	public static MMTFrame getInstance(MMStudio app, Listener listener) {
 		if(instance_ == null)
 			instance_ = new MMTFrame(app,listener);
 		return instance_;
@@ -96,7 +97,7 @@ public class MMTFrame extends JFrame {
 		MMTFrame zm = new MMTFrame(null,null);
 		zm.setVisible(true);
 	}
-	public MMTFrame(MMStudioMainFrame app, Listener listener) {
+	public MMTFrame(MMStudio app, Listener listener) {
 
 		listener_ = listener;
 		if (magnetControlFrame_ == null)

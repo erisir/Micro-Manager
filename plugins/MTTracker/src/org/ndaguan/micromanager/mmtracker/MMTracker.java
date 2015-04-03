@@ -1,6 +1,7 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import java.util.ArrayList;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -8,13 +9,14 @@ import javax.swing.JFrame;
 
 import mmcorej.CMMCore;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
+import org.micromanager.MainFrame;
 import org.micromanager.api.MMPlugin;
 import org.micromanager.api.ScriptInterface;
 
 public class MMTracker implements MMPlugin{
 
-	private MMStudioMainFrame app_;
+	private MMStudio app_;
 	private CMMCore core_;
 	private List<RoiItem> roiList_;
 	private OverlayRender render_;
@@ -42,7 +44,7 @@ public class MMTracker implements MMPlugin{
 	}
 	@Override
 	public void setApp(ScriptInterface app) {
-		app_ = (MMStudioMainFrame) app;
+		app_ = (MMStudio) app;
 		core_ = app_.getCore();
 		instance_ = this;		
 	}
@@ -71,8 +73,8 @@ public class MMTracker implements MMPlugin{
 		}
 		roiList_ = Collections.synchronizedList(new ArrayList<RoiItem>());
 		//operation
-		render_ = OverlayRender.getInstance(app_);
-		listener_ =Listener.getInstance(app_);
+		render_ = OverlayRender.getInstance();
+		listener_ =Listener.getInstance();
 		frame_ = MMTFrame.getInstance(app_,listener_);
 		kernel = Kernel.getInstance(roiList_);
 		xyAnalyzer_ = GetXYPositionAnalyzer.getInstance(kernel,listener_,roiList_,render_);

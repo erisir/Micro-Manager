@@ -1,9 +1,13 @@
 package org.ndaguan.micromanager.mmtracker;
+import ij.WindowManager;
+import ij.gui.ImageWindow;
+
 import java.io.IOException;
+
 import java.util.List;
 import mmcorej.TaggedImage;
 import org.json.JSONException;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.acquisition.TaggedImageQueue;
 import org.micromanager.api.TaggedImageAnalyzer;
 import org.micromanager.utils.MDUtils;
@@ -66,15 +70,15 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 
 		try {
 			String acqName = (String) taggedImage.tags.get("AcqName");
-			boolean update = acqName.equals(MMStudioMainFrame.SIMPLE_ACQ) ? true
+			boolean update = acqName.equals(MMT.SIMPLE_ACQ) ? true
 					: false;
-
+			ImageWindow win = ij.WindowManager.getCurrentWindow();
 			if(!listener_.isRunning()){
 				Function.getInstance().dataReset();
-				listener_.start(acqName);
+				listener_.start(win);
 				acqName_ = acqName;
 				frameNum_ = 0;
-				if (acqName.equals(MMStudioMainFrame.SIMPLE_ACQ)) {
+				if (acqName.equals(MMT.SIMPLE_ACQ)) {
 					kernel_.imageHeight = Integer.parseInt(taggedImage.tags
 							.get("Height").toString());
 					kernel_.imageWidth = Integer.parseInt(taggedImage.tags.get(
@@ -102,7 +106,7 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 			}
 			synchronized(MMT.Acqlock){
 				if(kernel_.roiList_.size()<=0){
-					Function.getInstance().reDraw(acqName, frameNum_, update,true);
+					Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, update,true);
 					return;
 				}
 				if(!kernel_.getXYZPosition(taggedImage.pix))return;
@@ -111,7 +115,7 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 				}
 			}//lock
 			String nameComp;
-			if (acqName.equals(MMStudioMainFrame.SIMPLE_ACQ))
+			if (acqName.equals(MMT.SIMPLE_ACQ))
 				nameComp = "Live";
 			else
 				nameComp = acqName;
@@ -122,8 +126,8 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 					MMT.logError("Save data error");
 				}
 			Function.getInstance().updateChart(frameNum_);
-			Function.getInstance().reDraw(acqName, frameNum_, false,true);
-			Function.getInstance().reDraw(acqName, frameNum_, false,true);
+			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,true);
+			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,true);
 			Function.getInstance().PullMagnet(frameNum_);
 			
 

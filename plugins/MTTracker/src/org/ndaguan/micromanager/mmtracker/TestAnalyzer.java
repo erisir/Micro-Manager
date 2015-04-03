@@ -1,8 +1,10 @@
 package org.ndaguan.micromanager.mmtracker;
 import ij.IJ;
+import ij.WindowManager;
+
 import mmcorej.TaggedImage;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.acquisition.TaggedImageQueue;
 import org.micromanager.api.TaggedImageAnalyzer;
 
@@ -33,7 +35,7 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 			double[] pos = Function.getInstance().getStagePosition();//new double[]{kernel_.xPosProfiles[MMT.calibrateIndex_],kernel_.yPosProfiles[MMT.calibrateIndex_],kernel_.zPosProfiles[MMT.calibrateIndex_]};
 			boolean ret = kernel_.getXYZPosition(taggedImage.pix);
 			
-			Function.getInstance().reDraw(MMStudioMainFrame.SIMPLE_ACQ,MMT.testingIndex_, true,true);
+			Function.getInstance().reDraw( WindowManager.getCurrentImage(),MMT.testingIndex_, true,true);
 			if(!ret){
 				MMT.logError("Testting Error");
 				MMT.isTestingRunning_ = false;

@@ -1,11 +1,15 @@
 package org.ndaguan.micromanager.mmtracker;
+import ij.WindowManager;
+import ij.gui.ImageWindow;
+
 import java.io.IOException;
+
 import java.util.List;
 
 import mmcorej.TaggedImage;
 
 import org.json.JSONException;
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.acquisition.TaggedImageQueue;
 import org.micromanager.api.TaggedImageAnalyzer;
 import org.micromanager.utils.MDUtils;
@@ -46,7 +50,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 	protected void analyze(TaggedImage taggedImage) {
 		 
 		timeStart = System.nanoTime();
-
+		boolean update =  true;
 		if (taggedImage == null || taggedImage == TaggedImageQueue.POISON)
 		{
 			Function.getInstance().dataReset();
@@ -68,16 +72,16 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 		}
 
 		try {
-			String acqName = (String) taggedImage.tags.get("AcqName");
-			boolean update = acqName.equals(MMStudioMainFrame.SIMPLE_ACQ) ? true
-					: false;
+			String acqName = "Snap/Live Window";
+			
 
 			if(!listener_.isRunning()){
 				Function.getInstance().dataReset();
-				listener_.start(acqName);
+				ImageWindow win = ij.WindowManager.getCurrentWindow();
+				listener_.start(win);
 				acqName_ = acqName;
 				frameNum_ = 0;
-				if (acqName.equals(MMStudioMainFrame.SIMPLE_ACQ)) {
+				if (acqName.equals(MMT.SIMPLE_ACQ)) {
 					kernel_.imageHeight = Integer.parseInt(taggedImage.tags
 							.get("Height").toString());
 					kernel_.imageWidth = Integer.parseInt(taggedImage.tags.get(
@@ -105,7 +109,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 			}
 			synchronized(MMT.Acqlock){
 				if(kernel_.roiList_.size()<=0){
-					Function.getInstance().reDraw(acqName, frameNum_, update,true);
+					Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, update,true);
 					return;
 				}
 				if(!kernel_.getXYPosition(taggedImage.pix))return;
@@ -114,7 +118,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 				}
 			}//lock
 			String nameComp;
-			if (acqName.equals(MMStudioMainFrame.SIMPLE_ACQ))
+			if (acqName.equals(MMT.SIMPLE_ACQ))
 				nameComp = "Live";
 			else
 				nameComp = acqName;
@@ -124,7 +128,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 				} catch (IOException e) {
 					MMT.logError("Save data error");
 				}
-			Function.getInstance().reDraw(acqName, frameNum_, false,true);
+			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,true);
 			if( MMT.VariablesNUPD.responceXY.value() == 1){
 				Function.getInstance().updateChart(frameNum_);
 				Function.getInstance().PullMagnet(frameNum_);

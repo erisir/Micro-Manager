@@ -2,6 +2,8 @@ package org.ndaguan.micromanager.mmtracker;
 
 import ij.ImageListener;
 
+
+
 import ij.ImagePlus;
 import ij.gui.Overlay;
 import ij.gui.Roi;
@@ -14,7 +16,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 
-import org.micromanager.MMStudioMainFrame;
 import org.micromanager.api.ScriptInterface;
 import org.micromanager.utils.MMScriptException;
 
@@ -24,15 +25,12 @@ import org.micromanager.utils.MMScriptException;
  * 
  */ 
 public class OverlayRender {
-
-	protected ScriptInterface gui_;
 	private Color labelColor_;
 	private Font labelFont_;
 	private int sizeCrossHair_;
 	private static OverlayRender instance_;
 
-	private OverlayRender(MMStudioMainFrame gui) {
-		gui_ = gui;
+	private OverlayRender( ) {
 		labelColor_ = Color.GREEN;
 		labelFont_ = new Font("SansSerif", Font.PLAIN, 14);
 		sizeCrossHair_ = 8;
@@ -51,8 +49,8 @@ public class OverlayRender {
 
 			@Override
 			public void imageUpdated(ImagePlus arg0) {
-				if (gui_.isAcquisitionRunning())
-					return;
+				//if (gui_.isAcquisitionRunning())
+				//	return;
 
 				HashMap<Long, Overlay> map = overlayMap_.get(arg0);
 				if (map == null)
@@ -64,29 +62,17 @@ public class OverlayRender {
 
 		});
 	}
-	public static OverlayRender getInstance() {
-		return instance_;
-	}
-	public static OverlayRender getInstance(MMStudioMainFrame gui) {
+
+	public static OverlayRender getInstance( ) {
 		if (instance_ == null)
-			instance_ = new OverlayRender(gui);
+			instance_ = new OverlayRender();
 		return instance_;
 	}
 
 	public void setCrossHairSize(int size) {
 		sizeCrossHair_ = size;
 	}
-
-	public ScriptInterface getMainFrame() {
-		return gui_;
-	}
-
-	public  void render(String acqName, Collection<RoiItem> itemList,
-			long frameNumber, boolean update) throws MMScriptException {
-		render(gui_.getAcquisition(acqName).getAcquisitionWindow()
-				.getHyperImage(), itemList, frameNumber, update);
-	}
-
+ 
 	public void render(final ImagePlus image, Collection<RoiItem> itemList,
 			long frameNumber, boolean update) {
 		if (image == null || itemList == null)

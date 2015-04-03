@@ -1,6 +1,7 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import ij.ImagePlus;
+
 import ij.gui.ImageCanvas;
 import ij.gui.ImageWindow;
 import ij.gui.Roi;
@@ -17,35 +18,29 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 
-import org.micromanager.MMStudioMainFrame;
+import org.micromanager.MMStudio;
 import org.micromanager.utils.MMScriptException;
 
 public class Listener implements MouseListener, MouseMotionListener,KeyListener,ActionListener{
 
-	private MMStudioMainFrame gui_;
 	private ImageCanvas canvas_;
 	private int lastX_, lastY_;
 	private static boolean isRunning_ = false;
 	private static Listener instance_;
 
-	public Listener(MMStudioMainFrame gui) {
-		gui_ =  gui;
+	public Listener() {
 	}
+
 	public static Listener getInstance() {
-		return instance_;
-	}
-	public static Listener getInstance(MMStudioMainFrame gui) {
 		if(instance_ == null)
-			instance_ = new Listener(gui);		
+			instance_ = new Listener();		
 		return instance_;
 	}
-	public void start (String acqName) throws MMScriptException  {
+	public void start (ImageWindow win) throws MMScriptException  {
 		if (isRunning_)
 			return;
-
-		ImagePlus imageplus = gui_.getAcquisition(acqName).getAcquisitionWindow().getHyperImage();
-		if(imageplus != null){
-			attach (imageplus.getWindow());
+		if(win != null){
+			attach (win);
 			isRunning_ = true;
 		}
 
