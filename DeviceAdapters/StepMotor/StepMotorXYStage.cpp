@@ -1,0 +1,1043 @@
+//////////////////////////////////////////////////////////////////////////////
+// FILE:          StepMotorXYStage.cpp
+// PROJECT:       Micro-Manager
+// SUBSYSTEM:     DeviceAdapters
+//-----------------------------------------------------------------------------
+// DESCRIPTION:   StepMotors Controller Driver
+//
+// COPYRIGHT:     Sutter Instrument,
+//				  Mission Bay Imaging, San Francisco, 2011
+//                All rights reserved
+//
+// LICENSE:       This library is free software; you can redistribute it and/or
+//                modify it under the terms of the GNU Lesser General Public
+//                License as published by the Free Software Foundation.
+//                
+//                You should have received a copy of the GNU Lesser General Public
+//                License along with the source distribution; if not, write to
+//                the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+//                Boston, MA  02111-1307  USA
+//
+//                This file is distributed in the hope that it will be useful,
+//                but WITHOUT ANY WARRANTY; without even the implied warranty
+//                of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+//
+//                IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+//                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, 
+//
+// AUTHOR:        Lon Chu (lonchu@yahoo.com), created on June 2011
+//
+
+#ifdef WIN32
+   #include <windows.h>
+   #define snprintf _snprintf 
+#endif
+
+#include <stdio.h>
+#include <string>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <math.h>
+#include "../../MMCore/MMCore.h"
+#include "../../MMDevice/ModuleInterface.h"
+#include "../../MMDevice/DeviceUtils.h"
+#include "StepMotorError.h"
+#include "StepMotorXYStage.h"
+
+using namespace std;
+
+//error code
+
+#define C51_DEVICE_OK 0x00
+#define C51_DEVICE_BUSY 0x02 +'J'-2
+#define C51_OUT_OF_LOW_LIMIT 0x03 +'K'-3
+#define C51_OUT_OF_HIGH_LIMIT 0x04 +'L'-4
+#define C51_CHECK_SUM_ERROR 0x05  +'M'-5
+#define C51_BAD_COMMAND	    0x06 +'N'-6
+
+//command string
+#define _SetZeroPosition 0x07 +'Z'-7
+#define _MoveUp	        0x08 +'U'-8
+#define _MoveDown	    0x09 +'D'-9
+#define _SetRunningDelay 0x0A +'R'-10
+#define _SetStartDelay 	0x0B +'S'-11
+#define _FindLimit		0x0C +'L'-12
+#define _ReleasePower	0x0D +'P'-13
+#define _QueryPosition   0x0E +'Q'-14
+#define _QueryStage   	0x0F +'E'-15
+#define _SetPosition	    0x10 + 'T' - 16
+#define _SetUM2Step	    0x11 + 'M'-17
+#define _SetDivMode		0x12 + 'V'-18
+
+#define _QueryAngel	    0x13 + 'W'-19
+#define _SetZeroAngel    0x00 +'X'
+#define _SetAngel        0x00 +'Y'
+
+///////////////////////////////////////////////////////////////////////////////
+// XYStage methods required by the API
+///////////////////////////////////////////////////////////////////////////////
+//
+// XYStage - two axis stage device.
+// Note that this adapter uses two coordinate systems.  There is the adapters own coordinate
+// system with the X and Y axis going the 'Micro-Manager standard' direction
+// Then, there is the StepMotors native system.  All functions using 'steps' use the StepMotor system
+// All functions using Um use the Micro-Manager coordinate system
+//
+
+//
+// XY Stage constructor
+//
+XYStage::XYStage() :
+    m_yInitialized(false)
+    //range_measured_(false),
+    //m_nAnswerTimeoutMs(1000)
+    //stepSizeUm_(1.0),
+    //set speed & accel variables?
+    //originX_(0),
+    //originY_(0)
+{
+    InitializeDefaultErrorMessages();
+
+    // create pre-initialization properties
+    // ------------------------------------
+    // NOTE: pre-initialization properties contain parameters which must be defined fo
+    // proper startup
+
+    m_nAnswerTimeoutMs = StepMotor::Instance()->GetTimeoutInterval();
+    m_nAnswerTimeoutTrys = StepMotor::Instance()->GetTimeoutTrys();
+
+    // Name, read-only (RO)
+    char sXYName[120];
+	sprintf(sXYName, "%s%s", StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYDevNameLabel).c_str(), MM::g_Keyword_Name);
+    int ret = CreateProperty(sXYName, StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str(), MM::String, true);
+
+    std::ostringstream osMessage;
+
+    if (StepMotor::Instance()->GetDebugLogFlag() > 0)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::class-constructor> CreateProperty(" << sXYName << "=" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str() << "), ReturnCode=" << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    // Description, RO
+    char sXYDesc[120];
+	sprintf(sXYDesc, "%s%s", StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYDevDescLabel).c_str(), MM::g_Keyword_Description);
+    ret = CreateProperty(sXYDesc, "MP-285 XY Stage Driver", MM::String, true);
+
+    if (StepMotor::Instance()->GetDebugLogFlag() > 0)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::class-constructor> CreateProperty(" << sXYDesc << " = MP-285 XY Stage Driver), ReturnCode=" << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+}
+
+//
+// XY Stage destructor
+//
+XYStage::~XYStage()
+{
+    Shutdown();
+}
+
+void XYStage::GetName(char* sName) const
+{
+    CDeviceUtils::CopyLimitedString(sName, StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str());
+}
+
+//
+// Performs device initialization.
+// Additional properties can be defined here too.
+//
+int XYStage::Initialize()
+{
+    std::ostringstream osMessage;
+
+    if (!StepMotor::Instance()->GetDeviceAvailability()) return DEVICE_NOT_CONNECTED;
+
+    // int ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionX).c_str(), "undefined", MM::String, true);  // Get Position X 
+	CPropertyAction* pActOnGetPosX = new CPropertyAction(this, &XYStage::OnGetPositionX);
+	char sPosX[20];
+	double dPosX = StepMotor::Instance()->GetPositionX();
+	sprintf(sPosX, "%ld", (long)(dPosX * (double)StepMotor::Instance()->GetUm2UStep()));
+	int ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionX).c_str(), sPosX, MM::Integer, false, pActOnGetPosX);  // Get Position X 
+
+    if (StepMotor::Instance()->GetDebugLogFlag() > 0)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::Initialize> CreateProperty(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionX).c_str() << " = " << sPosX << "), ReturnCode = " << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK)  return ret;
+
+    //ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionY).c_str(), "undefined", MM::String, true);  // Get Position Y 
+	CPropertyAction* pActOnGetPosY = new CPropertyAction(this, &XYStage::OnGetPositionY);
+	char sPosY[20];
+    double dPosY = StepMotor::Instance()->GetPositionY();
+	sprintf(sPosY, "%ld", (long)(dPosY * (double)StepMotor::Instance()->GetUm2UStep()));
+	ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionY).c_str(), sPosY, MM::Integer, false, pActOnGetPosY);  // Get Position Y 
+ 
+    if (StepMotor::Instance()->GetDebugLogFlag() > 0)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::Initialize> CreateProperty(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionY).c_str() << " = " << sPosY << "), ReturnCode = " << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK)  return ret;
+
+    ret = GetPositionUm(dPosX, dPosY);
+
+	sprintf(sPosX, "%ld", (long)(dPosX*(double)StepMotor::Instance()->GetUm2UStep()));
+	sprintf(sPosY, "%ld", (long)(dPosY*(double)StepMotor::Instance()->GetUm2UStep()));
+
+    if (StepMotor::Instance()->GetDebugLogFlag() > 0)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::Initialize> GetPosSteps(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionX).c_str() << " = " << sPosX << ",";
+		osMessage << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionY).c_str() << " = " << sPosY << "), ReturnCode = " << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret!=DEVICE_OK) return ret;
+
+    CPropertyAction* pActOnSetPosX = new CPropertyAction(this, &XYStage::OnSetPositionX);
+	sprintf(sPosX, "%.2f", dPosX);
+    ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionX).c_str(), sPosX, MM::Float, false, pActOnSetPosX);  // Set Position X 
+    //ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionX).c_str(), "Undefined", MM::Integer, true);  // Set Position X 
+
+    if (StepMotor::Instance()->GetDebugLogFlag() > 0)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::Initialize> CreateProperty(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionX).c_str() << sPosX << "), ReturnCode = " << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK)  return ret;
+
+    CPropertyAction* pActOnSetPosY = new CPropertyAction(this, &XYStage::OnSetPositionY);
+	sprintf(sPosY, "%.2f", dPosY);
+    ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionY).c_str(), sPosY, MM::Float, false, pActOnSetPosY);  // Set Position Y 
+    //ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionY).c_str(), "Undefined", MM::Integer, true);  // Set Position Y 
+
+    if (StepMotor::Instance()->GetDebugLogFlag() > 0)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::Initialize> CreateProperty(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionY).c_str() << sPosY << "), ReturnCode = " << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK)  return ret;
+
+
+    ret = UpdateStatus();
+    if (ret != DEVICE_OK) return ret;
+
+    m_yInitialized = true;
+    return DEVICE_OK;
+}
+
+//
+// shutdown X-Y stage
+//
+int XYStage::Shutdown()
+{
+    m_yInitialized= false;
+    StepMotor::Instance()->SetDeviceAvailable(false);
+    return DEVICE_OK;
+}
+
+//
+// Set Motion Mode (1: relatice, 0: absolute)
+//
+int XYStage::SetMotionMode(long lMotionMode)
+{
+    std::ostringstream osMessage;
+    unsigned char sCommand[6] = { 0x00, StepMotor::StepMotor_TxTerm, 0x0A, 0x00, 0x00, 0x00 };
+    unsigned char sResponse[64];
+    int ret = DEVICE_OK;
+        
+    if (lMotionMode == 0)
+        sCommand[0] = 'a';
+    else
+        sCommand[0] = 'b';
+
+    ret = WriteCommand(sCommand, 3);
+
+    if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+    {
+		osMessage.str("");
+		osMessage << "<XYStage::SetMotionMode> = [" << lMotionMode << "," << sCommand[0] << "], Returncode =" << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK) return ret;
+
+    ret = ReadMessage(sResponse, 2);
+
+    if (ret != DEVICE_OK) return ret;
+
+    StepMotor::Instance()->SetMotionMode(lMotionMode);
+
+    return DEVICE_OK;
+}
+
+//
+// Returns current X-Y position in µm.
+//
+int XYStage::GetPositionUm(double& dXPosUm, double& dYPosUm)
+{
+	float lZPosSteps = 0;
+
+	// get current position
+	unsigned char buf[9];
+	StepMotor::Instance()->PackageCommand(_QueryAngel,NULL,buf);
+	int ret = WriteCommand(buf, 7);
+	if (ret != DEVICE_OK) return ret;
+	CDeviceUtils::SleepMs(200);
+	unsigned char sResponse[64];
+	ret = ReadMessage(sResponse, 7);
+
+	if (ret != DEVICE_OK) return ret;
+	dXPosUm  =  StepMotor::Instance()->RawToLong((byte *)sResponse,2);
+	dYPosUm = 0;
+	StepMotor::Instance()->SetPositionX(dXPosUm);
+	StepMotor::Instance()->SetPositionY(dYPosUm);
+	return DEVICE_OK;
+}
+
+//
+// Move x-y stage to a relative distance from current position in µm
+//
+int XYStage::SetRelativePositionUm(double dXPosUm, double dYPosUm)
+{
+	int ret = DEVICE_OK;
+		// convert um to steps
+	double currPosX =0;
+	double currPosY =0;
+		ret = GetPositionUm(currPosX,currPosY);
+		if (ret != DEVICE_OK) return ret;
+		float target = (float)(dXPosUm + currPosX);
+
+		// send move command to controller
+		ret = SetPositionUm(target,dYPosUm);
+
+		if (ret != DEVICE_OK) return ret;
+		ret = UpdateStatus();
+		if (ret != DEVICE_OK) return ret;
+		return DEVICE_OK;
+}
+
+//
+// Move 2 x-y position in µm
+//
+int XYStage::SetPositionUm(double dXPosUm, double dYPosUm)
+{
+	int ret = DEVICE_OK;
+		//if(dXPosUm>0)return MPError::MPERR_OutOfLimit;
+		dYPosUm = 0;
+		ret = DEVICE_OK;
+		byte rawData[4];
+		byte buf[10];
+		StepMotor::Instance()->LongToRaw((long)dXPosUm,rawData);
+		StepMotor::Instance()->PackageCommand(_SetAngel,rawData,buf);
+
+		ret = WriteCommand(buf, 7);
+		if (ret != DEVICE_OK)  return ret;
+
+		unsigned char sResponse[64];
+
+		bool yCommError = true;
+		while (yCommError)
+		{
+
+			memset(sResponse, 0, 64);
+			CDeviceUtils::SleepMs(500);
+			ret = ReadMessage(sResponse, 7);
+			yCommError = (ret != DEVICE_OK);
+		}
+
+		StepMotor::Instance()->SetPositionX(dXPosUm);
+
+		double dPosX = 0;
+		double dPosY = 0;
+
+		ret = GetPositionUm(dPosX,dPosY);
+		if (ret != DEVICE_OK) return ret;
+
+		return ret;
+}
+  
+//
+// Returns current position in steps.
+//
+int XYStage::GetPositionSteps(long& lXPosSteps, long& lYPosSteps)
+{
+    // get current position
+    unsigned char sCommand[6] = { 0x63, StepMotor::StepMotor_TxTerm, 0x0A, 0x00, 0x00, 0x00 };
+    int ret = WriteCommand(sCommand, 3);
+
+    if (ret != DEVICE_OK)  return ret;
+
+    unsigned char sResponse[64];
+    memset(sResponse, 0, 64);
+
+    bool yCommError = false;
+    int nTrys = 0;
+
+    while (!yCommError && nTrys < StepMotor::Instance()->GetTimeoutTrys())
+    {
+        long lZPosSteps = (long) (StepMotor::Instance()->GetPositionZ() * (double)StepMotor::Instance()->GetUm2UStep());
+
+        ret = ReadMessage(sResponse, 14);
+
+        ostringstream osMessage;
+        char sCommStat[30];
+        int nError = CheckError(sResponse[0]);
+        yCommError = (sResponse[0] == 0) ? false : nError != 0;
+        if (yCommError)
+        {
+            if (nError == MPError::MPERR_SerialZeroReturn && nTrys < StepMotor::Instance()->GetTimeoutTrys()) { nTrys++; yCommError = false; }
+			if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+			{
+				osMessage.str("");
+				osMessage << "<XYStage::GetPositionSteps> Response = (" << nError << "," << nTrys << ")" ;
+			}
+			sprintf(sCommStat, "Error Code ==> <%2x>", sResponse[0]);
+        }
+        else
+        {
+            lXPosSteps = *((long*)(&sResponse[0]));
+            lYPosSteps = *((long*)(&sResponse[4]));
+            lZPosSteps = *((long*)(&sResponse[8]));
+            //StepMotor::Instance()->SetPositionX(lXPosSteps);
+            //StepMotor::Instance()->SetPositionY(lYPosSteps);
+            //StepMotor::Instance()->SetPositionZ(lZPosSteps);
+
+			if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+			{
+				osMessage.str("");
+				osMessage << "<XYStage::GetPositionSteps> Response(X = <" << lXPosSteps << ">, Y = <" << lYPosSteps << ">, Z = <"<< lZPosSteps << ">), ReturnCode=" << ret;
+			}
+            nTrys = StepMotor::Instance()->GetTimeoutTrys();
+            strcpy(sCommStat, "Success");
+           
+        }
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			this->LogMessage(osMessage.str().c_str());
+		}
+
+        //ret = SetProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_CommStateLabel).c_str(), sCommStat);
+    }
+
+    if (ret != DEVICE_OK) return ret;
+
+    return DEVICE_OK;
+}
+
+//
+// Move x-y stage to a relative distance from current position in uSteps
+//
+int XYStage::SetRelativePositionSteps(long lXPosSteps, long lYPosSteps)
+{
+	int ret = DEVICE_OK;
+    ostringstream osMessage;
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage.str("");
+		osMessage << "<XYStage::SetRelativePositionSteps> (x=" << lXPosSteps << ", y=" << lYPosSteps << ")";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+	// set relative motion mode
+	if (StepMotor::Instance()->GetMotionMode() == 0)
+	{
+		ret = SetMotionMode(1);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage.str("");
+			osMessage << "<XYStage::SetRelativePositionSteps> (" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_MotionMode).c_str() << " = <RELATIVE>), ReturnCode = " << ret;
+			LogMessage(osMessage.str().c_str());
+		}
+		if (ret != DEVICE_OK) return ret;
+	}
+
+	ret = _SetPositionSteps(lXPosSteps, lYPosSteps, 0L);
+
+	if (ret != DEVICE_OK) return ret;
+
+	return DEVICE_OK;
+}
+
+//
+// Move x-y stage to an absolute position in uSteps
+//
+int XYStage::SetPositionSteps(long lXPosSteps, long lYPosSteps)
+{
+	int ret = DEVICE_OK;
+    ostringstream osMessage;
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage.str("");
+		osMessage << "<XYStage::SetPositionSteps> (x=" << lXPosSteps << ", y=" << lYPosSteps << ")";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+	// set absolute motion mode
+	if (StepMotor::Instance()->GetMotionMode() != 0)
+	{
+		ret = SetMotionMode(0);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage.str("");
+			osMessage << "<XYStage::SetPositionSteps> (" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_MotionMode).c_str() << " = <ABSOLUTE>), ReturnCode = " << ret;
+			LogMessage(osMessage.str().c_str());
+		}
+		if (ret != DEVICE_OK) return ret;
+	}
+
+	long lZPosSteps = (long)StepMotor::Instance()->GetPositionZ() * (long)StepMotor::Instance()->GetUm2UStep();
+
+	ret = _SetPositionSteps(lXPosSteps, lYPosSteps, lZPosSteps);
+
+	if (ret != DEVICE_OK) return ret;
+
+	return DEVICE_OK;
+}
+
+//
+// Move x-y-z stage in uSteps
+//
+int XYStage::_SetPositionSteps(long lXPosSteps, long lYPosSteps, long lZPosSteps)
+{
+	int ret = DEVICE_OK;
+    ostringstream osMessage;
+
+    // get current position
+    unsigned char sCommand[16];
+    memset(sCommand, 0, 16);
+    sCommand[0]  = 0x6D;
+    sCommand[13] = StepMotor::StepMotor_TxTerm;
+    sCommand[14] = 0x0A;
+    long* plPositionX = (long*)(&sCommand[1]);
+    *plPositionX = lXPosSteps;
+    long* plPositionY = (long*)(&sCommand[5]);
+    *plPositionY = lYPosSteps;
+    long* plPositionZ = (long*)(&sCommand[9]);
+    *plPositionZ = lZPosSteps;
+
+    ret = WriteCommand(sCommand, 15);
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage.str("");
+		osMessage << "<XYStage::_SetPositionSteps> Command(<0x6D>, X = <" << *plPositionX << ">,<" << *plPositionY << ">,<" << *plPositionZ << ">), ReturnCode=" << ret;
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK)  return ret;
+
+	double dVelocity = (double)StepMotor::Instance()->GetVelocity() * (double)StepMotor::Instance()->GetUm2UStep();
+	long lXSteps = 0;
+	long lYSteps = 0;
+	if (StepMotor::Instance()->GetMotionMode() == 0)
+	{
+		long lOldXPosSteps = (long)StepMotor::Instance()->GetPositionX();
+		lXSteps = labs(lXPosSteps-lOldXPosSteps);
+		long lOldYPosSteps = (long)StepMotor::Instance()->GetPositionY();
+		lYSteps = labs(lYPosSteps-lOldYPosSteps);
+	}
+	else
+	{
+		lXSteps = labs(lXPosSteps);
+		lYSteps = labs(lYPosSteps);
+	}
+    double dSec =  (lXSteps > lYSteps) ? (double)lXSteps / dVelocity : (double)lYSteps / dVelocity;
+    long lSleep = (long)(dSec * 120.);
+    CDeviceUtils::SleepMs(lSleep);
+    
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage.str("");
+		osMessage << "<XYStage::_SetPositionSteps> Sleep..." << lSleep << " millisec...";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    bool yCommError = true;
+
+    while (yCommError)
+    {
+        unsigned char sResponse[64];
+        memset(sResponse, 0, 64);
+
+        ret = ReadMessage(sResponse, 2);
+
+        //char sCommStat[30];
+		yCommError = CheckError(sResponse[0]) != MPError::MPERR_OK;
+        //if (yCommError)
+        //{
+        //    sprintf(sCommStat, "Error Code ==> <%2x>", sResponse[0]);
+        //}
+        //else
+        //{
+        //    strcpy(sCommStat, "Success");
+        //}
+
+        //ret = SetProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_CommStateLabel).c_str(), sCommStat);
+    }
+
+    if (ret != DEVICE_OK) return ret;
+
+    return DEVICE_OK;
+}
+
+//
+// stop and interrupt Z stage motion
+//
+int XYStage::Stop()
+{
+    unsigned char sCommand[6] = { 0x03, StepMotor::StepMotor_TxTerm , 0x00, 0x00, 0x00, 0x00};
+
+    int ret = WriteCommand(sCommand, 2);
+
+    ostringstream osMessage;
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage.str("");
+		osMessage << "<XYStage::Stop> (ReturnCode = " << ret << ")";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    return ret;
+}
+
+//
+// Set current position as origin (0,0) coordinate of the controller.
+//
+int XYStage::SetOrigin()
+{
+    unsigned char sCommand[6] = { 0x6F, StepMotor::StepMotor_TxTerm, 0x0A, 0x00, 0x00, 0x00 };
+    int ret = WriteCommand(sCommand, 3);
+
+    std::ostringstream osMessage;
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage.str("");
+		osMessage << "<XYStage::SetOrigin> (ReturnCode=" << ret << ")";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret!=DEVICE_OK) return ret;
+
+    unsigned char sResponse[64];
+
+    memset(sResponse, 0, 64);
+    ret = ReadMessage(sResponse, 2);
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage.str("");
+		osMessage << "<XYStage::CheckStatus::SetOrigin> (ReturnCode = " << ret << ")";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK) return ret;
+
+    bool yCommError = CheckError(sResponse[0]) != 0;
+
+    char sCommStat[30];
+    if (yCommError)
+        sprintf(sCommStat, "Error Code ==> <%2x>", sResponse[0]);
+    else
+        strcpy(sCommStat, "Success");
+
+    //ret = SetProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_CommStateLabel).c_str(), sCommStat);
+
+    if (ret != DEVICE_OK) return ret;
+
+    return DEVICE_OK;
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Action handlers
+// Handle changes and updates to property values.
+///////////////////////////////////////////////////////////////////////////////
+
+int XYStage::OnSpeed(MM::PropertyBase* /*pProp*/, MM::ActionType /*eAct*/)
+{
+    return DEVICE_OK;
+}
+
+int XYStage::OnGetPositionX(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    std::ostringstream osMessage;
+    int ret = DEVICE_OK;
+    double dPosX = StepMotor::Instance()->GetPositionX();
+    double dPosY = StepMotor::Instance()->GetPositionY();
+
+	osMessage.str("");
+
+    //if (eAct == MM::BeforeGet)
+    //{
+    //    pProp->Set(dPosX);
+	//
+	//	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	//	{
+	//		osMessage << "<StepMotorCtrl::OnGetPositionX> BeforeGet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionX).c_str() << " = [" << dPosX << "], ReturnCode = " << ret;
+	//		//this->LogMessage(osMessage.str().c_str());
+	//	}
+    //}
+    //if (eAct == MM::AfterSet)
+    //{
+        // pProp->Get(dPos);
+
+        ret = GetPositionUm(dPosX, dPosY);
+		long lPosX = (long)(dPosX*(double)StepMotor::Instance()->GetUm2UStep());
+		//char sPosX[20];
+		//sprintf(sPosX, "%ld", (long)dPosX);
+
+        pProp->Set(lPosX);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<StepMotorCtrl::OnGetPositionX> AfterSet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionX).c_str() << " = [" << dPosX << "," << lPosX << "], ReturnCode = " << ret;
+			//this->LogMessage(osMessage.str().c_str());
+		}
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << ")";
+			this->LogMessage(osMessage.str().c_str());
+		}
+
+		if (ret != DEVICE_OK) return ret;
+    //}
+
+    return DEVICE_OK;
+}
+
+int XYStage::OnGetPositionY(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    std::ostringstream osMessage;
+    int ret = DEVICE_OK;
+    double dPosX = StepMotor::Instance()->GetPositionX();
+    double dPosY = StepMotor::Instance()->GetPositionY();
+
+	osMessage.str("");
+
+    //if (eAct == MM::BeforeGet)
+    //{        
+    //    pProp->Set(dPosY);
+	//
+	//	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	//	{
+	//		osMessage << "<StepMotorCtrl::OnGetPositionY> BeforeGet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionY).c_str() << " = [" << dPosY << "], ReturnCode = " << ret;
+	//		//this->LogMessage(osMessage.str().c_str());
+	//	}
+    //}
+    //if (eAct == MM::AfterSet)
+    //{
+        // pProp->Get(dPos)
+
+        ret = GetPositionUm(dPosX, dPosY);
+		long lPosY = (long)(dPosY*(double)StepMotor::Instance()->GetUm2UStep());
+		char sPosY[20];
+		sprintf(sPosY, "%ld", (long)lPosY);
+
+        pProp->Set(sPosY);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<StepMotorCtrl::OnGetPositionY> AfterSet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_GetPositionY).c_str() << " = [" << dPosY << "," << lPosY << "], ReturnCode = " << ret;
+			//this->LogMessage(osMessage.str().c_str());
+		}
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << ")";
+			this->LogMessage(osMessage.str().c_str());
+		}
+
+		if (ret != DEVICE_OK) return ret;
+    //}
+
+    return DEVICE_OK;
+}
+
+int XYStage::OnSetPositionX(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    std::ostringstream osMessage;
+    int ret = DEVICE_OK;
+    double dPosX = StepMotor::Instance()->GetPositionX();
+    double dPosY = StepMotor::Instance()->GetPositionY();
+
+	osMessage.str("");
+
+    if (eAct == MM::BeforeGet)
+    {
+        pProp->Set(dPosX);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<StepMotorCtrl::OnSetPositionX> BeforeGet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionX).c_str() << " = [" << dPosX << "], ReturnCode = " << ret;
+			//this->LogMessage(osMessage.str().c_str());
+		}
+    }
+    else if (eAct == MM::AfterSet)
+    {
+        pProp->Get(dPosX);
+
+		if (StepMotor::Instance()->GetMotionMode() == 0)
+			ret = SetPositionUm(dPosX, dPosY);
+		else
+			ret = SetRelativePositionUm(dPosX, 0.);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<StepMotorCtrl::OnSetPositionX> AfterSet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionX).c_str() << " = [" << dPosX << "], ReturnCode = " << ret;
+			//this->LogMessage(osMessage.str().c_str());
+		}
+    }
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage << ")";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK) return ret;
+
+    return DEVICE_OK;
+}
+
+int XYStage::OnSetPositionY(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+    std::ostringstream osMessage;
+    int ret = DEVICE_OK;
+    double dPosX = StepMotor::Instance()->GetPositionX();
+    double dPosY = StepMotor::Instance()->GetPositionY();
+
+	osMessage.str("");
+
+    if (eAct == MM::BeforeGet)
+    {
+        pProp->Set(dPosY);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<StepMotorCtrl::OnSetPositionY> BeforeGet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionY).c_str() << " = [" << dPosY << "], ReturnCode = " << ret;
+			//this->LogMessage(osMessage.str().c_str());
+		}
+    }
+    else if (eAct == MM::AfterSet)
+    {
+        pProp->Get(dPosY);
+
+		if (StepMotor::Instance()->GetMotionMode() == 0)
+			ret = SetPositionUm(dPosX, dPosY);
+		else
+			ret = SetRelativePositionUm(0., dPosY);
+
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<StepMotorCtrl::OnSetPositionY> AfterSet(" << StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetPositionY).c_str() << " = [" << dPosY << "], ReturnCode = " << ret;
+			//this->LogMessage(osMessage.str().c_str());
+		}
+    }
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		osMessage << ")";
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    if (ret != DEVICE_OK) return ret;
+
+    return DEVICE_OK;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Helper, internal methods
+///////////////////////////////////////////////////////////////////////////////
+
+//
+// Write a coomand to serial port
+//
+int XYStage::WriteCommand(unsigned char* sCommand, int nLength)
+{
+	int ret = DEVICE_OK;
+		ostringstream osMessage;
+		const unsigned char em = 'X';
+		for (int nBytes = 0; nBytes < 10 && ret == DEVICE_OK; nBytes++)
+		{
+			ret = WriteToComPort(StepMotor::Instance()->GetSerialPort().c_str(), &em, 1);
+			CDeviceUtils::SleepMs(1);
+		}
+		ret = ClearPort(*this, *GetCoreCallback(), StepMotor::Instance()->GetSerialPort().c_str());
+		if (ret != DEVICE_OK) return ret;
+		for (int nBytes = 0; nBytes < nLength && ret == DEVICE_OK; nBytes++)
+		{
+			ret = WriteToComPort(StepMotor::Instance()->GetSerialPort().c_str(), (const unsigned char*)&sCommand[nBytes], 1);
+			CDeviceUtils::SleepMs(1);
+		}
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage.str("");
+			osMessage << "<XYStage::WriteCommand> (Command=";
+			char sHex[4] = { NULL, NULL, NULL, NULL };
+			for (int n = 0; n < nLength && ret == DEVICE_OK; n++)
+			{
+				if(sCommand[n] == 0)
+					sCommand[n] = '#';
+				osMessage << "[" << (char)sCommand[n] << "|"<< (int)sCommand[n] <<"]";
+			}
+			osMessage << ")";
+			this->LogMessage(osMessage.str().c_str());
+		}
+
+		if (ret != DEVICE_OK) return ret;
+
+		return DEVICE_OK;
+}
+
+//
+// Read a message from serial port
+//
+int XYStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
+{
+	// block/wait for acknowledge, or until we time out;
+		unsigned int nLength = 256;
+		unsigned char sAnswer[256];
+		memset(sAnswer, 0, nLength);
+		unsigned long lRead = 0;
+		unsigned long lStartTime = GetClockTicksUs();
+		ostringstream osMessage;
+		char sHex[4] = { NULL, NULL, NULL, NULL };
+		int ret = DEVICE_OK;
+		bool yRead = false;
+		bool yTimeout = false;
+		while (!yRead && !yTimeout && ret == DEVICE_OK )
+		{
+			unsigned long lByteRead;
+
+			const MM::Device* pDevice = this;
+			ret = (GetCoreCallback())->ReadFromSerial(pDevice, StepMotor::Instance()->GetSerialPort().c_str(), (unsigned char *)&sAnswer[lRead], (unsigned long)nBytesRead-lRead, lByteRead);
+			lRead += lByteRead;
+
+			yRead =  (lRead >= (unsigned long)nBytesRead);
+
+			if (yRead) break;
+
+			// check for timeout
+			yTimeout = ((double)(GetClockTicksUs() - lStartTime) / 1000) > (double) m_nAnswerTimeoutMs;
+			if (!yTimeout) CDeviceUtils::SleepMs(3);
+
+		}
+
+		for(int i=0;i<=7;i++)
+		{
+			sResponse[i] = sAnswer[i];
+		}
+
+
+		if (yTimeout) return DEVICE_SERIAL_TIMEOUT;
+		return DEVICE_OK;
+}
+
+//
+// check the error code for the message returned from serial communivation
+//
+int XYStage::CheckError(unsigned char bErrorCode)
+{
+    // if the return message is 2 bytes message including CR
+    unsigned int nErrorCode = 0;
+    ostringstream osMessage;
+
+	osMessage.str("");
+
+    // check 4 error code
+    if (bErrorCode == StepMotor::StepMotor_SP_OVER_RUN)
+    {
+        // Serial command buffer over run
+        nErrorCode = MPError::MPERR_SerialOverRun;       
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<XYStage::checkError> ErrorCode=[" << MPError::Instance()->GetErrorText(nErrorCode).c_str() << "])";
+		}
+    }
+    else if (bErrorCode == StepMotor::StepMotor_FRAME_ERROR)
+    {
+        // Receiving serial command time out
+        nErrorCode = MPError::MPERR_SerialTimeout;       
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<XYStage::checkError> ErrorCode=[" << MPError::Instance()->GetErrorText(nErrorCode).c_str() << "])";
+		}
+    }
+    else if (bErrorCode == StepMotor::StepMotor_BUFFER_OVER_RUN)
+    {
+        // Serial command buffer full
+        nErrorCode = MPError::MPERR_SerialBufferFull;       
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<XYStage::checkError> ErrorCode=[" << MPError::Instance()->GetErrorText(nErrorCode).c_str() << "])";
+		}
+    }
+    else if (bErrorCode == StepMotor::StepMotor_BAD_COMMAND)
+    {
+        // Invalid serial command
+        nErrorCode = MPError::MPERR_SerialInpInvalid;       
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<XYStage::checkError> ErrorCode=[" << MPError::Instance()->GetErrorText(nErrorCode).c_str() << "])";
+		}
+    }
+    else if (bErrorCode == StepMotor::StepMotor_MOVE_INTERRUPTED)
+    {
+        // Serial command interrupt motion
+        nErrorCode = MPError::MPERR_SerialIntrupMove;       
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<XYStage::checkError> ErrorCode=[" << MPError::Instance()->GetErrorText(nErrorCode).c_str() << "])";
+		}
+    }
+    else if (bErrorCode == 0x0D)
+    {
+        // read carriage return
+        nErrorCode = MPError::MPERR_OK;
+ 		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<XYStage::checkError> ErrorCode=[" << MPError::Instance()->GetErrorText(nErrorCode).c_str() << "])";
+		}
+    }
+    else if (bErrorCode == 0x00)
+    {
+        // No response from serial port
+        nErrorCode = MPError::MPERR_SerialZeroReturn;
+		if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+		{
+			osMessage << "<XYStage::checkError> ErrorCode=[" << MPError::Instance()->GetErrorText(nErrorCode).c_str() << "])";
+		}
+    }
+
+	if (StepMotor::Instance()->GetDebugLogFlag() > 1)
+	{
+		this->LogMessage(osMessage.str().c_str());
+	}
+
+    return (nErrorCode);
+}
+

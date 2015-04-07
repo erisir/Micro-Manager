@@ -1,6 +1,9 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import java.awt.Color;
+import java.util.List;
+
+import org.micromanager.MMStudio;
 
 public class MMT {
 	public static final String menuName = "MultZIndexMeasure";
@@ -12,7 +15,7 @@ public class MMT {
 	public static  String magnetXYstage_ = "MP285 XY Stage";
 	public static  String magnetZStage_ = "MP285 Z Stage";
 	public static  boolean debug = true;
-	
+	     
 	public static  String xyStage_ = ""; 
 	public static  String zStage_ = "";
 	
@@ -28,8 +31,7 @@ public class MMT {
 	public static int currentframeIndex_ = 0;
 	public static double[][] Coefficients = null;
 	public static String lastError_ = "No Error";
-	
-	
+	private static long timeStart;	
 	
 	public static String[] CHARTLIST = new String[]{
 		"Chart-Z","Chart-X","Chart-Y","Chart-FX","Chart-FY","Chart-Testing","Chart-Cal-Pos","Chart-Corr","Chart-SumX","Chart-SumY"
@@ -40,6 +42,14 @@ public class MMT {
 		MMTFrame.getInstance().infomation_.setForeground(new Color(255,0,0));
 		MMTFrame.getInstance().infomation_.setText("Error!\t"+string);
 		System.out.print(String.format("Error!!!\t%s\r\n",string));
+	}
+	public static void tik() 
+	{
+		timeStart = System.nanoTime();
+	}
+	public static void tok(String mouldeName ) 
+	{
+		System.out.print(String.format("\r\nMoulde¡¾%s¡¿:\tcostTime:\t%f ms\t\n", mouldeName,(System.nanoTime()-timeStart)/10e6));
 	}
 	public static void debugError(String string) 
 	{

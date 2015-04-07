@@ -45,7 +45,7 @@ public class Listener implements MouseListener, MouseMotionListener,KeyListener,
 		}
 
 	}
-
+ 
 	public void stop() {
 		if (canvas_ != null) {
 			canvas_.removeMouseListener(this);

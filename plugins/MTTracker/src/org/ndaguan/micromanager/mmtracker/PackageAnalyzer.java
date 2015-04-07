@@ -24,7 +24,7 @@ public class PackageAnalyzer {
 		typeMap_.put(Double.class, (byte) 'd');
 		typeMap_.put(String.class, (byte) 's');
 	}
-
+ 
 	/**
 	 * @param rawData
 	 * @param offset

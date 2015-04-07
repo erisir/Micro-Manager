@@ -71,6 +71,8 @@ test-reports/
 /testing/gtest/
 
 # Generated source
+/lib_Win32	
+/bin_Win32
 .svn
 /buildscripts/launchers/micromanager
 /buildscripts/launchers/mmimagej

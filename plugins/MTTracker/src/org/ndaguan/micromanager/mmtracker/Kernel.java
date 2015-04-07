@@ -21,6 +21,7 @@ import org.apache.commons.math3.stat.regression.SimpleRegression;
 import org.apache.commons.math3.transform.DftNormalization;
 import org.apache.commons.math3.transform.FastFourierTransformer;
 import org.apache.commons.math3.transform.TransformType;
+import org.micromanager.MMStudio;
 
 public class Kernel {
 
@@ -72,7 +73,9 @@ public class Kernel {
 		double[] force = new double[]{0,0};
 		double[] skrewneww = new double[]{0,0}; 
 		if(roiList_.size() <= 0)return false;
+		//		MMT.tik();
 		double[][] ret = gosseCenter(image);
+		//		MMT.tok("GooseCenter");
 		if(ret == null)return false;
 		MMT.currentframeIndex_++;
 		for (int i = 0; i < roiList_.size(); i++) {
@@ -82,10 +85,11 @@ public class Kernel {
 			}
 			roiList_.get(i).setZ(ret[i][2]);
 			force = calcForces(roiList_.get(i).getStats());
-//			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
+			//			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
 			roiList_.get(i).setForce(force);
-//			roiList_.get(i).setSkrewness(skrewneww);
+			//			roiList_.get(i).setSkrewness(skrewneww);
 		}
+
 		return true;
 	}
 	public boolean getXYZPosition(Object image){	
@@ -100,9 +104,7 @@ public class Kernel {
 			//set value
 			roiList_.get(i).setXY(ret[i]);
 			force = calcForces(roiList_.get(i).getStats());
-//			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
 			roiList_.get(i).setForce(force);
-//			roiList_.get(i).setSkrewness(skrewneww);
 
 		}
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
@@ -123,7 +125,7 @@ public class Kernel {
 				}
 				return false;
 			}
-			currProfiles = polarIntegral(image,xy[0],xy[1]);
+			currProfiles = polarIntegral(image,xy[0],xy[1]);		
 			double zpos = getZLocation(k,currProfiles);
 			roiList_.get(k).setZ(zpos);
 			roiList_.get(k).setL();
@@ -176,33 +178,30 @@ public class Kernel {
 
 
 	public  static void main(String[] args) {
-		char str[] = new char[]{'@','M','U',0x00,0x00,0x00,0x0A,'X'};
-		char checksum = '@';
-		for(int i=1;i<6;i++){
-			checksum ^= str[i];
-		}
-		char b = checksum;
 		List<RoiItem> rt = Collections.synchronizedList(new ArrayList<RoiItem>());
-		rt.add(RoiItem.createInstance(new double[]{130,130},"bean2"));
+		rt.add(RoiItem.createInstance(new double[]{130,130,0},"bean2"));
 
-		Function fc = new Function( rt);
+		Function fc =  Function.getInstance(null,rt);
 		Kernel kl = new Kernel(rt);
 
 		kl.imageWidth = 300;
 		kl.imageHeight = 300;
 		MMT.VariablesNUPD.calRange.value(10);
+		MMT.VariablesNUPD.beanRadiuPixel.value(50);
+		MMT.VariablesNUPD.pixelToPhysX.value(1.0);
+		MMT.VariablesNUPD.pixelToPhysY.value(1.0);
 		MMT.VariablesNUPD.calStepSize.value(1);
 		MMT.VariablesNUPD.precision.value(0.0001);
-		int bitDepth = 32;
+		int bitDepth = 16;
 		boolean flag = false;
 		int calRange = (int) MMT.VariablesNUPD.calRange.value();
 		if(flag)
 			for (int i = 0; i < calRange ; i++) {
 				Object image = getImg(i+1,bitDepth);
-				long timeStart = System.nanoTime();
+				//				MMT.tik();
 				boolean ret = kl.getXYPosition(image);
 				if(!ret)continue;
-				System.out.print(String.format("\r\ntotal:%f",(System.nanoTime() - timeStart)/10e6));
+				//MMT.tok("getXYPosition");
 				for (int k = 0; k < rt.size(); k++) {
 					double[] xy = rt.get(k).getXY();
 					double xpos = xy[0];
@@ -210,7 +209,7 @@ public class Kernel {
 					double[] xyPhy = rt.get(k).getXYZPhy();
 					double xphy = xyPhy[0];
 					double yphy = xyPhy[1];
-					System.out.print(String.format("\r\nx:\t%f\ty:%f\r\nxphy:\t%f\typhy:\t%f", xpos,ypos,xphy,yphy));
+					System.out.print(String.format("\r\nx:\t%f\ty:%f xphy:\t%f\typhy:\t%f", xpos,ypos,xphy,yphy));
 
 				}
 			}
@@ -228,24 +227,18 @@ public class Kernel {
 			for (int jj = 0; jj < 1000; jj++) {
 
 				for (int i = 0; i < calRange; i++) {
-					double img = 2 + 1.2;				
+					double img = 2 + 1.5;				
 					Object image = getImg(img,bitDepth);
-					double timeConsume = System.nanoTime();
+					//MMT.tik();
 					kl.getXYZPosition(image);
-					fc.updateChart(jj);
-					//					try {
-					//						kl.saveRoiData("Acq",i,(System.nanoTime() -timeConsume)/10e6 );
-					//					} catch (IOException e) {
-					//						MMT.logError("Save data err");
-					//					}
-					timeConsume = (System.nanoTime() -timeConsume)/10e6 ;
+					//					MMT.tok("getXYZPosition");
 
 					for (int k = 0; k < rt.size(); k++) {
 						double[] xyPhy = rt.get(k).getXYZPhy();
 						double xphy = xyPhy[0];
 						double yphy = xyPhy[1];
 						double zphy = rt.get(k).getZ();
-						System.out.print(String.format("\r\n\r\nxphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\ttime consume:\t%f",xphy,yphy,zphy,img,zphy-img,timeConsume));
+						System.out.print(String.format("\r\n\r\nxphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\t",xphy,yphy,zphy,img,zphy-img));
 					}
 
 				}
@@ -286,7 +279,7 @@ public class Kernel {
 		return ret;
 	} 
 	private double[] polarIntegral(Object image,double xpos,double ypos){
-		
+
 		double S00 = 0, S01 =0, S10 = 0, S11 =0;				 
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
 		double rInterStep = MMT.VariablesNUPD.rInterStep.value();
@@ -362,16 +355,16 @@ public class Kernel {
 		case "[S":
 			profile[0] = ((short[]) image)[(int)xpos + ((int)ypos)* imageWidth];
 			statis_.addValue(profile[0]);
-
 			for(int i = skipStart;i< beanRadiuPixel/rInterStep ;i++)
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 1/r;
+				double dTheta = 10/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				nTheta = (nTheta==0)?1:nTheta;
 				for(int j = 0;j<nTheta;j++)
 				{
+
 
 					double x = (xpos+xFactor*r*Math.cos(dTheta*j));
 					double y = (ypos+yFactor*r*Math.sin(dTheta*j));
@@ -399,7 +392,7 @@ public class Kernel {
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 1/r;
+				double dTheta = 10/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				for(int j = 0;j<nTheta;j++)
 				{
@@ -425,13 +418,13 @@ public class Kernel {
 			}
 			break;
 		}
-		normalization(profile,statis_);				
+		normalization(profile,statis_);	
 		return profile;
 	}
 	public void updateCalibrationProfile(){
 		double calRange = MMT.VariablesNUPD.calRange.value();
 		double calStepSize = MMT.VariablesNUPD.calStepSize.value();
-		
+
 		zPosProfiles = new double[ (int) (calRange/calStepSize)];
 		xPosProfiles = new double[ (int) (calRange/calStepSize)];
 		yPosProfiles = new double[ (int) (calRange/calStepSize)];
@@ -480,23 +473,26 @@ public class Kernel {
 			}
 		}
 		UnivariateFunction function = interpolator.interpolate(zPosProfiles, yArray);
-
+		pos = zPosProfiles[index];
+		double pos0 = zPosProfiles[0];
+		double posEnd = zPosProfiles[zPosProfiles.length-1];
 		max = 0;
-		int start = index-1;
-		if(start<0)
-			start = 0;
-		int end = start+2;
+		double start,end;
 
-		if(end>=zPosProfiles.length)
-			end = zPosProfiles.length-1;
-
-		for (double j = zPosProfiles[start]; j <  zPosProfiles[end]; j+= MMT.VariablesNUPD.precision.value()) {
-			double value  = function.value(j);
-			if(value >max){
-				max = value;
-				pos = j;
+		for(double inc = 0.1;inc>MMT.VariablesNUPD.precision.value();inc =inc/10){
+			start = pos-1;
+			end = pos+1;
+			if(start<pos0)start=pos0;
+			if(end>posEnd)end=posEnd;
+			for (double i = start; i < end; i+=inc) {
+				double value  = function.value(i);
+				if(value >max){
+					max = value;
+					pos = i;
+				}
 			}
 		}
+
 		Function.getInstance().updateCorrChart(roiIndex, yArray);
 		return pos;
 	}
@@ -594,7 +590,10 @@ public class Kernel {
 		int index = 0;
 
 		double yArray[] = new double[convLen];
+		double[] xArray = new double[convLen];
+		
 		for (int i = 0; i < convLen; i++) {
+			xArray[i] = i;
 			double value = convResult[i].getReal();
 			yArray[i] = value;
 			if(value > max){
@@ -603,28 +602,28 @@ public class Kernel {
 			}
 		}
 
-		double[] xArray = new double[convLen];
-		for (int i=0; i<convLen; i++)
-			xArray[i] = i;
 		UnivariateFunction function = interpolator.interpolate(xArray, yArray);
-		double pos = 0;
+		double pos = xArray[index];
+		
 		max = 0;
-		int start = index-1;
-		if(start<0)
-			start = 0;
-		int end = start+2;
+		double start,end,pos0,posEnd;
 
-		if(end>=xArray.length)
-			end = xArray.length-1;
-
-		for (double i = xArray[start]; i < xArray[end]; i+= MMT.VariablesNUPD.precision.value()) {
-			double value  = function.value(i);
-			if(value >max){
-				max = value;
-				pos = i;
+		pos0 = xArray[0];
+		posEnd = xArray[convLen-1];
+		for(double inc = 0.1;inc>MMT.VariablesNUPD.precision.value();inc =inc/10){
+			start = pos-1;
+			end = pos+1;
+			if(start<pos0)start=pos0;
+			if(end>posEnd)end=posEnd;
+			for (double i = start; i < end; i+=inc) {
+				double value  = function.value(i);
+				if(value >max){
+					max = value;
+					pos = i;
+				}
 			}
 		}
-
+		
 		return (pos+1)/2;
 	}
 
@@ -777,7 +776,7 @@ public class Kernel {
 		case 16:
 			short[] imgs = new short[img_.length];
 			for (int i = 0; i < img_.length; i++) {
-				imgs[i] = (short) Double.parseDouble(img_[i]);
+				imgs[i] = (short) ((short) 4000*Double.parseDouble(img_[i]));
 			}
 			return imgs;	
 		case 32:
@@ -798,7 +797,7 @@ public class Kernel {
 	}
 
 	private static String[] getimgString(Object nameext)  {
-		File imgFile = new File("F:/Development/CalImages/img"+nameext+".txt");
+		File imgFile = new File("F:/Development/SandBox/CalImages/img"+nameext+".txt");
 		if(!imgFile.exists())
 			return null;		
 		try {

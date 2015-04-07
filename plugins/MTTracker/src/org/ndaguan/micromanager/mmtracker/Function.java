@@ -16,6 +16,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.sql.Time;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -76,8 +77,12 @@ public class Function {
 	}
 
 	public static Function getInstance(MMStudio gui,List<RoiItem> roiList) {
-		if(instance_ == null)
-			instance_ = new Function(gui,roiList);
+		if(instance_ == null){
+			if(gui ==null)
+				instance_ = new Function(roiList);
+			else
+				instance_ = new Function(gui,roiList);	
+		}
 
 		return instance_;
 	}
@@ -142,6 +147,7 @@ public class Function {
 			@Override
 			public void run() {
 				try {
+					TimeUnit.MILLISECONDS.sleep(3000);
 					double currMP285zpos = core_.getPosition(MMT.magnetZStage_);
 					double z = MMT.VariablesNUPD.magnetStepSize.value();
 					double target =  currMP285zpos - z;

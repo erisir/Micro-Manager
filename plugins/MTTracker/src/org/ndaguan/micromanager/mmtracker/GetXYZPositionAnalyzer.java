@@ -25,7 +25,6 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 	public double imgheight_;
 	public  String acqName_;
 	private Kernel kernel_;
-	private long timeStart;	
 
 
 	public static GetXYZPositionAnalyzer getInstance() {	
@@ -46,8 +45,8 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 
 	@Override
 	protected void analyze(TaggedImage taggedImage) {
-		timeStart = System.nanoTime();
 
+		MMT.tik();
 		if (taggedImage == null || taggedImage == TaggedImageQueue.POISON)
 		{
 			Function.getInstance().dataReset();
@@ -69,7 +68,7 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 		}
 
 		try {
-			String acqName = (String) taggedImage.tags.get("AcqName");
+			String acqName =  "Snap/Live Window";
 			boolean update = acqName.equals(MMT.SIMPLE_ACQ) ? true
 					: false;
 			ImageWindow win = ij.WindowManager.getCurrentWindow();
@@ -134,7 +133,7 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 		} catch (JSONException e) {
 		} catch (MMScriptException e) {
 		}
-		System.out.print(String.format("\r\n%d:\tcostTime:\t%f\t\n", frameNum_,(System.nanoTime()-timeStart)/10e6));
+		MMT.tok(String.format("GetXYZPOS\t[%d]", frameNum_));
 
 	}
 }

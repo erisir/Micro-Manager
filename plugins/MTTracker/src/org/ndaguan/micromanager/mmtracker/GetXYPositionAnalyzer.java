@@ -27,8 +27,6 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 	public double imgheight_;
 	public  String acqName_;
 	private Kernel kernel_;
-	private long timeStart;	
-
 
 	public static GetXYPositionAnalyzer getInstance() {	
 		return instance_;
@@ -48,8 +46,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 
 	@Override
 	protected void analyze(TaggedImage taggedImage) {
-		 
-		timeStart = System.nanoTime();
+		MMT.tik();
 		boolean update =  true;
 		if (taggedImage == null || taggedImage == TaggedImageQueue.POISON)
 		{
@@ -133,11 +130,11 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 				Function.getInstance().updateChart(frameNum_);
 				Function.getInstance().PullMagnet(frameNum_);
 			}
-
+      
 		} catch (JSONException e) {
 		} catch (MMScriptException e) {
 		}
-		System.out.print(String.format("\r\n%d:\tcostTime:\t%f\t\n", frameNum_,(System.nanoTime()-timeStart)/10e6));
 
+		MMT.tok("GetXYPosition");
 	}
 }

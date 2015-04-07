@@ -193,7 +193,7 @@ public class LiveModeTimer {
     * Also sets variable fpsInterval_
     */
    private long getInterval() {
-      double interval = 10;
+      double interval = 5;
       try {
          interval = Math.max(core_.getExposure(), interval);
       } catch (Exception e) {

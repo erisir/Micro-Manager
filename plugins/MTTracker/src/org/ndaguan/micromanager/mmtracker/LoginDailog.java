@@ -87,7 +87,7 @@ public class LoginDailog extends JFrame {
 		this.setBounds(400, 200, 100*(users.length),80);
 		this.setLayout(null);
 		int x = 0;
-
+   
 		DialogListener = new ActionListener() {
 			public void actionPerformed(ActionEvent e) 
 			{
