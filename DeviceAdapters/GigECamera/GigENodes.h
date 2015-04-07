@@ -26,7 +26,8 @@ enum InterestingNodeInteger
 	// mandatory nodes
 	WIDTH = 0,
 	HEIGHT,
-
+	OffsetX,
+	OffsetY,
 	// recommended/optional nodes
 	SENSOR_WIDTH,
 	SENSOR_HEIGHT,

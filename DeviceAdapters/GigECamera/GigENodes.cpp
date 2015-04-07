@@ -25,6 +25,8 @@ const std::map< int, std::string > sfncNames
 							// mandatory nodes
 							( (int) WIDTH, (std::string) "Width" )
 							( HEIGHT, "Height" )
+							( OffsetX, "OffsetX" )
+							( OffsetY, "OffsetY" )
 							( PIXEL_FORMAT, "PixelFormat" )
 							( ACQUISITION_MODE, "AcquisitionMode" )
 
@@ -94,6 +96,8 @@ GigENodes::GigENodes( CAM_HANDLE camera, boost::function<void(const std::string&
 	// mandatory nodes
 	intNodes.insert( std::make_pair( WIDTH, nf.IntNode( WIDTH ) ) );
 	intNodes.insert( std::make_pair( HEIGHT, nf.IntNode( HEIGHT ) ) );
+	intNodes.insert( std::make_pair( OffsetX, nf.IntNode( OffsetX ) ) );
+	intNodes.insert( std::make_pair( OffsetY, nf.IntNode( OffsetY ) ) );
 	stringNodes.insert( std::make_pair( PIXEL_FORMAT, nf.StringNode( PIXEL_FORMAT ) ) );
 	stringNodes.insert( std::make_pair( ACQUISITION_MODE, nf.StringNode( ACQUISITION_MODE ) ) );
 

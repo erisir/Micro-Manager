@@ -67,50 +67,50 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 /**
-* CGigECamera constructor.
-* Setup default all variables and create device properties required to exist
-* before intialization. In this case, no such properties were required. All
-* properties will be created in the Initialize() method.
-*
-* As a general guideline Micro-Manager devices do not access hardware in the
-* the constructor. We should do as little as possible in the constructor and
-* perform most of the initialization in the Initialize() method.
-*/
+ * CGigECamera constructor.
+ * Setup default all variables and create device properties required to exist
+ * before intialization. In this case, no such properties were required. All
+ * properties will be created in the Initialize() method.
+ *
+ * As a general guideline Micro-Manager devices do not access hardware in the
+ * the constructor. We should do as little as possible in the constructor and
+ * perform most of the initialization in the Initialize() method.
+ */
 CGigECamera::CGigECamera() :
-CCameraBase<CGigECamera> (),
-readoutUs_(0.0),
-scanMode_(1),
-bitDepth_(8),
-color_(false),
-roiX_(0),
-roiY_(0),
-cameraOpened(false),
-cameraInitialized(false),
-snapImageDone( false ),
-snapOneImageOnly( false ),
-doContinuousAcquisition( false ),
-stopContinuousAcquisition( false ),
-continuousAcquisitionDone( false ),
-cameraNameMap( ),
-frameRateMap( ),
-pixelFormatMap( ),
-nodes( NULL ),
-buffer_( NULL ),
-bufferSizeBytes( 0 )
-{
+						CCameraBase<CGigECamera> (),
+						readoutUs_(0.0),
+						scanMode_(1),
+						bitDepth_(8),
+						color_(false),
+						roiX_(0),
+						roiY_(0),
+						cameraOpened(false),
+						cameraInitialized(false),
+						snapImageDone( false ),
+						snapOneImageOnly( false ),
+						doContinuousAcquisition( false ),
+						stopContinuousAcquisition( false ),
+						continuousAcquisitionDone( false ),
+						cameraNameMap( ),
+						frameRateMap( ),
+						pixelFormatMap( ),
+						nodes( NULL ),
+						buffer_( NULL ),
+						bufferSizeBytes( 0 )
+						{
 	// call the base class method to set-up default error codes/messages
 	InitializeDefaultErrorMessages();
 	readoutStartTime_ = GetCurrentMMTime();
-}
+						}
 
 
 /**
-* CGigECamera destructor.
-* If this device used as intended within the Micro-Manager system,
-* Shutdown() will be always called before the destructor. But in any case
-* we need to make sure that all resources are properly released even if
-* Shutdown() was not called.
-*/
+ * CGigECamera destructor.
+ * If this device used as intended within the Micro-Manager system,
+ * Shutdown() will be always called before the destructor. But in any case
+ * we need to make sure that all resources are properly released even if
+ * Shutdown() was not called.
+ */
 CGigECamera::~CGigECamera()
 {
 	if( nodes != NULL )
@@ -121,14 +121,14 @@ CGigECamera::~CGigECamera()
 
 
 /**
-* Intializes the hardware.
-* Required by the MM::Device API.
-* Typically we access and initialize hardware at this point.
-* Device properties are typically created here as well, except
-* the ones we need to use for defining initialization parameters.
-* Such pre-initialization properties are created in the constructor.
-* (This device does not have any pre-initialization properties)
-*/
+ * Intializes the hardware.
+ * Required by the MM::Device API.
+ * Typically we access and initialize hardware at this point.
+ * Device properties are typically created here as well, except
+ * the ones we need to use for defining initialization parameters.
+ * Such pre-initialization properties are created in the constructor.
+ * (This device does not have any pre-initialization properties)
+ */
 int CGigECamera::Initialize()
 {
 	if (cameraInitialized)
@@ -249,14 +249,14 @@ int CGigECamera::Initialize()
 	retval = J_Camera_Open( hFactory, cstr2jai(this->cameraName.c_str()), &hCamera );
 	if( retval != J_ST_SUCCESS )
 	{
-			LogMessage( (std::string) "camera open failed (" + this->cameraName + ")", false );
-			return DEVICE_NATIVE_MODULE_FAILED;
+		LogMessage( (std::string) "camera open failed (" + this->cameraName + ")", false );
+		return DEVICE_NATIVE_MODULE_FAILED;
 	}
 	LogMessage( "camera open succeeded", false );
 	cameraOpened = true;
 
-   // EnumerateAllNodesToLog();
-   EnumerateAllFeaturesToLog();
+	// EnumerateAllNodesToLog();
+	EnumerateAllFeaturesToLog();
 
 	struct Logger
 	{
@@ -288,7 +288,7 @@ int CGigECamera::Initialize()
 	{
 		LogMessage( "Successfully set ExposureMode to Timed" );
 	}
-	
+
 	// set property list
 	// -----------------
 	std::string s;
@@ -351,19 +351,19 @@ int CGigECamera::Initialize()
 	if( nodes->get( v, GEV_VERSION_MAJOR ) )
 	{
 		nRet = CreateProperty( "GigE Vision Major Version Number", boost::lexical_cast<std::string>( v ).c_str(), MM::Integer, 
-								!nodes->isWritable( GEV_VERSION_MAJOR ) );
+				!nodes->isWritable( GEV_VERSION_MAJOR ) );
 		if( nRet != DEVICE_OK )
 			return nRet;
 	}
-	
+
 	if( nodes->get( v, GEV_VERSION_MINOR ) )
 	{
 		nRet = CreateProperty( "GigE Vision Minor Version Number", boost::lexical_cast<std::string>( v ).c_str(), MM::Integer, 
-								!nodes->isWritable( GEV_VERSION_MINOR ) );
+				!nodes->isWritable( GEV_VERSION_MINOR ) );
 		if( nRet != DEVICE_OK )
 			return nRet;
 	}
-	
+
 
 	// initialize width and height to something reasonable
 	int64_t dim;
@@ -396,7 +396,16 @@ int CGigECamera::Initialize()
 				return nRet;
 		}
 	}
-
+	// width max and height max
+	if( nodes->isAvailable( OffsetX ) )
+	{
+		int aa =10;
+	}
+	// width max and height max
+	if( nodes->isAvailable( OffsetY ) )
+	{
+		int aa =10;
+	}
 	// width max and height max
 	if( nodes->isAvailable( WIDTH_MAX ) )
 	{
@@ -494,11 +503,11 @@ int CGigECamera::Initialize()
 		dn1 = px1;
 	else
 		dn1 = it->second;
-   nRet = CreateProperty( g_Keyword_Acquisition_Mode, dn1.c_str(), MM::String, !nodes->isWritable( ACQUISITION_MODE ), pAct );
+	nRet = CreateProperty( g_Keyword_Acquisition_Mode, dn1.c_str(), MM::String, !nodes->isWritable( ACQUISITION_MODE ), pAct );
 	if (nRet != DEVICE_OK)
 		return nRet;
 
-   nRet = SetAllowedValues( g_Keyword_Acquisition_Mode, acquistionmodeValues );
+	nRet = SetAllowedValues( g_Keyword_Acquisition_Mode, acquistionmodeValues );
 	if (nRet != DEVICE_OK)
 		return nRet;
 
@@ -603,7 +612,7 @@ int CGigECamera::Initialize()
 		double d = 0;
 		nodes->get( d, ACQUISITION_FRAME_RATE );
 		nRet = CreateProperty( g_Keyword_Frame_Rate, boost::lexical_cast<std::string>( d ).c_str(), MM::Float, 
-								!nodes->isWritable( ACQUISITION_FRAME_RATE ), pAct );
+				!nodes->isWritable( ACQUISITION_FRAME_RATE ), pAct );
 		if( nRet != DEVICE_OK )
 			return nRet;
 		SetPropertyLimits( g_Keyword_Frame_Rate, framerateLow, framerateHigh );
@@ -634,13 +643,13 @@ int CGigECamera::Initialize()
 
 
 /**
-* Shuts down (unloads) the device.
-* Required by the MM::Device API.
-* Ideally this method will completely unload the device and release all resources.
-* Shutdown() may be called multiple times in a row.
-* After Shutdown() we should be allowed to call Initialize() again to load the device
-* without causing problems.
-*/
+ * Shuts down (unloads) the device.
+ * Required by the MM::Device API.
+ * Ideally this method will completely unload the device and release all resources.
+ * Shutdown() may be called multiple times in a row.
+ * After Shutdown() we should be allowed to call Initialize() again to load the device
+ * without causing problems.
+ */
 int CGigECamera::Shutdown()
 {
 	int retval = DEVICE_OK;
@@ -660,15 +669,15 @@ int CGigECamera::Shutdown()
 }
 
 /**
-* Returns pixel data.
-* Required by the MM::Camera API.
-* The calling program will assume the size of the buffer based on the values
-* obtained from GetImageBufferSize(), which in turn should be consistent with
-* values returned by GetImageWidth(), GetImageHight() and GetImageBytesPerPixel().
-* The calling program also assumes that camera never changes the size of
-* the pixel buffer on its own. In other words, the buffer can change only if
-* appropriate properties are set (such as binning, pixel type, etc.)
-*/
+ * Returns pixel data.
+ * Required by the MM::Camera API.
+ * The calling program will assume the size of the buffer based on the values
+ * obtained from GetImageBufferSize(), which in turn should be consistent with
+ * values returned by GetImageWidth(), GetImageHight() and GetImageBytesPerPixel().
+ * The calling program also assumes that camera never changes the size of
+ * the pixel buffer on its own. In other words, the buffer can change only if
+ * appropriate properties are set (such as binning, pixel type, etc.)
+ */
 const unsigned char* CGigECamera::GetImageBuffer()
 {
 	while (GetCurrentMMTime() - readoutStartTime_ < MM::MMTime(readoutUs_)) {CDeviceUtils::SleepMs(5);}
@@ -685,8 +694,8 @@ unsigned int CGigECamera::GetNumberOfComponents() const
 	return color_ ? 4 : 1;
 }
 
- int CGigECamera::GetComponentName(unsigned comp, char* name)
- {
+int CGigECamera::GetComponentName(unsigned comp, char* name)
+{
 	if ( comp > 4 )
 	{
 		name = "invalid comp";
@@ -697,25 +706,51 @@ unsigned int CGigECamera::GetNumberOfComponents() const
 	CDeviceUtils::CopyLimitedString(name, &rgba.at(comp) );
 
 	return DEVICE_OK;
- }
+}
 
 
 /**
-* Sets the camera Region Of Interest.
-* Required by the MM::Camera API.
-* This command will change the dimensions of the image.
-* Depending on the hardware capabilities the camera may not be able to configure the
-* exact dimensions requested - but should try do as close as possible.
-* If the hardware does not have this capability the software should simulate the ROI by
-* appropriately cropping each frame.
-* This GigE implementation ignores the position coordinates and just crops the buffer.
-* @param x - top-left corner coordinate
-* @param y - top-left corner coordinate
-* @param xSize - width
-* @param ySize - height
-*/
-int CGigECamera::SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize)
+ * Sets the camera Region Of Interest.
+ * Required by the MM::Camera API.
+ * This command will change the dimensions of the image.
+ * Depending on the hardware capabilities the camera may not be able to configure the
+ * exact dimensions requested - but should try do as close as possible.
+ * If the hardware does not have this capability the software should simulate the ROI by
+ * appropriately cropping each frame.
+ * This GigE implementation ignores the position coordinates and just crops the buffer.
+ * @param x - top-left corner coordinate
+ * @param y - top-left corner coordinate
+ * @param xSize - width
+ * @param ySize - height
+ */
+int CGigECamera::SetROI(unsigned uX, unsigned uY, unsigned uXSize, unsigned uYSize)
 {
+
+	int64_t x=uX,y=uY,ySize=uYSize,xSize=uXSize;
+	x -= uX%2;
+	y -= uY%2;
+	ySize -= uYSize%2;
+	xSize -= uXSize%4;
+	LogMessage("SetROI: x: " + boost::lexical_cast<std::string>(x) +
+			" y: " + boost::lexical_cast<std::string>(y) +
+			"  xSize  "+ boost::lexical_cast<std::string>(xSize) +
+			"  ySize  "+ boost::lexical_cast<std::string>(ySize)
+	);
+	bool ret =  nodes->set( y, OffsetY );
+	if( !ret){
+		ret =  nodes->set(ySize, HEIGHT );
+		ret =  nodes->set( y, OffsetY );
+	}else{
+		ret =  nodes->set(ySize, HEIGHT );
+	}
+	ret =  nodes->set( x, OffsetX );
+	if( !ret){
+		ret =  nodes->set(xSize, WIDTH );
+		ret =  nodes->set( x, OffsetX );
+	}else{
+		ret =  nodes->set(xSize, WIDTH );
+	}
+
 	if (xSize == 0 && ySize == 0)
 	{
 		// effectively clear ROI
@@ -730,14 +765,15 @@ int CGigECamera::SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize)
 		roiX_ = x;
 		roiY_ = y;
 	}
+	ResizeImageBuffer();
 	return DEVICE_OK;
 }
 
 
 /**
-* Returns the actual dimensions of the current ROI.
-* Required by the MM::Camera API.
-*/
+ * Returns the actual dimensions of the current ROI.
+ * Required by the MM::Camera API.
+ */
 int CGigECamera::GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize)
 {
 	x = roiX_;
@@ -751,23 +787,25 @@ int CGigECamera::GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySi
 
 
 /**
-* Resets the Region of Interest to full frame.
-* Required by the MM::Camera API.
-*/
+ * Resets the Region of Interest to full frame.
+ * Required by the MM::Camera API.
+ */
 int CGigECamera::ClearROI()
 {
-	ResizeImageBuffer();
 	roiX_ = 0;
 	roiY_ = 0;
-
+	int64_t h, w;
+	nodes->get( w, WIDTH_MAX );
+	nodes->get( h, HEIGHT_MAX );
+	SetROI(roiX_,roiY_,w,h);
 	return DEVICE_OK;
 }
 
 
 /**
-* Returns the current exposure setting in milliseconds.
-* Required by the MM::Camera API.
-*/
+ * Returns the current exposure setting in milliseconds.
+ * Required by the MM::Camera API.
+ */
 double CGigECamera::GetExposure() const
 {
 	char buf[MM::MaxStrLength];
@@ -779,9 +817,9 @@ double CGigECamera::GetExposure() const
 
 
 /**
-* Returns the current binning factor.
-* Required by the MM::Camera API.
-*/
+ * Returns the current binning factor.
+ * Required by the MM::Camera API.
+ */
 int CGigECamera::GetBinning() const
 {
 	char buf[MM::MaxStrLength];
@@ -809,13 +847,13 @@ int CGigECamera::SetUpBinningProperties()
 	int nRet = CreateProperty( MM::g_Keyword_Binning, "1", MM::Integer, false, pAct );
 	if (DEVICE_OK != nRet)
 		return nRet;
-
+	return DEVICE_OK;
 	int64_t bin, min, max, inc;
 	std::vector<std::string> vValues, hValues, binValues;
 
 	// vertical binning
 	if( nodes->isAvailable( BINNING_VERTICAL ) && nodes->getMin( BINNING_VERTICAL, min ) &&
-		nodes->getMax( BINNING_VERTICAL, max ) && nodes->getIncrement( BINNING_VERTICAL, inc ) )
+			nodes->getMax( BINNING_VERTICAL, max ) && nodes->getIncrement( BINNING_VERTICAL, inc ) )
 	{
 		nodes->get( bin, BINNING_VERTICAL );
 		pAct = new CPropertyAction( this, &CGigECamera::OnBinningV );
@@ -833,7 +871,7 @@ int CGigECamera::SetUpBinningProperties()
 
 	// horizontal binning
 	if( nodes->isAvailable( BINNING_HORIZONTAL ) && nodes->getMin( BINNING_HORIZONTAL, min ) &&
-		nodes->getMax( BINNING_HORIZONTAL, max ) && nodes->getIncrement( BINNING_HORIZONTAL, inc ) )
+			nodes->getMax( BINNING_HORIZONTAL, max ) && nodes->getIncrement( BINNING_HORIZONTAL, inc ) )
 	{
 		nodes->get( bin, BINNING_HORIZONTAL );
 		pAct = new CPropertyAction( this, &CGigECamera::OnBinningH );
@@ -869,8 +907,8 @@ int CGigECamera::SetUpBinningProperties()
 
 
 /**
-* Sync internal image buffer size to the chosen property values.
-*/
+ * Sync internal image buffer size to the chosen property values.
+ */
 int CGigECamera::ResizeImageBuffer()
 {
 	int64_t h, w;
@@ -892,10 +930,10 @@ int CGigECamera::ResizeImageBuffer()
 	buffer_ = new unsigned char[ bufferSizeBytes ];
 
 	LogMessage("ResizeImageBuffer: bitDepth: " + boost::lexical_cast<std::string>(bitDepth_) +
-		" color mode: " + boost::lexical_cast<std::string>(color_) );
+			" color mode: " + boost::lexical_cast<std::string>(color_) );
 	LogMessage("ResizeImageBuffer: byteDepth " + boost::lexical_cast<std::string>(byteDepth) +
-		" w " + boost::lexical_cast<std::string>(w)  + " h " + boost::lexical_cast<std::string>(w)  + " bufferSizeBytes " +
-		boost::lexical_cast<std::string>(bufferSizeBytes) );
+			" w " + boost::lexical_cast<std::string>(w)  + " h " + boost::lexical_cast<std::string>(w)  + " bufferSizeBytes " +
+			boost::lexical_cast<std::string>(bufferSizeBytes) );
 
 	return DEVICE_OK;
 }
@@ -919,7 +957,7 @@ int CGigECamera::testIfPixelFormatResultsInColorImage(uint32_t &byteDepth)
 	retval = J_Camera_GetValueInt64(hCamera, NODE_NAME_PIXELFORMAT, &int64Val);
 	if (retval != J_ST_SUCCESS)
 	{	LogMessage("cant get pixel_format in int");
-		return 	DEVICE_ERR;
+	return 	DEVICE_ERR;
 	}
 
 	// Calculate number of bits (not bytes) per pixel using macro
@@ -975,163 +1013,163 @@ void CGigECamera::EnumerateAllNodesToLog()
 				{
 					// Print out the name
 					LogMessage( (std::string) "(" + boost::lexical_cast<std::string>( index ) + ") node " + sNodeName 
-								+ ": access = " + boost::lexical_cast<std::string>( access ), true );
+							+ ": access = " + boost::lexical_cast<std::string>( access ), true );
 				}
 			}
 		}
 
-      LogMessage( "End of list of all nodes.", true );
+		LogMessage( "End of list of all nodes.", true );
 	}
 }
 
 
 void CGigECamera::EnumerateAllFeaturesToLog()
 {
-   LogMessage( "Listing all feature nodes, hierarchically", true );
-   EnumerateAllFeaturesToLog( cstr2jai( J_ROOT_NODE ), 0 );
-   LogMessage( "End of feature node listing", true );
+	LogMessage( "Listing all feature nodes, hierarchically", true );
+	EnumerateAllFeaturesToLog( cstr2jai( J_ROOT_NODE ), 0 );
+	LogMessage( "End of feature node listing", true );
 }
 
 
 void CGigECamera::EnumerateAllFeaturesToLog( int8_t* parentNodeName, int indentCount )
 {
-   // Not all GenICam nodes are controllable features. A typical camera may
-   // have thousands of nodes, and we are usually only interested in the
-   // subset that represent controllable features.
+	// Not all GenICam nodes are controllable features. A typical camera may
+	// have thousands of nodes, and we are usually only interested in the
+	// subset that represent controllable features.
 
-   const std::string indent( indentCount, ' ' );
+	const std::string indent( indentCount, ' ' );
 
-   uint32_t nSubNodes;
-   J_STATUS_TYPE retval = J_Camera_GetNumOfSubFeatures( hCamera, parentNodeName, &nSubNodes );
-   if ( retval != J_ST_SUCCESS )
-   {
-      LogMessage( indent + "Cannot get number of subnodes under node " + cjai2cstr( parentNodeName ), true );
-      return;
-   }
+	uint32_t nSubNodes;
+	J_STATUS_TYPE retval = J_Camera_GetNumOfSubFeatures( hCamera, parentNodeName, &nSubNodes );
+	if ( retval != J_ST_SUCCESS )
+	{
+		LogMessage( indent + "Cannot get number of subnodes under node " + cjai2cstr( parentNodeName ), true );
+		return;
+	}
 
-   LogMessage( indent + "List of feature nodes under node " + cjai2cstr( parentNodeName ) +
-      ": " + boost::lexical_cast<std::string>( nSubNodes ) + " nodes found", true );
+	LogMessage( indent + "List of feature nodes under node " + cjai2cstr( parentNodeName ) +
+			": " + boost::lexical_cast<std::string>( nSubNodes ) + " nodes found", true );
 
-   for ( uint32_t index = 0; index < nSubNodes; ++index )
-   {
-      NODE_HANDLE hNode;
-      J_STATUS_TYPE retval = J_Camera_GetSubFeatureByIndex( hCamera, parentNodeName, index, &hNode );
-      if ( retval != J_ST_SUCCESS )
-      {
-         LogMessage( indent + "Cannot get node at index " + boost::lexical_cast<std::string>( index ), true );
-         continue;
-      }
+	for ( uint32_t index = 0; index < nSubNodes; ++index )
+	{
+		NODE_HANDLE hNode;
+		J_STATUS_TYPE retval = J_Camera_GetSubFeatureByIndex( hCamera, parentNodeName, index, &hNode );
+		if ( retval != J_ST_SUCCESS )
+		{
+			LogMessage( indent + "Cannot get node at index " + boost::lexical_cast<std::string>( index ), true );
+			continue;
+		}
 
-      int8_t nodeName[256];
-      uint32_t size = sizeof( nodeName );
-      retval = J_Node_GetName( hNode, nodeName, &size, 0 );
-      if ( retval != J_ST_SUCCESS )
-      {
-         LogMessage( indent + "Cannot get name of node at index " + boost::lexical_cast<std::string>( index ), true );
-         continue;
-      }
+		int8_t nodeName[256];
+		uint32_t size = sizeof( nodeName );
+		retval = J_Node_GetName( hNode, nodeName, &size, 0 );
+		if ( retval != J_ST_SUCCESS )
+		{
+			LogMessage( indent + "Cannot get name of node at index " + boost::lexical_cast<std::string>( index ), true );
+			continue;
+		}
 
-      J_NODE_TYPE nodeType;
-      retval = J_Node_GetType( hNode, &nodeType );
-      if ( retval != J_ST_SUCCESS )
-      {
-         LogMessage( indent + "Cannot get type of node " + cjai2cstr( nodeName ), true );
-         continue;
-      }
+		J_NODE_TYPE nodeType;
+		retval = J_Node_GetType( hNode, &nodeType );
+		if ( retval != J_ST_SUCCESS )
+		{
+			LogMessage( indent + "Cannot get type of node " + cjai2cstr( nodeName ), true );
+			continue;
+		}
 
-      J_NODE_ACCESSMODE accessMode;
-      retval = J_Node_GetAccessMode( hNode, &accessMode );
-      if ( retval != J_ST_SUCCESS )
-      {
-         LogMessage( indent + "Cannot get access mode of node " + cjai2cstr( nodeName ) + " (type = " +
-            StringForNodeType( nodeType ) + ")", true );
-      }
+		J_NODE_ACCESSMODE accessMode;
+		retval = J_Node_GetAccessMode( hNode, &accessMode );
+		if ( retval != J_ST_SUCCESS )
+		{
+			LogMessage( indent + "Cannot get access mode of node " + cjai2cstr( nodeName ) + " (type = " +
+					StringForNodeType( nodeType ) + ")", true );
+		}
 
-      std::string extraInfo;
+		std::string extraInfo;
 
-      uint32_t nProperties;
-      retval = J_Node_GetNumOfProperties( hNode, &nProperties );
-      if ( retval == J_ST_SUCCESS )
-      {
-         extraInfo += ", n_properties = " + boost::lexical_cast<std::string>( nProperties );
-      }
+		uint32_t nProperties;
+		retval = J_Node_GetNumOfProperties( hNode, &nProperties );
+		if ( retval == J_ST_SUCCESS )
+		{
+			extraInfo += ", n_properties = " + boost::lexical_cast<std::string>( nProperties );
+		}
 
-      uint32_t isSelector;
-      retval = J_Node_GetIsSelector( hNode, &isSelector );
-      if ( retval == J_ST_SUCCESS )
-      {
-         extraInfo += ", is_selector = ";
-         extraInfo += ( isSelector ? "true" : "false" );
-      }
+		uint32_t isSelector;
+		retval = J_Node_GetIsSelector( hNode, &isSelector );
+		if ( retval == J_ST_SUCCESS )
+		{
+			extraInfo += ", is_selector = ";
+			extraInfo += ( isSelector ? "true" : "false" );
+		}
 
-      LogMessage( indent + "(" + boost::lexical_cast<std::string>( index ) + ") node " + cjai2cstr( nodeName ) +
-         ": type = " + StringForNodeType( nodeType ) + ", access mode = " + StringForAccessMode( accessMode ) +
-         extraInfo, true );
+		LogMessage( indent + "(" + boost::lexical_cast<std::string>( index ) + ") node " + cjai2cstr( nodeName ) +
+				": type = " + StringForNodeType( nodeType ) + ", access mode = " + StringForAccessMode( accessMode ) +
+				extraInfo, true );
 
-      int8_t nodeDesc[1024];
-      size = sizeof( nodeDesc );
-      retval = J_Node_GetDescription( hNode, nodeDesc, &size );
-      if ( retval == J_ST_SUCCESS )
-      {
-         LogMessage( indent + "  Description: " + cjai2cstr( nodeDesc ), true );
-      }
+		int8_t nodeDesc[1024];
+		size = sizeof( nodeDesc );
+		retval = J_Node_GetDescription( hNode, nodeDesc, &size );
+		if ( retval == J_ST_SUCCESS )
+		{
+			LogMessage( indent + "  Description: " + cjai2cstr( nodeDesc ), true );
+		}
 
-      if ( nodeType == J_ICategory )
-      {
-         EnumerateAllFeaturesToLog( nodeName, indentCount + 2 );
-      }
-   }
+		if ( nodeType == J_ICategory )
+		{
+			EnumerateAllFeaturesToLog( nodeName, indentCount + 2 );
+		}
+	}
 }
 
 
 std::string CGigECamera::StringForNodeType( J_NODE_TYPE nodeType )
 {
-   switch ( nodeType )
-   {
-      case J_UnknowNodeType: return "UnknowNodeType";
-      case J_INode: return "INode";
-      case J_ICategory: return "ICategory";
-      case J_IInteger: return "IInteger";
-      case J_IEnumeration: return "IEnumeration";
-      case J_IEnumEntry: return "IEnumEntry";
-      case J_IMaskedIntReg: return "IMaskedIntReg";
-      case J_IRegister: return "IRegister";
-      case J_IIntReg: return "IIntReg";
-      case J_IFloat: return "IFloat";
-      case J_IFloatReg: return "IFloatReg";
-      case J_ISwissKnife: return "ISwissKnife";
-      case J_IIntSwissKnife: return "IIntSwissKnife";
-      case J_IIntKey: return "IIntKey";
-      case J_ITextDesc: return "ITextDesc";
-      case J_IPort: return "IPort";
-      case J_IConfRom: return "IConfRom";
-      case J_IAdvFeatureLock: return "IAdvFeatureLock";
-      case J_ISmartFeature: return "ISmartFeature";
-      case J_IStringReg: return "IStringReg";
-      case J_IBoolean: return "IBoolean";
-      case J_ICommand: return "ICommand";
-      case J_IConverter: return "IConverter";
-      case J_IIntConverter: return "IIntConverter";
-      case J_IChunkPort: return "IChunkPort";
-      case J_INodeMap: return "INodeMap";
-      case J_INodeMapDyn: return "INodeMapDyn";
-      case J_IDeviceInfo: return "IDeviceInfo";
-      case J_ISelector: return "ISelector";
-      case J_IPortConstruct: return "IPortConstruct";
-      default: return "(Unexpected node type " + boost::lexical_cast<std::string>( nodeType ) + ")";
-   }
+	switch ( nodeType )
+	{
+	case J_UnknowNodeType: return "UnknowNodeType";
+	case J_INode: return "INode";
+	case J_ICategory: return "ICategory";
+	case J_IInteger: return "IInteger";
+	case J_IEnumeration: return "IEnumeration";
+	case J_IEnumEntry: return "IEnumEntry";
+	case J_IMaskedIntReg: return "IMaskedIntReg";
+	case J_IRegister: return "IRegister";
+	case J_IIntReg: return "IIntReg";
+	case J_IFloat: return "IFloat";
+	case J_IFloatReg: return "IFloatReg";
+	case J_ISwissKnife: return "ISwissKnife";
+	case J_IIntSwissKnife: return "IIntSwissKnife";
+	case J_IIntKey: return "IIntKey";
+	case J_ITextDesc: return "ITextDesc";
+	case J_IPort: return "IPort";
+	case J_IConfRom: return "IConfRom";
+	case J_IAdvFeatureLock: return "IAdvFeatureLock";
+	case J_ISmartFeature: return "ISmartFeature";
+	case J_IStringReg: return "IStringReg";
+	case J_IBoolean: return "IBoolean";
+	case J_ICommand: return "ICommand";
+	case J_IConverter: return "IConverter";
+	case J_IIntConverter: return "IIntConverter";
+	case J_IChunkPort: return "IChunkPort";
+	case J_INodeMap: return "INodeMap";
+	case J_INodeMapDyn: return "INodeMapDyn";
+	case J_IDeviceInfo: return "IDeviceInfo";
+	case J_ISelector: return "ISelector";
+	case J_IPortConstruct: return "IPortConstruct";
+	default: return "(Unexpected node type " + boost::lexical_cast<std::string>( nodeType ) + ")";
+	}
 }
 
 
 std::string CGigECamera::StringForAccessMode( J_NODE_ACCESSMODE accessMode )
 {
-   switch ( accessMode )
-   {
-      case NI: return "not implemented";
-      case NA: return "not available";
-      case WO: return "write only";
-      case RO: return "read only";
-      case RW: return "read and write";
-      default: return "(Unexpected access mode " + boost::lexical_cast<std::string>( accessMode ) + ")";
-   }
+	switch ( accessMode )
+	{
+	case NI: return "not implemented";
+	case NA: return "not available";
+	case WO: return "write only";
+	case RO: return "read only";
+	case RW: return "read and write";
+	default: return "(Unexpected access mode " + boost::lexical_cast<std::string>( accessMode ) + ")";
+	}
 }
