@@ -126,7 +126,6 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 				}
 			Function.getInstance().updateChart(frameNum_);
 			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,true);
-			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,true);
 			Function.getInstance().PullMagnet(frameNum_);
 			
 

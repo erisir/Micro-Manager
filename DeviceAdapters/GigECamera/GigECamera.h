@@ -242,6 +242,7 @@ protected:
 	std::string cameraName;
 	bool snapImageDone;
 	bool snapOneImageOnly;
+	bool isStreemOpened;
 	bool doContinuousAcquisition;
 	bool stopContinuousAcquisition;
 	bool continuousAcquisitionDone;

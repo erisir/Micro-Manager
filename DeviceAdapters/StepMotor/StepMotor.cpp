@@ -50,7 +50,7 @@ MODULE_API void InitializeModuleData()
 	// initialize the Z stage device name
 	RegisterDevice(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_ZStageDevName).c_str(), MM::StageDevice , StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_ZStageDevName).c_str());
 	// initialize the xy stage device name
-	RegisterDevice(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str(), MM::StageDevice , StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str());
+	RegisterDevice(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str(), MM::XYStageDevice , StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_XYStageDevName).c_str());
 }
 
 //

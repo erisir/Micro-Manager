@@ -69,7 +69,10 @@ test-reports/
 # Testing
 /testing/gtest-*.zip
 /testing/gtest/
-
+#bin
+*.idb
+*.d
+*.o
 # Generated source
 /lib_Win32	
 /bin_Win32

@@ -1986,7 +1986,7 @@ void CDemoCamera::GenerateSyntheticImage(ImgBuffer& img, double exp)
 	if (pixelType.compare(g_PixelType_8bit) == 0)
 	{
 		unsigned char* pBuf = const_cast<unsigned char*>(img.GetPixels());
-		memset(pBuf,background,img.Height()*img.Width()*img.Depth());
+		//memset(pBuf,background,img.Height()*img.Width()*img.Depth());
 		pBuf[center] = 20*sinValue +  noise;
 //		for(int i = 0;i<img.Height()*img.Width();i++)
 //			pBuf[i] = imageFielData_[i];
@@ -1994,7 +1994,7 @@ void CDemoCamera::GenerateSyntheticImage(ImgBuffer& img, double exp)
 	else if (pixelType.compare(g_PixelType_16bit) == 0)
 	{
 		unsigned short* pBuf = (unsigned short*) const_cast<unsigned char*>(img.GetPixels());
-		memset(pBuf,background,img.Height()*img.Width()*img.Depth());
+		//memset(pBuf,background,img.Height()*img.Width()*img.Depth());
 		pBuf[center] =  512*sinValue +  noise;
 		//	for(int i = 0;i<img.Height()*img.Width();i++)
 		//				pBuf[i] = imageFielData_[i];
@@ -2002,7 +2002,7 @@ void CDemoCamera::GenerateSyntheticImage(ImgBuffer& img, double exp)
 	else if (pixelType.compare(g_PixelType_32bit) == 0)
 	{
 		float* pBuf = (float*) const_cast<unsigned char*>(img.GetPixels());
-		memset(pBuf, background, img.Height()*img.Width()*img.Depth());
+		//memset(pBuf, background, img.Height()*img.Width()*img.Depth());
 		pBuf[center] =  255*sinValue +  noise;
 		//for(int i = 0;i<img.Height()*img.Width();i++)
 		//			pBuf[i] = imageFielData_[i];

@@ -87,6 +87,7 @@ CGigECamera::CGigECamera() :
 						cameraOpened(false),
 						cameraInitialized(false),
 						snapImageDone( false ),
+						isStreemOpened( false ),
 						snapOneImageOnly( false ),
 						doContinuousAcquisition( false ),
 						stopContinuousAcquisition( false ),
@@ -396,16 +397,7 @@ int CGigECamera::Initialize()
 				return nRet;
 		}
 	}
-	// width max and height max
-	if( nodes->isAvailable( OffsetX ) )
-	{
-		int aa =10;
-	}
-	// width max and height max
-	if( nodes->isAvailable( OffsetY ) )
-	{
-		int aa =10;
-	}
+
 	// width max and height max
 	if( nodes->isAvailable( WIDTH_MAX ) )
 	{

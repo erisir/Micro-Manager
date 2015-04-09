@@ -260,7 +260,11 @@ public  class RoiItem {
 			public void run() {
 				double data[] = getItemData();
 				for(int i = 0;i<data.length;i++){
+					try{
 					chart_.getDataSeries().get(MMT.CHARTLIST[i]).add(frameNum,data[i],update&&(i == selectedIndex));
+					}catch(Exception e){
+						System.out.print(String.format("fnum=%d,data=%f,boo=%s", frameNum,data[i],(update&&(i == selectedIndex))?"true":"false"));
+					}
 				}
 
 				if(update  && (MMT.VariablesNUPD.AutoRange.value() == 1)){

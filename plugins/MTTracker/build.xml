@@ -6,8 +6,8 @@
 
 	<property name="build.dir" value="build" />
 	<property name="src.dir" value="src" />
-	<property name="dist.dir" value="../../stage/Release/Win32" />
-	<property name="bin.dir" value="../../bin_Win32" />
+	<!--<property name="dist.dir" value="../../stage/Release/Win32" /> -->
+	<property name="bin.dir" value="../../build/Java/plugins" />
 	<property name="target.name" value="MTracker" />
 	
 	<property name="third.party.dir" value="../../../3rdpartypublic" />

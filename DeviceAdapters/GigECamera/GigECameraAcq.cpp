@@ -22,11 +22,11 @@ void CGigECamera::SnapImageCallback( J_tIMAGE_INFO* imageInfo )
 	if( snapOneImageOnly )
 	{
 		LogMessage( "SnapImageCallback:  "
-					+ boost::lexical_cast<std::string>( (int) J_BitsPerPixel( imageInfo->iPixelType ) ) + " bits/pixel, " 
-					+ boost::lexical_cast<std::string>( imageInfo->iSizeX ) + "w x "
-					+ boost::lexical_cast<std::string>( imageInfo->iSizeY ) + "h", true );
+				+ boost::lexical_cast<std::string>( (int) J_BitsPerPixel( imageInfo->iPixelType ) ) + " bits/pixel, "
+				+ boost::lexical_cast<std::string>( imageInfo->iSizeX ) + "w x "
+				+ boost::lexical_cast<std::string>( imageInfo->iSizeY ) + "h", true );
 	}
-	
+
 	if( !( doContinuousAcquisition || snapOneImageOnly ) ) return; // no acquisition requested
 
 
@@ -63,7 +63,7 @@ void CGigECamera::SnapImageCallback( J_tIMAGE_INFO* imageInfo )
 			// do not stop on overflow - just reset the buffer
 			GetCoreCallback()->ClearImageBuffer( this );
 			nRet = GetCoreCallback()->InsertImage(this, buffer_,
-				GetImageWidth(), GetImageHeight(), GetImageBytesPerPixel(), md.Serialize().c_str());
+					GetImageWidth(), GetImageHeight(), GetImageBytesPerPixel(), md.Serialize().c_str());
 		}
 	} // end if doContinuousAcquisition
 	else if( this->snapOneImageOnly )
@@ -79,11 +79,11 @@ void CGigECamera::SnapImageCallback( J_tIMAGE_INFO* imageInfo )
 			return;
 		}
 	}
-	
+
 	// in the case of snapImage-style acquisition, stop
 	if( this->snapOneImageOnly || this->stopContinuousAcquisition )
 	{
-		J_STATUS_TYPE retval = J_Camera_ExecuteCommand( hCamera, cstr2jai( "AcquisitionStop" ) ); 
+		J_STATUS_TYPE retval = J_Camera_ExecuteCommand( hCamera, cstr2jai( "AcquisitionStop" ) );
 		if( retval != J_ST_SUCCESS )
 		{
 			LogMessage( "SnapImageCallback:  failed to stop acquisition" );
@@ -110,7 +110,7 @@ int CGigECamera::aquireImage(J_tIMAGE_INFO* imageInfo, uint8_t *buffer)
 			if ( J_ST_SUCCESS == J_Image_FromRawToDIBEx(imageInfo, &BufferInfo, BAYER_EXTEND) )
 			{
 				LogMessage( "aquireImage:  try to copy DIB RGB image, BufferInfo " + boost::lexical_cast<std::string>(BufferInfo.iImageSize) +
-					" mm img buffer size " +  boost::lexical_cast<std::string>(img_buffer_size) );
+						" mm img buffer size " +  boost::lexical_cast<std::string>(img_buffer_size) );
 
 				memcpy( buffer, BufferInfo.pImageBuffer, min( img_buffer_size, BufferInfo.iImageSize ) );
 			}
@@ -198,15 +198,18 @@ J_STATUS_TYPE CGigECamera::setupImaging( )
 	int64_t w, h;
 	nodes->get( h, HEIGHT );
 	nodes->get( w, WIDTH );
-
-	retval = J_Image_OpenStream( hCamera, 0,
-								 reinterpret_cast<J_IMG_CALLBACK_OBJECT>(this),
-								 reinterpret_cast<J_IMG_CALLBACK_FUNCTION>(&CGigECamera::SnapImageCallback), 
-								 &hThread, (uint32_t) ( w * h * LARGEST_PIXEL_IN_BYTES ) );  
-	if( retval != J_ST_SUCCESS )
-	{
-		LogMessage( "setupImaging failed to open the image stream" );
-		return DEVICE_ERR;
+	if(!this->isStreemOpened){
+		retval = J_Image_OpenStream( hCamera, 0,
+				reinterpret_cast<J_IMG_CALLBACK_OBJECT>(this),
+				reinterpret_cast<J_IMG_CALLBACK_FUNCTION>(&CGigECamera::SnapImageCallback),
+				&hThread, (uint32_t) ( w * h * LARGEST_PIXEL_IN_BYTES ) );
+		if( retval != J_ST_SUCCESS )
+		{
+			LogMessage( "setupImaging failed to open the image stream" );
+			return DEVICE_ERR;
+		}else{
+			this->isStreemOpened = true;
+		}
 	}
 	return DEVICE_OK;
 }
@@ -215,8 +218,8 @@ J_STATUS_TYPE CGigECamera::setupImaging( )
 int CGigECamera::StartSequenceAcquisition( long numImages, double interval_ms, bool stopOnOverflow )
 {
 	LogMessage( "Started camera streaming with an interval of "
-				+ boost::lexical_cast<std::string>( interval_ms ) + " ms, for " 
-				+ boost::lexical_cast<std::string>( numImages )  + " images." );
+			+ boost::lexical_cast<std::string>( interval_ms ) + " ms, for "
+			+ boost::lexical_cast<std::string>( numImages )  + " images." );
 	if( doContinuousAcquisition ) return DEVICE_OK;
 	if( IsCapturing() ) return DEVICE_CAMERA_BUSY_ACQUIRING;
 
@@ -239,6 +242,7 @@ int CGigECamera::StartSequenceAcquisition( long numImages, double interval_ms, b
 	{
 		LogMessage( "Failed to start acquisition" );
 		J_Image_CloseStream( hThread );
+		this->isStreemOpened = false;
 		return DEVICE_ERR;
 	}
 
@@ -276,6 +280,7 @@ int CGigECamera::StopSequenceAcquisition()
 		LogMessage( "StopSequenceAcquisition failed to close the image stream" );
 		return DEVICE_ERR;
 	}
+	isStreemOpened = false;
 	snapOneImageOnly = false;
 	doContinuousAcquisition = false;
 	continuousAcquisitionDone = false;
@@ -285,33 +290,37 @@ int CGigECamera::StopSequenceAcquisition()
 
 
 /**
-* Performs exposure and grabs a single image.
-* This function should block during the actual exposure and return immediately afterwards 
-* (i.e., before readout).  This behavior is needed for proper synchronization with the shutter.
-* Required by the MM::Camera API.
-*/
+ * Performs exposure and grabs a single image.
+ * This function should block during the actual exposure and return immediately afterwards
+ * (i.e., before readout).  This behavior is needed for proper synchronization with the shutter.
+ * Required by the MM::Camera API.
+ */
 int CGigECamera::SnapImage()
 {
 	if( snapOneImageOnly ) return DEVICE_OK;
 
 	this->snapOneImageOnly = true;
 	this->snapImageDone = false;
-
+	LogMessage( "Daguan===========================>setupImaging" );
 	setupImaging();
-	
+	LogMessage( "Daguan===========================>setupImagingEnd" );
+	LogMessage( "Daguan===========================>AcquisitionStart" );
 	J_STATUS_TYPE retval = J_Camera_ExecuteCommand( hCamera, cstr2jai( "AcquisitionStart" ) );
+	LogMessage( "Daguan===========================>AcquisitionStart_End" );
 	if( retval != J_ST_SUCCESS )
 	{
 		LogMessage( "SnapImage failed to start acquisition" );
 		J_Image_CloseStream( hThread );
+		this->isStreemOpened = false;
 		return DEVICE_ERR;
 	}
+
 	else // retval == J_ST_SUCCESS
 	{
 		MM::MMTime startTime = GetCurrentMMTime();
 
-		double waitTimeMs = 20.0 * GetExposure();
-		const double minWaitTimeMs = 200.0;
+		double waitTimeMs =20.0 * GetExposure();
+		const double minWaitTimeMs = 100.0;
 		if( waitTimeMs < minWaitTimeMs )
 		{
 			waitTimeMs = minWaitTimeMs;
@@ -327,7 +336,7 @@ int CGigECamera::SnapImage()
 		if( !snapImageDone ) // something happened and we didn't get an image
 		{
 			LogMessage( "SnapImage stopped the acquisition because no image had been returned after " + boost::lexical_cast<std::string>(waitTimeMs) + " ms" );
-			retval = J_Camera_ExecuteCommand( hCamera, cstr2jai( "AcquisitionStop" ) ); 
+			retval = J_Camera_ExecuteCommand( hCamera, cstr2jai( "AcquisitionStop" ) );
 			if( retval != J_ST_SUCCESS )
 			{
 				LogMessage( "SnapImage failed to stop acquisition" );
@@ -335,14 +344,15 @@ int CGigECamera::SnapImage()
 			snapOneImageOnly = false;
 		}
 	}
-
-	retval = J_Image_CloseStream( hThread );
+	LogMessage( "Daguan===========================>J_Image_CloseStream" );
+	LogMessage( "Daguan===========================>J_Image_CloseStreamEnd" );
+	/*retval = J_Image_CloseStream( hThread );
 	if( retval != J_ST_SUCCESS )
 	{
 		LogMessage( "SnapImage failed to close the image stream" );
 		return DEVICE_ERR;
 	}
-	
+	 */
 
 	readoutStartTime_ = GetCurrentMMTime();
 
@@ -351,5 +361,5 @@ int CGigECamera::SnapImage()
 
 bool CGigECamera::IsCapturing()
 {
-   return doContinuousAcquisition;
+	return doContinuousAcquisition;
 }

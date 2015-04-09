@@ -187,6 +187,7 @@ public class Kernel {
 		kl.imageWidth = 300;
 		kl.imageHeight = 300;
 		MMT.VariablesNUPD.calRange.value(10);
+		MMT.VariablesNUPD.frameToRefreshChart.value(100);
 		MMT.VariablesNUPD.beanRadiuPixel.value(50);
 		MMT.VariablesNUPD.pixelToPhysX.value(1.0);
 		MMT.VariablesNUPD.pixelToPhysY.value(1.0);
@@ -194,7 +195,7 @@ public class Kernel {
 		MMT.VariablesNUPD.precision.value(0.0001);
 		int bitDepth = 16;
 		boolean flag = false;
-		int calRange = (int) MMT.VariablesNUPD.calRange.value();
+		int calRange = 10;
 		if(flag)
 			for (int i = 0; i < calRange ; i++) {
 				Object image = getImg(i+1,bitDepth);
@@ -224,21 +225,25 @@ public class Kernel {
 				kl.calibration(image,i,150,150,i+1);
 			}
 			kl.isCalibrated_ = true;
-			for (int jj = 0; jj < 1000; jj++) {
+			long frameNm = 0;
+			Object image = getImg(6.5,bitDepth);
+			Object image1 = getImg(3.5,bitDepth);
+			Object[] img = new Object[]{image,image1};
+			for (int jj = 0; jj < 10000; jj++) {
 
 				for (int i = 0; i < calRange; i++) {
-					double img = 2 + 1.5;				
-					Object image = getImg(img,bitDepth);
-					//MMT.tik();
-					kl.getXYZPosition(image);
-					//					MMT.tok("getXYZPosition");
+					frameNm++;
+					MMT.tik();
+					kl.getXYZPosition(img[(int) (frameNm%2)]);
+					Function.getInstance().updateChart(frameNm);
+					MMT.tok("getXYZPosition");
 
 					for (int k = 0; k < rt.size(); k++) {
 						double[] xyPhy = rt.get(k).getXYZPhy();
 						double xphy = xyPhy[0];
 						double yphy = xyPhy[1];
 						double zphy = rt.get(k).getZ();
-						System.out.print(String.format("\r\n\r\nxphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\t",xphy,yphy,zphy,img,zphy-img));
+						System.out.print(String.format("\r\n\r\n[%d]\txphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\t",frameNm,xphy,yphy,zphy,frameNm%2-2.5,zphy+frameNm%2-2.5));
 					}
 
 				}
@@ -591,7 +596,7 @@ public class Kernel {
 
 		double yArray[] = new double[convLen];
 		double[] xArray = new double[convLen];
-		
+
 		for (int i = 0; i < convLen; i++) {
 			xArray[i] = i;
 			double value = convResult[i].getReal();
@@ -604,7 +609,7 @@ public class Kernel {
 
 		UnivariateFunction function = interpolator.interpolate(xArray, yArray);
 		double pos = xArray[index];
-		
+
 		max = 0;
 		double start,end,pos0,posEnd;
 
@@ -623,7 +628,7 @@ public class Kernel {
 				}
 			}
 		}
-		
+
 		return (pos+1)/2;
 	}
 
