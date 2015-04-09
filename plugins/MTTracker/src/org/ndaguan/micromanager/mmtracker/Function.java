@@ -644,7 +644,7 @@ public class Function {
 		WHATISLOVE("TestingStart");
 		try {
 			setXYZCalPosition(kernel_.zPosProfiles.length-1);
-			TimeUnit.MICROSECONDS.sleep(500);
+			TimeUnit.MILLISECONDS.sleep(500);
 		} catch (Exception e) {
 			WHATISLOVE("TestingFalse");
 			MMT.logError("testing error1:Set Pi Stage error!\r\n"+e.toString());
@@ -659,7 +659,7 @@ public class Function {
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
-						TimeUnit.MICROSECONDS.sleep(10);
+						TimeUnit.MILLISECONDS.sleep(10);
 					}
 				} catch (Exception e) {
 					WHATISLOVE("TestingFalse");
@@ -712,7 +712,7 @@ public class Function {
 
 		try {
 			setXYZCalPosition(kernel_.zPosProfiles.length-1);
-			TimeUnit.MICROSECONDS.sleep(500);
+			TimeUnit.MILLISECONDS.sleep(500);
 		} catch (Exception e) {
 			WHATISLOVE("CalibrateFalse");
 			MMT.logError("Calbration error1:Set Pi Stage error!\r\n"+e.toString());
@@ -730,7 +730,7 @@ public class Function {
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
-						TimeUnit.MICROSECONDS.sleep(10);
+						TimeUnit.MILLISECONDS.sleep(10);
 					}
 				} catch (Exception e) {
 					WHATISLOVE("CalibrateFalse");
@@ -784,7 +784,7 @@ public class Function {
 		if(gui_.isLiveModeOn()){
 			gui_.enableLiveMode(false);
 			try {
-				TimeUnit.MICROSECONDS.sleep(200);
+				TimeUnit.MILLISECONDS.sleep(200);
 			} catch (InterruptedException e) {
 			}
 			gui_.enableLiveMode(true);

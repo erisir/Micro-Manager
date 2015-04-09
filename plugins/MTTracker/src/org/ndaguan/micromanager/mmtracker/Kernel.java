@@ -301,7 +301,7 @@ public class Kernel {
 			{
 				double sumr = 0;
 				double r =i* rInterStep;
-				double dTheta = 1/r;
+				double dTheta = 2/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				for(int j = 0;j<nTheta;j++)
 				{
@@ -332,7 +332,7 @@ public class Kernel {
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 1/r;
+				double dTheta = 2/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				for(int j = 0;j<nTheta;j++)
 				{
@@ -364,7 +364,7 @@ public class Kernel {
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 10/r;
+				double dTheta = 2/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				nTheta = (nTheta==0)?1:nTheta;
 				for(int j = 0;j<nTheta;j++)
@@ -397,7 +397,7 @@ public class Kernel {
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 10/r;
+				double dTheta = 2/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				for(int j = 0;j<nTheta;j++)
 				{
