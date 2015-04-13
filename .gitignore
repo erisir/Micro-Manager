@@ -8,6 +8,16 @@ tags
 *.stamp
 *.dirstamp
 
+
+#bin
+*.idb
+*.d
+*.o
+*.exp
+*.lib
+*.dll
+*.pdb
+
 /SecretDeviceAdapters/
 
 # Visual Studio
@@ -69,10 +79,7 @@ test-reports/
 # Testing
 /testing/gtest-*.zip
 /testing/gtest/
-#bin
-*.idb
-*.d
-*.o
+
 # Generated source
 /lib_Win32	
 /bin_Win32

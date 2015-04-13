@@ -63,7 +63,7 @@ using namespace std;
 // Single axis stage constructor
 //
 ZStage::ZStage() :
-    				m_yInitialized(false)
+    								m_yInitialized(false)
 //m_nAnswerTimeoutMs(1000)
 //, stepSizeUm_(1)
 {
@@ -238,8 +238,6 @@ int ZStage::GetPositionUm(double& dZPosUm)
 
 	if (ret != DEVICE_OK) return ret;
 
-	//unsigned int nBufLen = 256;
-	//unsigned char sAnswer[256];
 	unsigned char sResponse[256];
 	memset(sResponse, 0, 256);
 	ret = ReadMessage(sResponse, 16);
@@ -257,6 +255,7 @@ int ZStage::GetPositionUm(double& dZPosUm)
 
 	dZPosUm = std::atoi((char*)&sResponse);
 	dZPosUm /= 1000;
+
 	if (SigmaKoki::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
@@ -265,22 +264,6 @@ int ZStage::GetPositionUm(double& dZPosUm)
 	}
 
 	SigmaKoki::Instance()->SetPositionZ(dZPosUm);
-
-	//char sPosition[20];
-	//sprintf(sPosition, "%.2f", dZPosUm);
-	//ret = SetProperty(SigmaKoki::Instance()->GetSKStr(SigmaKoki::SKSTR_GetPositionZ).c_str(), sPosition);
-
-	if (SigmaKoki::Instance()->GetDebugLogFlag() > 1)
-	{
-		osMessage.str("");
-		osMessage << "<ZStage::GetPositionUm> Z=[" << dZPosUm << /*"," << sPosition <<*/ "], Returncode=" << ret ;
-		this->LogMessage(osMessage.str().c_str());
-	}
-
-	//f (ret != DEVICE_OK) return ret;
-
-	//ret = UpdateStatus();
-	//if (ret != DEVICE_OK) return ret;
 
 	return DEVICE_OK;
 }
@@ -306,9 +289,9 @@ int ZStage::SetRelativePositionUm(double dZPosUm)
 		osMessage <<"\r\nM:1-P"<<dZPosNm<<"\r\nG:\r\n";
 	}
 	if (SigmaKoki::Instance()->GetDebugLogFlag() > 1)
-		{
-			this->LogMessage(osMessage.str().c_str());
-		}
+	{
+		this->LogMessage(osMessage.str().c_str());
+	}
 	ret = WriteCommand((unsigned char *)osMessage.str().c_str(),osMessage.str().length());
 
 	double currentZPosition =SigmaKoki::Instance()->GetPositionZ()+ dZPosUm;
@@ -347,9 +330,9 @@ int ZStage::SetPositionUm(double dZPosUm)
 		osMessage <<"\r\nA:1-P"<<dZPosNm<<"\r\nG:\r\n";
 	}
 	if (SigmaKoki::Instance()->GetDebugLogFlag() > 1)
-		{
-			this->LogMessage(osMessage.str().c_str());
-		}
+	{
+		this->LogMessage(osMessage.str().c_str());
+	}
 	ret = WriteCommand((unsigned char *)osMessage.str().c_str(),osMessage.str().length());
 
 
@@ -846,7 +829,7 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		const MM::Device* pDevice = this;
 		ret = (GetCoreCallback())->ReadFromSerial(pDevice, SigmaKoki::Instance()->GetSerialPort().c_str(), (unsigned char *)&sAnswer[lRead], (unsigned long)nLength-lRead, lByteRead);
 
-		if (SigmaKoki::Instance()->GetDebugLogFlag() > 2)
+		if (SigmaKoki::Instance()->GetDebugLogFlag() > 1 )
 		{
 			osMessage.str("");
 			osMessage << "<SigmaKokiCtrl::ReadMessage> (ReadFromSerial = (" << lByteRead << ")::<";
@@ -879,29 +862,25 @@ int ZStage::ReadMessage(unsigned char* sResponse, int nBytesRead)
 		if (!yTimeout) CDeviceUtils::SleepMs(3);
 	}
 
-	// block/wait for acknowledge, or until we time out
-	// if (!yRead || yTimeout) return DEVICE_SERIAL_TIMEOUT;
-	// SigmaKoki::Instance()->ByteCopy(sResponse, sAnswer, nBytesRead);
-	// if (checkError(sAnswer[0]) != 0) ret = DEVICE_SERIAL_COMMAND_FAILED;
+	for (unsigned long lIndx=0; lIndx < (unsigned long)nBytesRead; lIndx++)
+	{
+		sResponse[lIndx] = sAnswer[lIndx];
 
+	}
 	if (SigmaKoki::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage.str("");
 		osMessage << "<SigmaKokiCtrl::ReadMessage> (ReadFromSerial = <";
-	}
-
-	for (unsigned long lIndx=0; lIndx < (unsigned long)nBytesRead; lIndx++)
-	{
-		sResponse[lIndx] = sAnswer[lIndx];
-		if (SigmaKoki::Instance()->GetDebugLogFlag() > 1)
+		for (unsigned long lIndx=0; lIndx < (unsigned long)nBytesRead; lIndx++)
 		{
+			sResponse[lIndx] = sAnswer[lIndx];
+
 			SigmaKoki::Instance()->Byte2Hex(sResponse[lIndx], sHex);
 			osMessage << "[" << sHex  << ",";
 			SigmaKoki::Instance()->Byte2Hex(sAnswer[lIndx], sHex);
 			osMessage << sHex  << "]";
 		}
 	}
-
 	if (SigmaKoki::Instance()->GetDebugLogFlag() > 1)
 	{
 		osMessage << ">";

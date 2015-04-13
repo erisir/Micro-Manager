@@ -92,6 +92,7 @@ public class MMT {
 	public static boolean magnetCurrentStage= false;
 	public static double magnetCurrentPosition = 0;
 	public static double stageCurrentPosition = 0;
+	public static int maxN=0;
 	public static enum VariablesClassify{
 		General,
 		DataSheet,
@@ -132,7 +133,7 @@ public class MMT {
 		stageMoveSleepTime("/ms",30,0,0,"位移台移动等待时间，太小了会导致位移台移动不到需要位置，太大了耗时，推荐参考位移台信息，或使用默认值",VariablesClassify.Advance.name()),
 		
 		hasZStage("",1,0,0,"位移台是否可以控制样品在Z方向移动，1：是，0：否",VariablesClassify.Debug.name()),
-		hasXYStage("",1,0,0,"位移台是否可以控制样品在XY方向移动，1：是，0：否",VariablesClassify.Debug.name()),
+		hasXYStage("",0,0,0,"位移台是否可以控制样品在XY方向移动，1：是，0：否",VariablesClassify.Debug.name()),
 		needStageServer("",0,0,0,"是否需要使用位移台服务器，1：是，0：否",VariablesClassify.Debug.name()),
 		needCheckStageMovment("",0,0,0,"设置位移台位置后是否需要确认才返回，1：是，0：否",VariablesClassify.Debug.name()),
 		stageMovmentPrecision("",0.02,0.001,0,"位移台移动允许误差",VariablesClassify.Debug.name()),
@@ -141,7 +142,7 @@ public class MMT {
 		feedBackMinStepSize("/uM",0.000,0.001,0,"反馈最小步长，当飘逸小于此值时不触发反馈",VariablesClassify.Feedback.name()),
 		feedBackWindowSize("",10,0,0,"反馈滑动窗口大小",VariablesClassify.Feedback.name()),
 		pTerm_x("",-0.2,0.0001,0,"比例系数",VariablesClassify.Feedback.name()),
-		needXYcalibrate("",1,0,0,"xy方向是否需要标定(用于确定一个像素对应多少nm)，1：是，0：否",VariablesClassify.Advance.name()),
+		needXYcalibrate("",0,0,0,"xy方向是否需要标定(用于确定一个像素对应多少nm)，1：是，0：否",VariablesClassify.Advance.name()),
 		crossSize("",20,0,0,"十字×宽度",VariablesClassify.Advance.name()),
 		iTerm_x("",0.01,0.0001,0,"积分系数",VariablesClassify.Feedback.name()),
 		pTerm_y("",-0.2,0.0001,0,"比例系数",VariablesClassify.Feedback.name()),
@@ -151,6 +152,7 @@ public class MMT {
 		XYMirror("",1,0,0,"图像的XY方向是否需要互换，1：是，0：否，推荐使用默认值",VariablesClassify.Feedback.name()),
 		skipRadius("Pixel",0,0,0,"计算时忽略掉的中心环半径",VariablesClassify.Debug.name()),
 		AutoRange("",1,0,0,"是否自动重绘图表，1：是，0：否，",VariablesClassify.DataSheet.name()),
+		polarFactor("",1,0,0,"积分系数，越大越精细，但耗时，1：是，0：否，",VariablesClassify.Debug.name()),
 		AutoDeleteRoi("",1,0,0,"是否自动删除ROI，1：是，0：否，",VariablesClassify.Debug.name());
 		private String unit;
 		private double value;

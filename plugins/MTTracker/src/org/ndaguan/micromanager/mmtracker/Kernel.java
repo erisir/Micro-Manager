@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.math3.analysis.UnivariateFunction;
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
@@ -73,9 +74,9 @@ public class Kernel {
 		double[] force = new double[]{0,0};
 		double[] skrewneww = new double[]{0,0}; 
 		if(roiList_.size() <= 0)return false;
-		//		MMT.tik();
+		//				MMT.tik();
 		double[][] ret = gosseCenter(image);
-		//		MMT.tok("GooseCenter");
+		//		MMT.tok("GooseCenter");		
 		if(ret == null)return false;
 		MMT.currentframeIndex_++;
 		for (int i = 0; i < roiList_.size(); i++) {
@@ -84,10 +85,8 @@ public class Kernel {
 				roiList_.get(i).setXY(ret[i]);
 			}
 			roiList_.get(i).setZ(ret[i][2]);
-			force = calcForces(roiList_.get(i).getStats());
-			//			skrewneww = calcSkrewness(roiList_.get(i).getStats(),roiList_.get(i).getStatCross());
+			//force = calcForces(roiList_.get(i).getStats());
 			roiList_.get(i).setForce(force);
-			//			roiList_.get(i).setSkrewness(skrewneww);
 		}
 
 		return true;
@@ -125,7 +124,8 @@ public class Kernel {
 				}
 				return false;
 			}
-			currProfiles = polarIntegral(image,xy[0],xy[1]);		
+			//			currProfiles = polarIntegral(image,xy[0],xy[1]);		
+			currProfiles = polarIntegral2(image,roiX,roiY,beanRadiuPixel);		
 			double zpos = getZLocation(k,currProfiles);
 			roiList_.get(k).setZ(zpos);
 			roiList_.get(k).setL();
@@ -178,6 +178,21 @@ public class Kernel {
 
 
 	public  static void main(String[] args) {
+
+		MMT.VariablesNUPD.calRange.value(10);
+		MMT.VariablesNUPD.skipRadius.value(0);
+		MMT.VariablesNUPD.frameToRefreshChart.value(100);
+		MMT.VariablesNUPD.beanRadiuPixel.value(50);
+		MMT.VariablesNUPD.pixelToPhysX.value(1.0);
+		MMT.VariablesNUPD.pixelToPhysY.value(1.0);
+		MMT.VariablesNUPD.calStepSize.value(1);
+		MMT.VariablesNUPD.polarFactor.value(1);
+		MMT.VariablesNUPD.showDebugTime.value(1);
+		MMT.VariablesNUPD.precision.value(0.0001);
+		MMT.VariablesNUPD.saveFile.value(1);
+		double log2 = Math.log10(MMT.VariablesNUPD.beanRadiuPixel.value()*2 - 1)/Math.log10(2);
+		MMT.maxN = (int) Math.pow(2, Math.floor(log2)+1);
+		
 		List<RoiItem> rt = Collections.synchronizedList(new ArrayList<RoiItem>());
 		rt.add(RoiItem.createInstance(new double[]{130,130,0},"bean2"));
 
@@ -186,20 +201,14 @@ public class Kernel {
 
 		kl.imageWidth = 300;
 		kl.imageHeight = 300;
-		MMT.VariablesNUPD.calRange.value(10);
-		MMT.VariablesNUPD.frameToRefreshChart.value(100);
-		MMT.VariablesNUPD.beanRadiuPixel.value(50);
-		MMT.VariablesNUPD.pixelToPhysX.value(1.0);
-		MMT.VariablesNUPD.pixelToPhysY.value(1.0);
-		MMT.VariablesNUPD.calStepSize.value(1);
-		MMT.VariablesNUPD.precision.value(0.0001);
+
 		int bitDepth = 16;
 		boolean flag = false;
 		int calRange = 10;
 		if(flag)
 			for (int i = 0; i < calRange ; i++) {
 				Object image = getImg(i+1,bitDepth);
-				//				MMT.tik();
+				//MMT.tik();
 				boolean ret = kl.getXYPosition(image);
 				if(!ret)continue;
 				//MMT.tok("getXYPosition");
@@ -235,8 +244,14 @@ public class Kernel {
 					frameNm++;
 					MMT.tik();
 					kl.getXYZPosition(img[(int) (frameNm%2)]);
-					Function.getInstance().updateChart(frameNm);
+					try {
+						kl.saveRoiData("ACQ",frameNm,System.nanoTime()/10e6);
+					} catch (IOException e) {
+						MMT.logError("Save data error");
+					}
 					MMT.tok("getXYZPosition");
+					 
+					Function.getInstance().updateChart(frameNm);
 
 					for (int k = 0; k < rt.size(); k++) {
 						double[] xyPhy = rt.get(k).getXYZPhy();
@@ -283,16 +298,59 @@ public class Kernel {
 		}
 		return ret;
 	} 
+	private double[] polarIntegral2(Object image,int x,int y, double beanRadiuPixel){
+
+		int maxN = MMT.maxN;
+		double[][] signal = new double[maxN][maxN];
+		double [] temp1 = new double[maxN];
+		double [] temp = new double[maxN/2];
+		
+		statis_.clear();
+		switch(image.getClass().getName()){
+		case "[D":
+			break;
+		case "[F":
+			break;
+		case "[S":
+			for (int row=y;row<y+beanRadiuPixel*2;row++){
+				for(int cloumn = x;cloumn<x+beanRadiuPixel*2;cloumn++){
+					signal[row-y][cloumn-x] =  ((short[]) image)[cloumn + row* imageWidth];//get curve
+				}
+
+				Complex[] fRespns = FFT_.transform(signal[row-y], TransformType.FORWARD);//FFT
+				for(int cloumn =0;cloumn<maxN;cloumn++)
+					signal[row-y][cloumn] = fRespns[cloumn].getReal();//save FFT result
+			}
+			for(int cloumn = 0;cloumn<maxN/2;cloumn++){
+				for(int row = 0;row<beanRadiuPixel*2;row++){
+					temp1[row] = signal[row][cloumn];
+				}
+				Complex[] fRespns = FFT_.transform(temp1, TransformType.FORWARD);//FFT
+				double v = fRespns[0].getReal();//save FFT result
+				temp[cloumn] = v;
+				statis_.addValue(v);
+			}
+
+			break;
+		case "[B":
+			break;
+		}
+		//normalization(temp,statis_);	
+		temp[0]=0;
+		return temp;
+	}
+
 	private double[] polarIntegral(Object image,double xpos,double ypos){
 
 		double S00 = 0, S01 =0, S10 = 0, S11 =0;				 
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
 		double rInterStep = MMT.VariablesNUPD.rInterStep.value();
 		double skipRadius = MMT.VariablesNUPD.skipRadius.value();
-		int skipStart  = (int) (skipRadius/rInterStep)+1;
+		int skipStart  = (int) (skipRadius/rInterStep);
+		int polarFactor = (int) MMT.VariablesNUPD.polarFactor.value();
 		double xFactor = MMT.VariablesNUPD.xFactor.value();
 		double yFactor = MMT.VariablesNUPD.yFactor.value();
-		double[] profile = new double[(int) (beanRadiuPixel/rInterStep)];
+		double[] profile = new double[(int) ((beanRadiuPixel-skipRadius)/rInterStep)];
 		statis_.clear();
 		switch(image.getClass().getName()){
 		case "[D":
@@ -301,7 +359,7 @@ public class Kernel {
 			{
 				double sumr = 0;
 				double r =i* rInterStep;
-				double dTheta = 2/r;
+				double dTheta = polarFactor/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				for(int j = 0;j<nTheta;j++)
 				{
@@ -322,8 +380,8 @@ public class Kernel {
 					double Sxy = S00*(1-dx)*(1-dy)+S01*dy*(1-dx)+S10*dx*(1-dy) +S11*dx*dy;
 					sumr += Sxy;
 				}
-				profile[i] =sumr/nTheta;
-				statis_.addValue(profile[i]);
+				profile[i-skipStart] =sumr/nTheta;
+				statis_.addValue(profile[i-skipStart]);
 			}
 			break;
 		case "[F":
@@ -332,7 +390,7 @@ public class Kernel {
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 2/r;
+				double dTheta = polarFactor/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				for(int j = 0;j<nTheta;j++)
 				{
@@ -353,18 +411,18 @@ public class Kernel {
 					double Sxy = S00*(1-dx)*(1-dy)+S01*dy*(1-dx)+S10*dx*(1-dy) +S11*dx*dy;
 					sumr += Sxy;
 				}
-				profile[i] =sumr/nTheta;
-				statis_.addValue(profile[i]);
+				profile[i-skipStart] =sumr/nTheta;
+				statis_.addValue(profile[i-skipStart]);
 			}
 			break;
 		case "[S":
 			profile[0] = ((short[]) image)[(int)xpos + ((int)ypos)* imageWidth];
 			statis_.addValue(profile[0]);
-			for(int i = skipStart;i< beanRadiuPixel/rInterStep ;i++)
+			for(int i = skipStart+1;i< beanRadiuPixel/rInterStep ;i++)
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 2/r;
+				double dTheta = polarFactor/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				nTheta = (nTheta==0)?1:nTheta;
 				for(int j = 0;j<nTheta;j++)
@@ -387,17 +445,17 @@ public class Kernel {
 					double Sxy = S00*(1-dx)*(1-dy)+S01*dy*(1-dx)+S10*dx*(1-dy) +S11*dx*dy;
 					sumr += Sxy;
 				}
-				profile[i] =sumr/nTheta;
-				statis_.addValue(profile[i]);
+				profile[i-skipStart] =sumr/nTheta;
+				statis_.addValue(profile[i-skipStart]);
 			}
 			break;
 		case "[B":
 			profile[0] = ((byte[]) image)[(int)xpos + ((int)ypos)* imageWidth];
-			for(int i = skipStart;i< beanRadiuPixel/rInterStep ;i++)
+			for(int i = skipStart+1;i< beanRadiuPixel/rInterStep ;i++)
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
-				double dTheta = 2/r;
+				double dTheta = polarFactor/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				for(int j = 0;j<nTheta;j++)
 				{
@@ -418,14 +476,15 @@ public class Kernel {
 					double Sxy = S00*(1-dx)*(1-dy)+S01*dy*(1-dx)+S10*dx*(1-dy) +S11*dx*dy;
 					sumr += Sxy;
 				}
-				profile[i] =sumr/nTheta;
-				statis_.addValue(profile[i]);
+				profile[i-skipStart] =sumr/nTheta;
+				statis_.addValue(profile[i-skipStart]);
 			}
 			break;
 		}
 		normalization(profile,statis_);	
 		return profile;
 	}
+
 	public void updateCalibrationProfile(){
 		double calRange = MMT.VariablesNUPD.calRange.value();
 		double calStepSize = MMT.VariablesNUPD.calStepSize.value();
@@ -434,7 +493,7 @@ public class Kernel {
 		xPosProfiles = new double[ (int) (calRange/calStepSize)];
 		yPosProfiles = new double[ (int) (calRange/calStepSize)];
 		for (RoiItem it:roiList_)
-			it.InitializeCalProflie((int) (calRange/calStepSize),(int) (MMT.VariablesNUPD.beanRadiuPixel.value()/MMT.VariablesNUPD.rInterStep.value()));
+			it.InitializeCalProflie((int) (calRange/calStepSize),MMT.maxN/2);
 	}
 
 	public  boolean calibration(Object image,int index,double currXPos,double currYPos,double currZPos) {
@@ -458,7 +517,7 @@ public class Kernel {
 				return false;
 			}
 			roiList_.get(k).setXY(ret[k][0],ret[k][1]);
-			roiList_.get(k).updateCalProfile(index,polarIntegral(image,ret[k][0],ret[k][1]));
+			roiList_.get(k).updateCalProfile(index,polarIntegral2(image,roiX,roiY,beanRadiuPixel));
 		}
 		return true;
 	}
@@ -535,9 +594,9 @@ public class Kernel {
 				continue;
 			}
 			int crossSize = (int) MMT.VariablesNUPD.crossSize.value();
-			double[][] sumXY = getXYSum(image, roiX,roiY,crossSize);
+			double[][] sumXY = getXYSum(image, roiX,roiY,crossSize);//0.02
 			Function.getInstance().updateChartSumXY(i, sumXY);
-			double xPos = getCurveCenter(sumXY[0])+ roiX;
+			double xPos = getCurveCenter(sumXY[0])+ roiX;//0.02
 			double yPos= getCurveCenter(sumXY[1])+ roiY;
 			double counter = sumXY[2][0];
 			position[i][0] = xPos;

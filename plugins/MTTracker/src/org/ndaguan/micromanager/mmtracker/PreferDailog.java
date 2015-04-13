@@ -79,6 +79,8 @@ public class PreferDailog extends JFrame {
 			MMT.Coefficients[2][0] = MMT.VariablesNUPD.pTerm_z.value();
 			MMT.Coefficients[2][1] = MMT.VariablesNUPD.iTerm_z.value();
 			
+			double log2 = Math.log10(MMT.VariablesNUPD.beanRadiuPixel.value()*2 - 1)/Math.log10(2);
+			MMT.maxN = (int) Math.pow(2, Math.floor(log2)+1);
 			MMTracker mmt = MMTracker.getInstance();
 			if(mmt != null){
 				List<RoiItem> roilist = mmt.getRoiList();

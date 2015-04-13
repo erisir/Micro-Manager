@@ -206,7 +206,7 @@ public  class RoiItem {
 		if (dataFileWriter_ == null) {
 			Calendar cal = new GregorianCalendar();
 			DateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
-			File dir = new File(new File(MMTFrame.getInstance().preferDailog.userDataDir_, "MTTracker"),
+			File dir = new File(new File("C:/", "MTTracker"),
 					dateFormat.format(cal.getTime()));
 			dir.mkdirs();
 			dateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss");
