@@ -121,7 +121,7 @@ public class MMT {
 		pixelToPhysY("(Um/pixel) ",0.075,0.0001,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
 		xFactor(" ",1,0.0001,0,"衍射环在X方向的修正系数，在CCD像素点非正方形时使用，需要参考CCD型号，推荐使用默认值",VariablesClassify.Advance.name()),
 		yFactor(" ",1,0.0001,0,"衍射环在Y方向的修正系数，在CCD像素点非正方形时使用，需要参考CCD型号，推荐使用默认值",VariablesClassify.Advance.name()),
-		
+		 
 		testingPrecision("",0.05,0.01,0,"计算标定误差时的精度，每隔多少uM做一个检验，太小计算耗时，太大了精度不够，推荐使用默认值",VariablesClassify.Advance.name()),
 		responceXY("",0,0,0,"测试专用：是否在标定之前记录，显示更新磁球数据，1：是，0：否",VariablesClassify.Debug.name()),
 		saveFile(" ",1,0,0,"测试专用：是否保存数据,1：是，0：否",VariablesClassify.Debug.name()),

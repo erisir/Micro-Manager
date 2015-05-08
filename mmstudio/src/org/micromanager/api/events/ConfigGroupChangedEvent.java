@@ -4,7 +4,7 @@ package org.micromanager.api.events;
 public class ConfigGroupChangedEvent {
    private String groupName_;
    private String newConfig_;
-
+ 
    public ConfigGroupChangedEvent(String groupName, String newConfig) {
       groupName_ = groupName;
       newConfig_ = newConfig;
@@ -15,4 +15,4 @@ public class ConfigGroupChangedEvent {
    public String getGroupName() {
       return groupName_;
    }
-}
+} 

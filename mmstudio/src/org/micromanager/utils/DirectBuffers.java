@@ -15,13 +15,18 @@ import java.nio.ShortBuffer;
 public class DirectBuffers {
    
    public static ByteOrder NATIVE_ORDER = ByteOrder.nativeOrder();
-   
-   public static ByteBuffer bufferFromBytes(byte[] bytes) {
-      return ByteBuffer.allocateDirect(bytes.length).put(bytes);
+   private static ShortBuffer sb = null;
+   private static ByteBuffer  bb = null;
+   public static ByteBuffer bufferFromBytes(byte[] bytes) {     
+      if(bb==null)
+		  bb =ByteBuffer.allocateDirect(bytes.length).put(bytes);;
+	   return bb;
    }
    
    public static ShortBuffer bufferFromShorts(short[] shorts) {
-      return ByteBuffer.allocateDirect(2*shorts.length).order(NATIVE_ORDER).asShortBuffer().put(shorts);
+	   if(sb==null)
+		   sb = ByteBuffer.allocateDirect(2*shorts.length).order(NATIVE_ORDER).asShortBuffer().put(shorts);
+	   return sb;
    }
    
    public static IntBuffer bufferFromInts(int[] ints) {

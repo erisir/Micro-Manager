@@ -124,8 +124,8 @@ public class Kernel {
 				}
 				return false;
 			}
-			//			currProfiles = polarIntegral(image,xy[0],xy[1]);		
-			currProfiles = polarIntegral2(image,roiX,roiY,beanRadiuPixel);		
+			currProfiles = polarIntegral(image,xy[0],xy[1]);		
+			//			currProfiles = polarIntegral2(image,roiX,roiY,beanRadiuPixel);		
 			double zpos = getZLocation(k,currProfiles);
 			roiList_.get(k).setZ(zpos);
 			roiList_.get(k).setL();
@@ -192,7 +192,7 @@ public class Kernel {
 		MMT.VariablesNUPD.saveFile.value(1);
 		double log2 = Math.log10(MMT.VariablesNUPD.beanRadiuPixel.value()*2 - 1)/Math.log10(2);
 		MMT.maxN = (int) Math.pow(2, Math.floor(log2)+1);
-		
+
 		List<RoiItem> rt = Collections.synchronizedList(new ArrayList<RoiItem>());
 		rt.add(RoiItem.createInstance(new double[]{130,130,0},"bean2"));
 
@@ -250,7 +250,7 @@ public class Kernel {
 						MMT.logError("Save data error");
 					}
 					MMT.tok("getXYZPosition");
-					 
+
 					Function.getInstance().updateChart(frameNm);
 
 					for (int k = 0; k < rt.size(); k++) {
@@ -304,7 +304,7 @@ public class Kernel {
 		double[][] signal = new double[maxN][maxN];
 		double [] temp1 = new double[maxN];
 		double [] temp = new double[maxN/2];
-		
+
 		statis_.clear();
 		switch(image.getClass().getName()){
 		case "[D":
@@ -517,7 +517,8 @@ public class Kernel {
 				return false;
 			}
 			roiList_.get(k).setXY(ret[k][0],ret[k][1]);
-			roiList_.get(k).updateCalProfile(index,polarIntegral2(image,roiX,roiY,beanRadiuPixel));
+			//			roiList_.get(k).updateCalProfile(index,polarIntegral2(image,roiX,roiY,beanRadiuPixel));
+			roiList_.get(k).updateCalProfile(index,polarIntegral(image,xy[0],xy[1]));
 		}
 		return true;
 	}

@@ -1,3 +1,68 @@
+Install_Win32/
+Install_x64/
+Debug/
+Release/
+bin_Win32/
+build/
+bin/
+
+#image
+*.jpg
+*.gif
+
+# C/C++
+
+*.obj
+*.o
+*.d
+*.idb
+*.pdb
+*.suo
+*.sdf
+*.ipch
+*.props
+
+# Java
+*.class
+*.jar
+*.dll 
+# Python
+*.pyc
+*.pyd
+
+# Swig
+*_wrap.cxx
+
+# Binaries
+*.lib
+*.dll
+*.exe
+
+# Misc
+.metadata/
+*.settings/
+*.swp
+*~
+*.project
+*.classpath
+*.cproject
+*.pydevproject
+*.css
+*.props
+*.xslt
+*.old
+*.stackdump
+
+*.opensdf
+ 
+
+#keil
+*.lst
+*.m51
+*.plg
+*.A51
+*.Opt
+*.Bak
 # Editors, etc.
 *~
 .*.swp

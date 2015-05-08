@@ -335,7 +335,7 @@ public class TaggedImageStorageDiskDefault implements TaggedImageStorage {
          // no pixelsize defined.  Nothing to do
       }
    }
-
+ 
 
    public void saveImagePlus(ImagePlus imp, JSONObject md, String path, String tiffFileName) {
       try {

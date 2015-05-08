@@ -475,7 +475,7 @@ public class Function {
 		kernel_.zTestingPosProfiles = new double [(int) (calRange/testingPrecision)];
 
 		for (RoiItem it:roiList_) 
-			it.InitializeCalProflie((int) (calRange/calStepSize),MMT.maxN/2);//(int) ((MMT.VariablesNUPD.beanRadiuPixel.value()-MMT.VariablesNUPD.skipRadius.value())/MMT.VariablesNUPD.rInterStep.value()));
+			it.InitializeCalProflie((int) (calRange/calStepSize), (int) ((MMT.VariablesNUPD.beanRadiuPixel.value()-MMT.VariablesNUPD.skipRadius.value())/MMT.VariablesNUPD.rInterStep.value()));
 		int calSize = (int) (calRange/calStepSize);
 		try {
 			updatePositions();

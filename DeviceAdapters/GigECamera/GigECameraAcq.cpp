@@ -64,6 +64,12 @@ void CGigECamera::SnapImageCallback( J_tIMAGE_INFO* imageInfo )
 			GetCoreCallback()->ClearImageBuffer( this );
 			nRet = GetCoreCallback()->InsertImage(this, buffer_,
 					GetImageWidth(), GetImageHeight(), GetImageBytesPerPixel(), md.Serialize().c_str());
+			if (DEVICE_OK != nRet)
+			{
+				LogMessage( "InsertImage  encountered a problem, could not aquire image buffer from device");
+				return;
+			}
+
 		}
 	} // end if doContinuousAcquisition
 	else if( this->snapOneImageOnly )
