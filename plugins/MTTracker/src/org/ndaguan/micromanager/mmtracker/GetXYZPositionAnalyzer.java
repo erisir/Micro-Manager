@@ -25,6 +25,7 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 	public double imgheight_;
 	public  String acqName_;
 	private Kernel kernel_;
+	private long startTime;
 
 
 	public static GetXYZPositionAnalyzer getInstance() {	
@@ -58,13 +59,13 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 		if (taggedImage.tags.has("ElapsedTime-ms"))
 		{
 			try {
-				elapsed = taggedImage.tags.getDouble("ElapsedTime-ms");
+				elapsed = taggedImage.tags.getDouble("ElapsedTime-ms")/1000;
 			} catch (JSONException e) {
 			}
 
 		}
 		else{
-			elapsed = System.nanoTime()  / 1e6;
+			elapsed = (System.nanoTime() - startTime)  / 1e9;
 		}
 
 		try {
@@ -75,6 +76,7 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 			if(!listener_.isRunning()){
 				Function.getInstance().dataReset();
 				listener_.start(win);
+				startTime = System.nanoTime();
 				acqName_ = acqName;
 				frameNum_ = 0;
 				if (acqName.equals(MMT.SIMPLE_ACQ)) {
@@ -125,7 +127,7 @@ public class GetXYZPositionAnalyzer extends TaggedImageAnalyzer {
 					MMT.logError("Save data error");
 				}
 			Function.getInstance().updateChart(frameNum_);
-			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,true);
+			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, true,false);
 			Function.getInstance().PullMagnet(frameNum_);
 			
 

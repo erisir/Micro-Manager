@@ -639,7 +639,7 @@ public class StageControlFrame extends javax.swing.JFrame {
 					MMT.SetCurrentStagePosition(stageZLabel_,target);
 				}
 				double delta = from -target ;
-				msg.setText(String.format("ZPos:  FROM -> TO= [%.3f] -> [%.3f]=%.3f(um)",from,target,delta));
+				msg.setText(String.format("ZPos:  FROM [%.3f]-> TO= [%.3f] ¡÷ =%.3f(um)",from,target,delta));
 
 
 			}

@@ -793,14 +793,13 @@ public class Function {
 				gui_.enableLiveMode(true);
 		}
 	}
-	public void updateTestingChart(final double currZpos,boolean _flag) {
-		final boolean flag = _flag;
+	public void updateTestingChart(final double currZpos) {
 		SwingUtilities.invokeLater(new Runnable(){
 			@Override
 			public void run() {
 				for(int i = 0;i<roiList_.size();i++)
 				{
-					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ() - currZpos,flag);
+					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ()/(-1000) - currZpos,true);
 				}
 			}
 		});
