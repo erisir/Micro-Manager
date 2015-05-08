@@ -93,6 +93,7 @@ public class MMT {
 	public static double magnetCurrentPosition = 0;
 	public static double stageCurrentPosition = 0;
 	public static int maxN=0;
+	public static String AcqName = "Snap/Live Window";
 	public static enum VariablesClassify{
 		General,
 		DataSheet,

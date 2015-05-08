@@ -127,7 +127,7 @@ public class Kernel {
 			currProfiles = polarIntegral(image,xy[0],xy[1]);		
 			//			currProfiles = polarIntegral2(image,roiX,roiY,beanRadiuPixel);		
 			double zpos = getZLocation(k,currProfiles);
-			roiList_.get(k).setZ(zpos*(-1000));
+			roiList_.get(k).setZ(zpos);
 			//roiList_.get(k).setL();
 			Function.getInstance().updatePosProfileChart(k,currProfiles);
 		}

@@ -799,7 +799,7 @@ public class Function {
 			public void run() {
 				for(int i = 0;i<roiList_.size();i++)
 				{
-					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ()/(-1000) - currZpos,true);
+					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ() - currZpos,true);
 				}
 			}
 		});
@@ -907,7 +907,7 @@ public class Function {
 	public void setAutoContrast() {
 
 		try {
-			gui_.setContrastBasedOnFrame(GetXYPositionAnalyzer.getInstance().acqName_, 0, 0);
+			gui_.setContrastBasedOnFrame(MMT.AcqName, 0, 0);
 		} catch (MMScriptException e) {
 			MMT.logError("Set auto contrast false");
 		}		
@@ -994,6 +994,7 @@ public class Function {
 			TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 		}
 	}
+	@SuppressWarnings("deprecation")
 	public void liveCapture() {
 		if(isXYAcqAnalyzerInstall_ && kernel_.isCalibrated_){
 			installAnalyzer("XYZACQ");
@@ -1012,6 +1013,7 @@ public class Function {
 				it.setChartVisible(false);
 		}
 		liveView();
+//		MMT.AcqName = gui_.getAcqDlg().runAcquisition();
 	}
 
 	public void cleanStaticData() {

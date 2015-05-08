@@ -220,7 +220,7 @@ public  class RoiItem {
 		}
 		else{
 			dataFileWriter_
-			.write(String.format("%f,%d,%f,%f,%f,%f,%f,%f,%f,%f\r\n",elapsed,frameNum_,x_,xPhy_,y_,yPhy_,zPhy_,MMT.stageCurrentPosition,MMT.magnetCurrentPosition,fx_,fy_/*,stdXdY_,skrewness_*/));
+			.write(String.format("%f,%d,%f,%f,%f,%f,%f,%f,%f,%f\r\n",elapsed,frameNum_,x_,xPhy_,y_,yPhy_,zPhy_*(-1000),MMT.stageCurrentPosition*(-1000),MMT.magnetCurrentPosition,fx_,fy_/*,stdXdY_,skrewness_*/));
 		}
 		return true;
 
@@ -240,8 +240,9 @@ public  class RoiItem {
 	private double[] getDrawScale() {
 		double min = 0.05;
 		double[] std = getStandardDeviation();
-		for(int i = 0;i<std.length;i++)
+		for(int i = 0;i<std.length;i++){
 			std[i] = std[i]*6;
+		}
 		return new double[]{std[0]<min?min:std[0],std[1]<min?min:std[1],std[2]<min?min:std[2],std[3]<min?min:std[3]};
 	}
 
