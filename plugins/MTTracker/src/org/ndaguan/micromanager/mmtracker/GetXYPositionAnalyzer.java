@@ -125,7 +125,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 				} catch (IOException e) {
 					MMT.logError("Save data error");
 				}
-			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,true);
+			Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, false,false);
 			if( MMT.VariablesNUPD.responceXY.value() == 1){
 				Function.getInstance().updateChart(frameNum_);
 				Function.getInstance().PullMagnet(frameNum_);

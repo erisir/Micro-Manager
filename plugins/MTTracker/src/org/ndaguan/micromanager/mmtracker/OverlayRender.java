@@ -33,7 +33,7 @@ public class OverlayRender {
 	private OverlayRender( ) {
 		labelColor_ = Color.GREEN;
 		labelFont_ = new Font("SansSerif", Font.PLAIN, 14);
-		sizeCrossHair_ = 8;
+		sizeCrossHair_ = (int) MMT.VariablesNUPD.beanRadiuPixel.value();
 		overlayMap_ = new HashMap<ImagePlus, HashMap<Long, Overlay>>();
 		instance_ = this;
 
@@ -93,17 +93,18 @@ public class OverlayRender {
 			int x = (int)xy[0];
 			int y = (int)xy[1];
 
-			Roi dummyRoi = new Roi(x- 5, y - beanRadius - sizeCrossHair_, 0, 0);
-			dummyRoi.setStrokeColor(new Color(0,0,0,0));
-			dummyRoi.setName(item.getMsg());
-			overlay.add(dummyRoi);
+//			Roi dummyRoi = new Roi(x- 5, y - beanRadius - sizeCrossHair_, 0, 0);
+//			dummyRoi.setStrokeColor(new Color(0,0,0,0));
+//			dummyRoi.setName(item.getMsg());
+//			overlay.add(dummyRoi);
 
 
-			Roi roi = new Roi(x - beanRadius , y -beanRadius, beanRadius*2, beanRadius*2);
-			roi.setStrokeColor(new Color(0, 0, 0, 0));
-			roi.setName("");
-			roi.setStrokeColor(item.getItemColor());
-			overlay.add(roi);
+//			Roi roi = new Roi(x - beanRadius , y -beanRadius, beanRadius*2, beanRadius*2);
+//			roi.setStrokeColor(new Color(0, 0, 0, 0));
+//			roi.setName("");
+//			roi.setStrokeColor(item.getItemColor());
+//			overlay.add(roi);
+			
 			ShapeRoi sr = new ShapeRoi(new float[] { PathIterator.SEG_MOVETO,
 					x - sizeCrossHair_, y, PathIterator.SEG_LINETO,
 					x + sizeCrossHair_, y, PathIterator.SEG_MOVETO, x,

@@ -215,12 +215,12 @@ public  class RoiItem {
 			dataFileWriter_ = new BufferedWriter(new FileWriter(file));
 
 			dataFileWriter_
-			.write("Frame, Timestamp, XPos/pixel,XPos/um, YPos/pixel, YPos/um, ZPos/um,StageZ/um,MagnetZ/um,L/um,ForceX/pN,ForceY/pN,Std(x/y),skrewnessy\r\n");
+			.write("Timestamp/sec, Frame, XPos/pixel,XPos/nm, YPos/pixel, YPos/nm, ZPos/nm,StageZ/nm,MagnetZ/um,ForceX/pN,ForceY/pN\r\n");/*,Std(x/y),skrewnessy*/
 			dataFileWriter_.flush();
 		}
 		else{
 			dataFileWriter_
-			.write(String.format("%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\r\n",frameNum_,elapsed,x_,xPhy_,y_,yPhy_,zPhy_,MMT.stageCurrentPosition,MMT.magnetCurrentPosition,l_,fx_,fy_,stdXdY_,skrewness_));
+			.write(String.format("%f,%d,%f,%f,%f,%f,%f,%f,%f,%f\r\n",elapsed,frameNum_,x_,xPhy_,y_,yPhy_,zPhy_,MMT.stageCurrentPosition,MMT.magnetCurrentPosition,fx_,fy_/*,stdXdY_,skrewness_*/));
 		}
 		return true;
 
@@ -302,9 +302,9 @@ public  class RoiItem {
 		xPhy_ = MMT.VariablesNUPD.pixelToPhysX.value() * x_;
 		yPhy_ = MMT.VariablesNUPD.pixelToPhysY.value() * y_;
 		//nM:calculate Force with a bigger windowSize
-		calcForceXYZStatis_[0].addValue(xPhy_*1000);
-		calcForceXYZStatis_[1].addValue(yPhy_*1000);
-		calcForceXYZStatis_[2].addValue(xPhy_ * yPhy_ * 1e6);
+		calcForceXYZStatis_[0].addValue(xPhy_);
+		calcForceXYZStatis_[1].addValue(yPhy_);
+		calcForceXYZStatis_[2].addValue(xPhy_ * yPhy_);
 		//uM:get mean&standardDeviation  to update chart with a smaller windowSize;
 		showChartXYZStatis_[0].addValue(xPhy_);
 		showChartXYZStatis_[1].addValue(yPhy_);

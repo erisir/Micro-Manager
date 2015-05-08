@@ -117,8 +117,8 @@ public class MMT {
 		kT("/pN*nM ",4.2,0.001,0,"Kb*T,用来计算磁力，推荐使用默认值",VariablesClassify.Advance.name()),
 		precision("/uM",0.0001,0.0001,0,"插值算法中的精度，即整个测量系统最终需要的最小精度，太大时精度不好，太小时计算耗时，推荐使用默认值",VariablesClassify.Advance.name()),
 		 
-		pixelToPhysX("(Um/pixel) ",0.075,0.0001,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
-		pixelToPhysY("(Um/pixel) ",0.075,0.0001,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
+		pixelToPhysX("(nm/pixel) ",75,0.1,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
+		pixelToPhysY("(nm/pixel) ",75,0.1,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
 		xFactor(" ",1,0.0001,0,"衍射环在X方向的修正系数，在CCD像素点非正方形时使用，需要参考CCD型号，推荐使用默认值",VariablesClassify.Advance.name()),
 		yFactor(" ",1,0.0001,0,"衍射环在Y方向的修正系数，在CCD像素点非正方形时使用，需要参考CCD型号，推荐使用默认值",VariablesClassify.Advance.name()),
 		 
@@ -127,10 +127,10 @@ public class MMT {
 		saveFile(" ",1,0,0,"测试专用：是否保存数据,1：是，0：否",VariablesClassify.Debug.name()),
 		showDebugTime("",10000,0,0,"测试专用：更新correlation 及 posProfile 图像的帧距",VariablesClassify.Debug.name()),
 		
-		chartStatisWindow("",300,0,0,"数据图像显示：响应变化的帧数，太小时图像容易抖动，太大时图像不容易自动缩放，推荐使用200~1000",VariablesClassify.DataSheet.name()),
+		chartStatisWindow("",1000,0,0,"数据图像显示：响应变化的帧数，太小时图像容易抖动，太大时图像不容易自动缩放，推荐使用200~1000",VariablesClassify.DataSheet.name()),
 		frameToRefreshChart("",10,0,0,"数据图像显示：更新图像的帧数，太小了计算耗时，太大了更新慢,推荐使用20~100",VariablesClassify.DataSheet.name()),
 		frameToRefreshImage("",50,0,0,"图像显示即响应鼠标操作时间，太小了计算耗时，太大了响应慢，容易出现选框跟不上球的移动，推荐使用50~100",VariablesClassify.DataSheet.name()),
-		stageMoveSleepTime("/ms",30,0,0,"位移台移动等待时间，太小了会导致位移台移动不到需要位置，太大了耗时，推荐参考位移台信息，或使用默认值",VariablesClassify.Advance.name()),
+		stageMoveSleepTime("/ms",0,0,0,"位移台移动等待时间，太小了会导致位移台移动不到需要位置，太大了耗时，推荐参考位移台信息，或使用默认值",VariablesClassify.Advance.name()),
 		
 		hasZStage("",1,0,0,"位移台是否可以控制样品在Z方向移动，1：是，0：否",VariablesClassify.Debug.name()),
 		hasXYStage("",0,0,0,"位移台是否可以控制样品在XY方向移动，1：是，0：否",VariablesClassify.Debug.name()),
@@ -150,7 +150,7 @@ public class MMT {
 		pTerm_z("",-0.2,0.0001,0,"比例系数",VariablesClassify.Feedback.name()),
 		iTerm_z("",0.01,0.0001,0,"积分系数",VariablesClassify.Feedback.name()),
 		XYMirror("",1,0,0,"图像的XY方向是否需要互换，1：是，0：否，推荐使用默认值",VariablesClassify.Feedback.name()),
-		skipRadius("Pixel",0,0,0,"计算时忽略掉的中心环半径",VariablesClassify.Debug.name()),
+		skipRadius("Pixel",12,0,0,"计算时忽略掉的中心环半径",VariablesClassify.Debug.name()),
 		AutoRange("",1,0,0,"是否自动重绘图表，1：是，0：否，",VariablesClassify.DataSheet.name()),
 		polarFactor("",1,0,0,"积分系数，越大越精细，但耗时，1：是，0：否，",VariablesClassify.Debug.name()),
 		AutoDeleteRoi("",1,0,0,"是否自动删除ROI，1：是，0：否，",VariablesClassify.Debug.name());

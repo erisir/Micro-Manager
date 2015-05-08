@@ -82,6 +82,7 @@ public class PreferDailog extends JFrame {
 			double log2 = Math.log10(MMT.VariablesNUPD.beanRadiuPixel.value()*2 - 1)/Math.log10(2);
 			MMT.maxN = (int) Math.pow(2, Math.floor(log2)+1);
 			MMTracker mmt = MMTracker.getInstance();
+			OverlayRender.getInstance().setCrossHairSize((int) MMT.VariablesNUPD.beanRadiuPixel.value());
 			if(mmt != null){
 				List<RoiItem> roilist = mmt.getRoiList();
 				for(RoiItem item: roilist){
