@@ -1,5 +1,7 @@
 package org.ndaguan.micromanager.mmtracker;
 
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.HashMap;
 
 import javax.swing.JFrame;
@@ -13,7 +15,7 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.PlotOrientation;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
- 
+
 public class ChartManager extends JFrame  {
 	/**
 	 * 
@@ -33,11 +35,11 @@ public class ChartManager extends JFrame  {
 	public HashMap<String, XYSeries> getDataSeries(){
 		return dataSeries_;
 	}
-	 
+
 	public HashMap<String, JFreeChart> getChartSeries(){
 		return chartSeries_;
 	}
-	
+
 	public void setMaxCount(String chartName,int acount)
 	{
 		dataSeries_.get(chartName).setMaximumItemCount(acount);
@@ -59,11 +61,28 @@ public class ChartManager extends JFrame  {
 		this.setDefaultCloseOperation(HIDE_ON_CLOSE);
 		this.setTitle(titleName);
 		initialize();
-		
+		this.addComponentListener(new ComponentAdapter()
+		{
+			@Override
+			public void componentResized(ComponentEvent e)
+			{
+				updateGUI();
+			}
+		});
+
 	}
+	protected void updateGUI() {
+		// TODO Auto-generated method stub
+		int backw = getWidth();
+		tapSize = (int) (backw*0.95);
+		for(int i=0;i<this.tabbedPane.getComponents().length ;i++){
+			this.tabbedPane.getComponents()[i].getComponentAt(10, 10).setBounds(10, 10, tapSize, (int) (tapSize*0.55));
+		}
+	}
+
 	void initialize(){
 		//tabbedPane
-	tabbedPane = new JTabbedPane();
+		tabbedPane = new JTabbedPane();
 		tabbedPane.setBounds(0,0, tapSize, (int)(tapSize*0.618));
 		getContentPane().add(tabbedPane);
 		for (int i = 0; i <  dataSet.length; i++) {
@@ -82,9 +101,10 @@ public class ChartManager extends JFrame  {
 		temp_.setMaximumItemCount(ChartMaxItemCount );
 		dataset_ = new XYSeriesCollection();
 		dataset_.addSeries(temp_);
-		chart = ChartFactory.createXYLineChart(tableName, "-Time",
-				"-value", dataset_, PlotOrientation.VERTICAL, true, true,
-				false);
+		if(chart==null)
+			chart = ChartFactory.createXYLineChart(tableName, "-Time",
+					"-value", dataset_, PlotOrientation.VERTICAL, true, true,
+					false);
 
 		chartSeries_.put(tableName, chart);
 		dataSeries_.put(tableName,temp_);	
@@ -120,7 +140,8 @@ public class ChartManager extends JFrame  {
 	public void setChartWidth(int size) {
 		for(int i =0;i<dataSeries_.size();i++){
 			dataSeries_.get(MMT.CHARTLIST[i]).setMaximumItemCount(size);
-			
+
 		}
 	}
+
 }

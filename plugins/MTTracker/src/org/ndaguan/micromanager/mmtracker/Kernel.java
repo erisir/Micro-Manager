@@ -205,6 +205,7 @@ public class Kernel {
 		int bitDepth = 16;
 		boolean flag = false;
 		int calRange = 10;
+		
 		if(flag)
 			for (int i = 0; i < calRange ; i++) {
 				Object image = getImg(i+1,bitDepth);
@@ -238,6 +239,7 @@ public class Kernel {
 			Object image = getImg(6.5,bitDepth);
 			Object image1 = getImg(3.5,bitDepth);
 			Object[] img = new Object[]{image,image1};
+			if(1==1)return ;
 			for (int jj = 0; jj < 10000; jj++) {
 
 				for (int i = 0; i < calRange; i++) {
