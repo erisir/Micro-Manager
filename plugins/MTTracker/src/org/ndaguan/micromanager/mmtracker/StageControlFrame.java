@@ -19,14 +19,12 @@
 
 package org.ndaguan.micromanager.mmtracker;
 
-import mmcorej.CMMCore;
-
 import java.awt.Color;
-import java.awt.Toolkit;
 import java.text.NumberFormat;
 import java.text.ParseException;
-
 import java.util.prefs.Preferences;
+
+import mmcorej.CMMCore;
 
 import org.micromanager.api.ScriptInterface;
 
@@ -36,6 +34,7 @@ import com.swtdesigner.SwingResourceManager;
  *
  * @author nico
  */
+@SuppressWarnings("serial")
 public class StageControlFrame extends javax.swing.JFrame {
 	private final ScriptInterface gui_;
 	private final CMMCore core_;
@@ -176,7 +175,6 @@ public class StageControlFrame extends javax.swing.JFrame {
 		jLabel9 = new javax.swing.JLabel();
 		jLabel10 = new javax.swing.JLabel();
 		msg = new javax.swing.JLabel();
-		Toolkit kit = Toolkit.getDefaultToolkit();
 		setLocationByPlatform(true);
 		setResizable(false);
 		if(stageZLabel_ !=null && !stageZLabel_.isEmpty())

@@ -1,9 +1,6 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import java.awt.Color;
-import java.util.List;
-
-import org.micromanager.MMStudio;
 
 public class MMT {
 	public static final String menuName = "MultZIndexMeasure";
@@ -118,11 +115,11 @@ public class MMT {
 		kT("/pN*nM ",4.2,0.001,0,"Kb*T,用来计算磁力，推荐使用默认值",VariablesClassify.Advance.name()),
 		precision("/uM",0.0001,0.0001,0,"插值算法中的精度，即整个测量系统最终需要的最小精度，太大时精度不好，太小时计算耗时，推荐使用默认值",VariablesClassify.Advance.name()),
 		 
-		pixelToPhysX("(nm/pixel) ",75,0.1,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
-		pixelToPhysY("(nm/pixel) ",75,0.1,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
+		pixelToPhysX("(um/pixel) ",0.075,0.0001,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
+		pixelToPhysY("(um/pixel) ",0.075,0.0001,0,"一个像素对应的物理大小，位移太可控制XY方向移动时无需设置，否则需要根据放大倍数和CCD参数确定",VariablesClassify.Advance.name()),
 		xFactor(" ",1,0.0001,0,"衍射环在X方向的修正系数，在CCD像素点非正方形时使用，需要参考CCD型号，推荐使用默认值",VariablesClassify.Advance.name()),
 		yFactor(" ",1,0.0001,0,"衍射环在Y方向的修正系数，在CCD像素点非正方形时使用，需要参考CCD型号，推荐使用默认值",VariablesClassify.Advance.name()),
-		 
+	 	 
 		testingPrecision("",0.05,0.01,0,"计算标定误差时的精度，每隔多少uM做一个检验，太小计算耗时，太大了精度不够，推荐使用默认值",VariablesClassify.Advance.name()),
 		responceXY("",0,0,0,"测试专用：是否在标定之前记录，显示更新磁球数据，1：是，0：否",VariablesClassify.Debug.name()),
 		saveFile(" ",1,0,0,"测试专用：是否保存数据,1：是，0：否",VariablesClassify.Debug.name()),

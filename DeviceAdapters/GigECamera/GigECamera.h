@@ -226,6 +226,7 @@ protected:
 	ImgBuffer img_;
 	double readoutUs_;
 	MM::MMTime readoutStartTime_;
+	MM::MMTime AcqStartTime_;
 	bool stopOnOverflow_;
 	long scanMode_;
 	unsigned int bitDepth_;

@@ -102,6 +102,7 @@ CGigECamera::CGigECamera() :
 	// call the base class method to set-up default error codes/messages
 	InitializeDefaultErrorMessages();
 	readoutStartTime_ = GetCurrentMMTime();
+	AcqStartTime_ = GetCurrentMMTime();
 						}
 
 

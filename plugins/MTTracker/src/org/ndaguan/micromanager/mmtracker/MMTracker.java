@@ -1,7 +1,6 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import java.util.ArrayList;
-
 import java.util.Collections;
 import java.util.List;
 
@@ -10,7 +9,6 @@ import javax.swing.JFrame;
 import mmcorej.CMMCore;
 
 import org.micromanager.MMStudio;
-import org.micromanager.MainFrame;
 import org.micromanager.api.MMPlugin;
 import org.micromanager.api.ScriptInterface;
 
@@ -126,5 +124,11 @@ public class MMTracker implements MMPlugin{
 	}
 	public void setTcpServer(TCPServer tcpServer_) {
 		this.tcpServer_ = tcpServer_;
+	}
+	public MMStudio getMMJ(){
+		return app_;
+	}
+	public CMMCore getCore(){
+		return core_;
 	}
 }

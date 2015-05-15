@@ -3,13 +3,11 @@ import ij.WindowManager;
 import ij.gui.ImageWindow;
 
 import java.io.IOException;
-
 import java.util.List;
 
 import mmcorej.TaggedImage;
 
 import org.json.JSONException;
-import org.micromanager.MMStudio;
 import org.micromanager.acquisition.TaggedImageQueue;
 import org.micromanager.api.TaggedImageAnalyzer;
 import org.micromanager.utils.MDUtils;
@@ -25,9 +23,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 	public int bitDepth_;
 	public double imgwidth_;
 	public double imgheight_;
-	public  String acqName_;
 	private Kernel kernel_;
-	private long startTime;
 
 	public static GetXYPositionAnalyzer getInstance() {	
 		return instance_;
@@ -57,55 +53,29 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 			return;
 		}
 
-		if (taggedImage.tags.has("ElapsedTime-ms"))
-		{
-			try {
-				elapsed = taggedImage.tags.getDouble("ElapsedTime-ms")/1000;
-			} catch (JSONException e) {
-			}
-
-		}
-		else{
-			elapsed = (System.nanoTime() - startTime)  / 1e9;
+		try {
+			elapsed = taggedImage.tags.getDouble("ElapsedTime-ms")/1000;
+		} catch (JSONException e) {
 		}
 
 		try {
-			String acqName = "Snap/Live Window";
-			
 
 			if(!listener_.isRunning()){
 				Function.getInstance().dataReset();
 				ImageWindow win = ij.WindowManager.getCurrentWindow();
 				listener_.start(win);
-				acqName_ = acqName;
-				startTime = System.nanoTime();
+				String[] acqnames = MMTracker.getInstance().getMMJ().getAcquisitionNames();
+				MMT.AcqName = acqnames[acqnames.length-1];
 				frameNum_ = 0;
-				if (acqName.equals(MMT.SIMPLE_ACQ)) {
-					kernel_.imageHeight = Integer.parseInt(taggedImage.tags
-							.get("Height").toString());
-					kernel_.imageWidth = Integer.parseInt(taggedImage.tags.get(
-							"Width").toString());
-				} else {
-					Object height = taggedImage.tags.get("Height");
-					Object width = taggedImage.tags.get("Width");
-					if (height instanceof Number)
-						kernel_.imageHeight = ((Number) height).intValue();
-					else
-						kernel_.imageHeight = Integer.parseInt(height
-								.toString());
-					if (width instanceof Number)
-						kernel_.imageWidth = ((Number) width).intValue();
-					else
-						kernel_.imageHeight = Integer
-						.parseInt(width.toString());
-				}
+				kernel_.imageHeight = Integer.parseInt(taggedImage.tags
+						.get("Height").toString());
+				kernel_.imageWidth = Integer.parseInt(taggedImage.tags.get(
+						"Width").toString());
 			}
-			if(!update){
+			if(MMT.AcqName.equals("Snap/Live Window"))
+				frameNum_++;
+			else
 				frameNum_ = MDUtils.getFrameIndex(taggedImage.tags);
-			}
-			else{
-				frameNum_ ++;
-			}
 			synchronized(MMT.Acqlock){
 				if(kernel_.roiList_.size()<=0){
 					Function.getInstance().reDraw( WindowManager.getCurrentImage(), frameNum_, update,true);
@@ -116,14 +86,9 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 					Function.getInstance().doFeedback();
 				}
 			}//lock
-			String nameComp;
-			if (acqName.equals(MMT.SIMPLE_ACQ))
-				nameComp = "Live";
-			else
-				nameComp = acqName;
 			if(MMT.VariablesNUPD.saveFile.value() == 1 && MMT.VariablesNUPD.responceXY.value() == 1)
 				try {
-					kernel_.saveRoiData(nameComp,frameNum_,elapsed);
+					kernel_.saveRoiData("Acq",frameNum_,elapsed);
 				} catch (IOException e) {
 					MMT.logError("Save data error");
 				}
@@ -132,7 +97,7 @@ public class GetXYPositionAnalyzer extends TaggedImageAnalyzer {
 				Function.getInstance().updateChart(frameNum_);
 				Function.getInstance().PullMagnet(frameNum_);
 			}
-      
+
 		} catch (JSONException e) {
 		} catch (MMScriptException e) {
 		}

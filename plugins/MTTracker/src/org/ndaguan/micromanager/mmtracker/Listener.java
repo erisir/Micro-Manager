@@ -1,7 +1,5 @@
 package org.ndaguan.micromanager.mmtracker;
 
-import ij.ImagePlus;
-
 import ij.gui.ImageCanvas;
 import ij.gui.ImageWindow;
 import ij.gui.Roi;
@@ -18,7 +16,6 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 
-import org.micromanager.MMStudio;
 import org.micromanager.utils.MMScriptException;
 
 public class Listener implements MouseListener, MouseMotionListener,KeyListener,ActionListener{

@@ -1,7 +1,6 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import ij.IJ;
-
 import ij.ImagePlus;
 import ij.ImageStack;
 import ij.WindowManager;
@@ -9,18 +8,11 @@ import ij.WindowManager;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.UnknownHostException;
-import java.sql.Time;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -28,13 +20,11 @@ import javax.swing.SwingUtilities;
 
 import mmcorej.CMMCore;
 
-import org.jfree.chart.ChartUtilities;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
 import org.micromanager.MMStudio;
-import org.micromanager.utils.MMScriptException;
 
 public class Function {
 
@@ -271,7 +261,7 @@ public class Function {
 				roiList_.get(index).setFocus(false);
 			}
 			synchronized(MMT.Acqlock){
-				roiList_.add(RoiItem.createInstance(new double[]{xCenter,yCenter,0,0,0,},GetXYPositionAnalyzer.getInstance().acqName_));
+				roiList_.add(RoiItem.createInstance(new double[]{xCenter,yCenter,0,0,0,}));
 			}
 		}
 	}
@@ -292,7 +282,7 @@ public class Function {
 			if(!overlapCheck(xCenter,yCenter))//selected area exist ROI
 			{	
 				synchronized(MMT.Acqlock){
-					roiList_.add(RoiItem.createInstance(new double[]{xCenter,yCenter,1,0,0,},GetXYPositionAnalyzer.getInstance().acqName_));
+					roiList_.add(RoiItem.createInstance(new double[]{xCenter,yCenter,1,0,0,}));
 				}
 			}
 		}
@@ -412,7 +402,6 @@ public class Function {
 	}
 
 	public void multiAcq() {
-		gui_.getAcqDlg().setVisible(true);
 	}
 
 	public void setXYZCalPosition(int z) throws Exception 
@@ -896,7 +885,7 @@ public class Function {
 				double target = start+i*stepsize;
 				setStageZPosition(target);
 				for (int j = 0; j <imageNum; j++){ 
-					 gui_.snapSingleImage();
+					gui_.snapSingleImage();
 					TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 					MMT.logMessage(String.format("currZPos:\t%f(%d/%d)\timageNum:\t%d/%d", target,i,len,j,imageNum));
 				}
@@ -905,12 +894,7 @@ public class Function {
 		setStageZPosition(currzpos_);
 	}
 	public void setAutoContrast() {
-
-		try {
-			gui_.setContrastBasedOnFrame(MMT.AcqName, 0, 0);
-		} catch (MMScriptException e) {
-			MMT.logError("Set auto contrast false");
-		}		
+		gui_.autostretchCurrentWindow();
 	}
 
 	public void showGui() {
@@ -994,7 +978,6 @@ public class Function {
 			TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 		}
 	}
-	@SuppressWarnings("deprecation")
 	public void liveCapture() {
 		if(isXYAcqAnalyzerInstall_ && kernel_.isCalibrated_){
 			installAnalyzer("XYZACQ");
@@ -1013,7 +996,7 @@ public class Function {
 				it.setChartVisible(false);
 		}
 		liveView();
-//		MMT.AcqName = gui_.getAcqDlg().runAcquisition();
+		//		MMT.AcqName = gui_.getAcqDlg().runAcquisition();
 	}
 
 	public void cleanStaticData() {
@@ -1156,7 +1139,7 @@ public class Function {
 
 			double[][] cp = rl.get(len-1).getCalProfile();
 			double[] zp = Kernel.getInstance().zPosProfiles;
-			
+
 			BufferedReader in;
 			in = new BufferedReader(new FileReader(loginDataFile));
 			String line;
@@ -1176,7 +1159,7 @@ public class Function {
 				in.close();
 				return -1;
 			}
-			
+
 			String[] temp = line.split(","); 
 			for (int j = 0; j <zp.length; j++) {
 				zp[j] = Double.parseDouble(temp[j]);
@@ -1185,7 +1168,7 @@ public class Function {
 			Kernel.getInstance().zPosProfiles = zp;
 			in.close();
 			return 0;
-			
+
 		} catch (IOException e) {
 			MMT.logError("read user data false");
 			return -1;
@@ -1223,6 +1206,7 @@ public class Function {
 		}
 
 	}
+	@SuppressWarnings("unused")
 	private void xmtStageDebug() throws Exception {
 		String lable = core_.getFocusDevice();
 		double start = MMT.VariablesNUPD.beanRadius.value();
@@ -1250,7 +1234,7 @@ public class Function {
 
 		kernel_.imageHeight = images.getHeight();
 		kernel_.imageWidth = images.getWidth();
-		kernel_.roiList_.add(RoiItem.createInstance(new double[]{ images.getHeight()/2, images.getWidth()/2,0,0,0,},"test"));
+		kernel_.roiList_.add(RoiItem.createInstance(new double[]{ images.getHeight()/2, images.getWidth()/2,0,0,0,}));
 		for (int i = 0; i < images.getSize(); i++) {
 			if(!kernel_.getXYPosition(images.getPixels(i+1)))return;
 			final int index = i;

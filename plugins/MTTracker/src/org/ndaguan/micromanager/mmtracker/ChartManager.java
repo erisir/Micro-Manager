@@ -101,10 +101,9 @@ public class ChartManager extends JFrame  {
 		temp_.setMaximumItemCount(ChartMaxItemCount );
 		dataset_ = new XYSeriesCollection();
 		dataset_.addSeries(temp_);
-		if(chart==null)
-			chart = ChartFactory.createXYLineChart(tableName, "-Time",
-					"-value", dataset_, PlotOrientation.VERTICAL, true, true,
-					false);
+		chart = ChartFactory.createXYLineChart(tableName, "-Time",
+				"-value", dataset_, PlotOrientation.VERTICAL, true, true,
+				false);
 
 		chartSeries_.put(tableName, chart);
 		dataSeries_.put(tableName,temp_);	

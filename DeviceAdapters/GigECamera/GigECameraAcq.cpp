@@ -46,7 +46,6 @@ void CGigECamera::SnapImageCallback( J_tIMAGE_INFO* imageInfo )
 		}
 
 		int nRet;
-
 		// create metadata
 		Metadata md;
 		char label[MM::MaxStrLength];
@@ -54,6 +53,7 @@ void CGigECamera::SnapImageCallback( J_tIMAGE_INFO* imageInfo )
 		MetadataSingleTag mstStartTime( MM::g_Keyword_Metadata_StartTime, label, true );
 		mstStartTime.SetValue( boost::lexical_cast< std::string >( imageInfo->iTimeStamp ).c_str() );
 		md.SetTag( mstStartTime );
+		md.put(MM::g_Keyword_Elapsed_Time_ms, CDeviceUtils::ConvertToString((GetCurrentMMTime() - AcqStartTime_).getMsec()));
 
 		nRet = GetCoreCallback()->InsertImage(this, buffer_,
 				GetImageWidth(), GetImageHeight(), GetImageBytesPerPixel(), md.Serialize().c_str());
@@ -251,7 +251,7 @@ int CGigECamera::StartSequenceAcquisition( long numImages, double interval_ms, b
 		this->isStreemOpened = false;
 		return DEVICE_ERR;
 	}
-
+	AcqStartTime_ = GetCurrentMMTime();
 	return DEVICE_OK;
 }
 
@@ -307,12 +307,8 @@ int CGigECamera::SnapImage()
 
 	this->snapOneImageOnly = true;
 	this->snapImageDone = false;
-	LogMessage( "Daguan===========================>setupImaging" );
 	setupImaging();
-	LogMessage( "Daguan===========================>setupImagingEnd" );
-	LogMessage( "Daguan===========================>AcquisitionStart" );
 	J_STATUS_TYPE retval = J_Camera_ExecuteCommand( hCamera, cstr2jai( "AcquisitionStart" ) );
-	LogMessage( "Daguan===========================>AcquisitionStart_End" );
 	if( retval != J_ST_SUCCESS )
 	{
 		LogMessage( "SnapImage failed to start acquisition" );
@@ -350,15 +346,6 @@ int CGigECamera::SnapImage()
 			snapOneImageOnly = false;
 		}
 	}
-	LogMessage( "Daguan===========================>J_Image_CloseStream" );
-	LogMessage( "Daguan===========================>J_Image_CloseStreamEnd" );
-	/*retval = J_Image_CloseStream( hThread );
-	if( retval != J_ST_SUCCESS )
-	{
-		LogMessage( "SnapImage failed to close the image stream" );
-		return DEVICE_ERR;
-	}
-	 */
 
 	readoutStartTime_ = GetCurrentMMTime();
 

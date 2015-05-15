@@ -1,12 +1,8 @@
 package org.ndaguan.micromanager.mmtracker;
 
 import ij.ImageListener;
-
-
-
 import ij.ImagePlus;
 import ij.gui.Overlay;
-import ij.gui.Roi;
 import ij.gui.ShapeRoi;
 
 import java.awt.Color;
@@ -15,9 +11,6 @@ import java.awt.geom.PathIterator;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
-
-import org.micromanager.api.ScriptInterface;
-import org.micromanager.utils.MMScriptException;
 
 /**
  * 
@@ -86,7 +79,7 @@ public class OverlayRender {
 		}
 		Overlay overlay = new Overlay();
 		Iterator<RoiItem> it = itemList.iterator();
-		int beanRadius = (int) MMT.VariablesNUPD.beanRadiuPixel.value();
+//		int beanRadius = (int) MMT.VariablesNUPD.beanRadiuPixel.value();
 		while (it.hasNext()) {
 			RoiItem item = it.next();
 			double[] xy = item.getXY();

@@ -3,7 +3,6 @@ package org.ndaguan.micromanager.mmtracker;
 import java.awt.Color;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -18,7 +17,6 @@ import javax.swing.SwingUtilities;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.jfree.chart.ChartUtilities;
 import org.jfree.chart.JFreeChart;
-import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
@@ -42,8 +40,6 @@ public  class RoiItem {
 	private double zPhy_ = 0 ;
 	private double fx_ = 0 ;
 	private double fy_ = 0 ;
-	private double skrewness_ = 0;
-	private double stdXdY_= 0;
 
 	private Writer dataFileWriter_;
 	private double[][] calProfile_ = null;
@@ -62,8 +58,8 @@ public  class RoiItem {
 	private double l_;
 	private boolean isBackground_;
 
-	public static RoiItem createInstance(double[] itemData,String titleName) {
-		return new RoiItem(itemData,titleName);
+	public static RoiItem createInstance(double[] itemData) {
+		return new RoiItem(itemData);
 	}
 	public boolean isFocus(){
 		return isFocus_;
@@ -71,7 +67,7 @@ public  class RoiItem {
 	public void setFocus(boolean flag){
 		isFocus_ = flag;
 	}
-	private RoiItem( double[] itemData,String titleName) {
+	private RoiItem( double[] itemData) {
 		index_ = counter;
 		counter ++;
 		isPreference_ = false;
@@ -81,7 +77,7 @@ public  class RoiItem {
 			isBackground_ = true;
 			setItemColor(Color.BLUE);
 		}
-		chart_ = new ChartManager(MMT.CHARTLIST,(int) MMT.VariablesNUPD.chartWidth.value(),String.format("%s-----%d",titleName,index_));
+		chart_ = new ChartManager(MMT.CHARTLIST,(int) MMT.VariablesNUPD.chartWidth.value(),String.format("Bean-----%d",index_));
 
 		x_ = itemData[0];
 		y_ = itemData[1];
@@ -215,12 +211,12 @@ public  class RoiItem {
 			dataFileWriter_ = new BufferedWriter(new FileWriter(file));
 
 			dataFileWriter_
-			.write("Timestamp/sec, Frame, XPos/pixel,XPos/nm, YPos/pixel, YPos/nm, ZPos/nm,StageZ/nm,MagnetZ/um,ForceX/pN,ForceY/pN\r\n");/*,Std(x/y),skrewnessy*/
+			.write("Timestamp/ms, Frame, XPos/pixel,XPos/um, YPos/pixel, YPos/um, ZPos/um,StageZ/um,MagnetZ/um,ForceX/pN,ForceY/pN\r\n");/*,Std(x/y),skrewnessy*/
 			dataFileWriter_.flush();
 		}
 		else{
 			dataFileWriter_
-			.write(String.format("%f,%d,%f,%f,%f,%f,%f,%f,%f,%f\r\n",elapsed,frameNum_,x_,xPhy_,y_,yPhy_,zPhy_*(-1000),MMT.stageCurrentPosition*(-1000),MMT.magnetCurrentPosition,fx_,fy_/*,stdXdY_,skrewness_*/));
+			.write(String.format("%f,%d,%f,%f,%f,%f,%f,%f,%f,%f\r\n",elapsed,frameNum_,x_,xPhy_,y_,yPhy_,zPhy_,MMT.stageCurrentPosition,MMT.magnetCurrentPosition,fx_,fy_/*,stdXdY_,skrewness_*/));
 		}
 		return true;
 
@@ -303,9 +299,9 @@ public  class RoiItem {
 		xPhy_ = MMT.VariablesNUPD.pixelToPhysX.value() * x_;
 		yPhy_ = MMT.VariablesNUPD.pixelToPhysY.value() * y_;
 		//nM:calculate Force with a bigger windowSize
-		calcForceXYZStatis_[0].addValue(xPhy_);
-		calcForceXYZStatis_[1].addValue(yPhy_);
-		calcForceXYZStatis_[2].addValue(xPhy_ * yPhy_);
+		calcForceXYZStatis_[0].addValue(xPhy_*1e3);
+		calcForceXYZStatis_[1].addValue(yPhy_*1e3);
+		calcForceXYZStatis_[2].addValue(xPhy_ * yPhy_*1e6);
 		//uM:get mean&standardDeviation  to update chart with a smaller windowSize;
 		showChartXYZStatis_[0].addValue(xPhy_);
 		showChartXYZStatis_[1].addValue(yPhy_);
@@ -375,10 +371,6 @@ public  class RoiItem {
 	public void setForce(double[] force) {
 		fx_ = force[0];
 		fy_ = force[1];
-	}
-	public void setSkrewness(double[] skrewneww) {
-		stdXdY_ = skrewneww[0];
-		skrewness_ = skrewneww[1];
 	}
 	public double[] getXYZPhy() {
 		return new double[]{xPhy_,yPhy_,zPhy_};

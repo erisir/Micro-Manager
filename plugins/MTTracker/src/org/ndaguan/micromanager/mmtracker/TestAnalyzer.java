@@ -1,10 +1,7 @@
 package org.ndaguan.micromanager.mmtracker;
-import ij.IJ;
 import ij.WindowManager;
-
 import mmcorej.TaggedImage;
 
-import org.micromanager.MMStudio;
 import org.micromanager.acquisition.TaggedImageQueue;
 import org.micromanager.api.TaggedImageAnalyzer;
 

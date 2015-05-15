@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.math3.analysis.UnivariateFunction;
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
@@ -22,7 +21,6 @@ import org.apache.commons.math3.stat.regression.SimpleRegression;
 import org.apache.commons.math3.transform.DftNormalization;
 import org.apache.commons.math3.transform.FastFourierTransformer;
 import org.apache.commons.math3.transform.TransformType;
-import org.micromanager.MMStudio;
 
 public class Kernel {
 
@@ -72,7 +70,6 @@ public class Kernel {
 
 	public boolean getXYPosition(Object image){	
 		double[] force = new double[]{0,0};
-		double[] skrewneww = new double[]{0,0}; 
 		if(roiList_.size() <= 0)return false;
 		//				MMT.tik();
 		double[][] ret = gosseCenter(image);
@@ -94,7 +91,6 @@ public class Kernel {
 	public boolean getXYZPosition(Object image){	
 
 		double[] force = new double[]{0,0};
-		double[] skrewneww = new double[]{0,0};
 		if(roiList_.size() <= 0)return false;
 		double[][] ret = gosseCenter(image);
 		if(ret == null)return false;
@@ -194,9 +190,8 @@ public class Kernel {
 		MMT.maxN = (int) Math.pow(2, Math.floor(log2)+1);
 
 		List<RoiItem> rt = Collections.synchronizedList(new ArrayList<RoiItem>());
-		rt.add(RoiItem.createInstance(new double[]{130,130,0},"bean2"));
+		rt.add(RoiItem.createInstance(new double[]{130,130,0}));
 
-		Function fc =  Function.getInstance(null,rt);
 		Kernel kl = new Kernel(rt);
 
 		kl.imageWidth = 300;
@@ -239,7 +234,6 @@ public class Kernel {
 			Object image = getImg(6.5,bitDepth);
 			Object image1 = getImg(3.5,bitDepth);
 			Object[] img = new Object[]{image,image1};
-			if(1==1)return ;
 			for (int jj = 0; jj < 10000; jj++) {
 
 				for (int i = 0; i < calRange; i++) {
@@ -300,6 +294,7 @@ public class Kernel {
 		}
 		return ret;
 	} 
+	@SuppressWarnings("unused")
 	private double[] polarIntegral2(Object image,int x,int y, double beanRadiuPixel){
 
 		int maxN = MMT.maxN;
