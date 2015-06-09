@@ -415,7 +415,7 @@ public class Kernel {
 		case "[S":
 			profile[0] = ((short[]) image)[(int)xpos + ((int)ypos)* imageWidth];
 			statis_.addValue(profile[0]);
-			for(int i = skipStart+1;i< beanRadiuPixel/rInterStep ;i++)
+			for(int i = skipStart+1;i<((int) (beanRadiuPixel/rInterStep)) ;i++)
 			{
 				double sumr = 0;
 				double r =i*rInterStep;
@@ -439,6 +439,7 @@ public class Kernel {
 					S01 = ((short[]) image)[x1 + y0* imageWidth];
 					S10 = ((short[]) image)[x0 + y1* imageWidth];
 					S11 = ((short[]) image)[x1 + y1* imageWidth];
+					((short[]) image)[x0 + y0* imageWidth] = 5555;
 					double Sxy = S00*(1-dx)*(1-dy)+S01*dy*(1-dx)+S10*dx*(1-dy) +S11*dx*dy;
 					sumr += Sxy;
 				}
