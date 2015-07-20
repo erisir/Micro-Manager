@@ -123,7 +123,7 @@ int ClearPort(MM::Device& device, MM::Core& core, const char* sPort)
 
 bool            StepMotor::m_yInstanceFlag      = false;        // instance flag
 bool            StepMotor::m_yDeviceAvailable   = false;        // StepMotor devices availability
-int				StepMotor::m_nDebugLogFlag		= 0;			// StepMotor debug log flag
+int				StepMotor::m_nDebugLogFlag		= 2;			// StepMotor debug log flag
 StepMotor*        StepMotor::m_pStepMotor             = NULL;         // single copy StepMotor
 int             StepMotor::m_nMotionMode        = 0;            // motor motion mode
 int             StepMotor::m_nTimeoutInterval   = 200;        // timeout interval
@@ -142,14 +142,14 @@ StepMotor::StepMotor()
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_CtrlDevName]       = "StepMotor Controller";					// StepMotor Controllet device name
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_XYStageDevName]    = "MP285 XY Stage";						// MP286 Z Stage device name
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ZStageDevName]     = "MP285 Z Stage";						// MP286 Z Stage device name
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_StepMotorVersion]      = "1.0.0";							// StepMotor adpater version number
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_StepMotorVersion]  = "1.0.0";							// StepMotor adpater version number
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_CtrlDevNameLabel]  = "Controller ";					// StepMotor Controller device name label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_CtrlDevDescLabel]  = "Controller ";					// StepMotor Controller device description label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_FirmwareVerLabel]  = "Firmware Version";				// StepMotor FIRMWARE VERSION label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_StepMotorVerLabel]   = "StepMotor Adapter Version";			// StepMotor ADAPTER VERSION label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_DebugLogFlagLabel] = "Debug Log Flag";				// StepMotor Debug Lg Flag Label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_CommStateLabel]    = "StepMotor Comm. Status";			// StepMotor COMM. STATUS label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_MotionMode]        = "Mode (0=FAST/1=LOW)";			// StepMotor MODE label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_MotionMode]        = "Mode ";			// StepMotor MODE label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetOrigin]         = "Origin (1=set)";                // StepMotor ORIGIN label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_TimeoutInterval]   = "Timeout Interval (ms)";         // StepMotor Timeout Interval
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_TimeoutTrys]       = "Timeout Trys";                  // StepMotor Timeout Trys
@@ -157,11 +157,21 @@ StepMotor::StepMotor()
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ZDevDescLabel]     = "Z Stage ";						// StepMotor Z stage device description label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetPositionZ]      = "Set Position Z (um)";			// StepMotor set POSITION Z label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_GetPositionZ]      = "Get Position Z (um)";		// StepMotor get POSITION Z label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_Reset]             = "M.26 Reset (1=reset)";               // property RESET label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_Status]            = "M.27 Status (1=update)";             // property STATUS label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ReleasePower]      = "ReleasePower(1=off,0=on)";			// StepMotor set POSITION Z label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_Reset]             = "M.26 Reset ";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_Status]            = "M.27 Status";             // property STATUS label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ReleasePower]      = "ReleasePower";			// StepMotor set POSITION Z label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetRunDelay]       = "SetRunDelay";		// StepMotor get POSITION Z label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStartDelay]      = "SetStartDelay";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_GetPositionX]      = "GetPositionX";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_GetPositionY]      = "GetPositionY";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetPositionX]      = "SetPositionX";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetPositionY]      = "SetPositionY";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStartDelay]      = "SetStartDelay";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStartDelay]      = "SetStartDelay";               // property RESET label
+
+
+
+
 }
 
 StepMotor::~StepMotor()

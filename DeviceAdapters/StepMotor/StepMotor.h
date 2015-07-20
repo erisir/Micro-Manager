@@ -53,12 +53,12 @@ public:
 		XMTSTR_CtrlDevName       = 0,            // StepMotor controller device name
 		XMTSTR_XYStageDevName    = 1,            // StepMotor XY stage device name
 		XMTSTR_ZStageDevName     = 2,            // StepMotor Z stage device name
-		XMTSTR_StepMotorVersion      = 3,            // StepMotor adapter version
+		XMTSTR_StepMotorVersion  = 3,            // StepMotor adapter version
 		XMTSTR_LogFilename       = 4,            // StepMotor log filename
 		XMTSTR_CtrlDevNameLabel  = 5,            // StepMotor controller device name label
 		XMTSTR_CtrlDevDescLabel  = 6,			// StepMotor controller device decription label
 		XMTSTR_FirmwareVerLabel  = 7,            // StepMotor FIRMWARE VERSION label
-		XMTSTR_StepMotorVerLabel     = 8,            // StepMotor Adapter version label
+		XMTSTR_StepMotorVerLabel = 8,            // StepMotor Adapter version label
 		XMTSTR_DebugLogFlagLabel = 9,            // StepMotor Debug Log Flag label
 		XMTSTR_CommStateLabel    = 10,           // StepMotor COMM. STATUS label
 		XMTSTR_ResolutionLabel   = 11,           // StepMotor RESOLUION label
@@ -84,7 +84,7 @@ public:
 		XMTSTR_Reset             = 31,           // property RESET label
 		XMTSTR_ReleasePower      = 32,           // property RESET label
 		XMTSTR_SetRunDelay       = 33,           // property RESET label
-		XMTSTR_SetStartDelay      = 34,           // property RESET label
+		XMTSTR_SetStartDelay     = 34,           // property RESET label
 		XMTSTR_Status            = 35            // property STATUS label
 	};
 
