@@ -9,7 +9,7 @@
 ------------------------------------------------*/
 bool isBusy = false;
 uchar	startdelay = 32;
-uchar	runningdelay = 0; 
+uchar	runningdelay = 10; 
 uchar	rota_startdelay = 32;
 uchar	rota_runningdelay = 0; 
 float   currPosition = 0;//nm
@@ -77,7 +77,18 @@ uchar checksumCalc(uchar rec[])
 { 
 	return ((uchar)rec[0])^((uchar)rec[1])^((uchar)rec[2])^((uchar)rec[3])^((uchar)rec[4])^((uchar)rec[5]);
 }
- 
+uchar Move(long step,bit flag)
+{
+    long i = 0;
+    for(i=0;i<step;i++)
+	{
+		ManualMove(flag,1);
+		delay(255);
+
+	}
+	refLCD();
+
+} 
 void parseCMD(uchar rec[])
 {	
 
@@ -142,17 +153,17 @@ void parseCMD(uchar rec[])
 			LCD_Printf1(strcat(str,"-SETZERO"));
 			break;
 
-	/*	case MoveUp:
+	 	case MoveUp:
 			ltoa(recData,str);
 			LCD_Printf1(strcat(str,"-MU"));
-			ret = Move(recData,0);
+			ret = Move(10,0);
 			break;
 
 		case MoveDown:
 			ltoa(recData,str);
 			LCD_Printf1(strcat(str,"-MD"));
-			ret = Move(recData,1);
-			break;	 */
+			ret = Move(10,1);
+			break;	  
 
 		case SetDivMode:
 			if(recData == 2){ step2Um = 2.491516;}

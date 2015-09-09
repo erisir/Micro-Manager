@@ -1,37 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
 	<classpathentry kind="src" path="src"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/AbsoluteLayout.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/bsh-2.0b4.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/clojure.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/clooj.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/commons-math-2.0.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/commons-math3-3.4.1.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/core.cache.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/core.memoize.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/data.json.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/gproto.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/gson-2.2.4.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/guava-17.0.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/ij.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/jcommon-1.0.16.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/jfreechart-1.0.13.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/loci-common.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/lwm.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/miglayout-4.0-swing.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/MMAcqEngine.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/MMCoreJ.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/MMJ_.jar" sourcepath="/mmstudio"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/ome-xml.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/rsyntaxtextarea.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/scifio.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/slf4j-api-1.7.1.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/substance.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/swing-layout-1.0.4.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/swingx-0.9.5.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/trident.jar"/>
-	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/micromanager/TSFProto.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/AbsoluteLayout.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/bsh-2.0b4.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/clojure.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/clooj.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/comm.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/commons-math-2.0.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/commons-math3-3.4.1.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/core.cache.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/core.memoize.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/data.json.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/gproto.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/gson-2.2.4.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/guava-17.0.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/Jama-1.0.1.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/jcommon-1.0.16.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/jcommon-1.0.17.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/jfreechart-1.0.13.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/jfreechart-1.0.14.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/loci-common.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/lwm.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/miglayout-4.0-swing.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/MMAcqEngine.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/MMCoreJ.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/MMJ_.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/ome-xml.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/rsyntaxtextarea.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/scifio.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/slf4j-api-1.7.1.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/substance.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/swing-layout-1.0.4.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/swingx-0.9.5.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/trident.jar"/>
+	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/plugins/Micro-Manager/TSFProto.jar"/>
 	<classpathentry kind="lib" path="F:/Development/Micro-Manager/svn/micromanager/stage/Release/Win32/ij.jar"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="output" path="build"/>
 </classpath>

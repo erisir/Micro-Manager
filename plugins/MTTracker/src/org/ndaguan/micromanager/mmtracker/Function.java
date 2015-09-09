@@ -1179,8 +1179,8 @@ public class Function {
 		List<RoiItem> rl = Kernel.getInstance().roiList_;
 		int len = rl.size();
 
-		double[][] cp = rl.get(len-1).getCalProfile();
 		double[] zp = Kernel.getInstance().zPosProfiles;
+		double[][] cp = rl.get(len-1).getCalProfile();
 		try {
 			File dir = new File(System.getProperty("user.home"),"MMTracker");
 			if(!dir.isFile())
@@ -1204,7 +1204,7 @@ public class Function {
 		} catch (IOException e) {
 			MMT.logError("save user data err");
 		}
-
+		
 	}
 	@SuppressWarnings("unused")
 	private void xmtStageDebug() throws Exception {

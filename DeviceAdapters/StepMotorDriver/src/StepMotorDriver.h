@@ -4,16 +4,19 @@
 #define STEPMOTOR_20131219
 
 				   	   	  
-sbit _releasePort     		= P1^0;
-sbit _directionPort 		= P1^1;
-sbit _rotationDirectionPort	= P1^2;
-sbit _plusePort         	= P1^3;
-sbit _rotationPlusePort		= P1^4;
-sbit _manualUpPort  		= P1^5;
-sbit _manualDownPort  		= P1^6;
-sbit _manualAcceleratePort  = P1^7;
 
-sbit _moveRotationSwitch	= P2^0;
+sbit _directionPort 		= P1^1;
+sbit _rotationDirectionPort	= P1^0;
+
+sbit _plusePort         	= P1^3;
+sbit _rotationPlusePort		= P1^2;
+
+sbit _manualUpPort  		= P1^4;
+sbit _manualDownPort  		= P1^5;
+sbit _manualAcceleratePort  = P1^6;
+sbit _moveRotationSwitch	= P1^7;
+
+sbit _releasePort     		= P1^0;
 sbit _lowLimitPort 	        = P2^1;
 sbit _highLimitPort    		= P2^2;
 
@@ -62,6 +65,7 @@ uchar SetStageAngel(long recData);
 uchar SendPluse(long step);
 uchar SendAngelPluse(long step);
 uchar FindUpLimit(bit flag);
+uchar Move(long step,bit flag);
 void refLCD();
 bool InitDevice();
 bool checkBoundary();

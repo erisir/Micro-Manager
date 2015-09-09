@@ -57,6 +57,7 @@ public  class RoiItem {
 	private double zPhy0_;
 	private double l_;
 	private boolean isBackground_;
+	private double[] calProfileNorm;
 
 	public static RoiItem createInstance(double[] itemData) {
 		return new RoiItem(itemData);
@@ -384,6 +385,7 @@ public  class RoiItem {
 	}
 	public void InitializeCalProflie(int r,int c) {
 		calProfile_ = new double[r][c];
+		setCalProfileNorm(new double[r]);
 	}
 	public void clearCalProfile() {
 		calProfile_ = null;		
@@ -467,10 +469,15 @@ public  class RoiItem {
 			}
 			plot.setDataset(2, dataset); 
 		}
-		 
 	}
 	public void setCalProfile(double[][] cp) {
 		calProfile_ = cp;		
+	}
+	public double[] getCalProfileNorm() {
+		return calProfileNorm;
+	}
+	public void setCalProfileNorm(double[] calProfileNorm) {
+		this.calProfileNorm = calProfileNorm;
 	}
 
 }
