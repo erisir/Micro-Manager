@@ -348,7 +348,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice) {
  * information supplied by this function, so runtime discovery will create problems.
  */MODULE_API void InitializeModuleData() {
 	string strXY = E761_Ctrl::getConstString(E761_Ctrl::STR_XYStageDevName);
-	RegisterDevice(strXY.c_str(),MM::StageDevice, strXY.c_str());
+	RegisterDevice(strXY.c_str(),MM::XYStageDevice, strXY.c_str());
 	string strZ =
 			E761_Ctrl::getConstString(E761_Ctrl::STR_ZStageDevName).c_str();
 	RegisterDevice(strZ.c_str(),MM::StageDevice, strZ.c_str());
