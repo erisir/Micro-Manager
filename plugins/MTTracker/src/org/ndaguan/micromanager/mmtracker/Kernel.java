@@ -642,13 +642,44 @@ public class Kernel {
 				continue;
 			}
 			int crossSize = (int) MMT.VariablesNUPD.crossSize.value();
-			double[][] sumXY = getXYSum(image, roiX,roiY,crossSize);//0.02
+			//double[][] sumXY = getXYSum(image, roiX,roiY,crossSize);//0.02
+			
+			
+			double xPos = 0;//getCurveCenter(sumXY[0])+ roiX;//0.02
+			double yPos= 0;//getCurveCenter(sumXY[1])+ roiY;
+			
+			//获得选框内的灰度值经过xy方向相加后的二维数组信息
+			double[][] sumXY = getXYSum(image, roiX,roiY,crossSize);
 			Function.getInstance().updateChartSumXY(i, sumXY);
-			double xPos = getCurveCenter(sumXY[0])+ roiX;//0.02
-			double yPos= getCurveCenter(sumXY[1])+ roiY;
+			//二维灰度值的边长
+			int len=sumXY[0].length;
+			//创建三个初始double数
+			double bMA = 0;
+			double cMA = 0;
+			double averageX = 0;
+			//x方向上的中心位置
+			for(int ii=0; ii<len;ii++  )
+			{
+			bMA = bMA + sumXY[0][ii];
+			cMA = cMA + (ii+1)*sumXY[0][ii];
+			}
+			averageX = (cMA / bMA) + (roiX-1); 
+			//计算y方向上的平均位置
+			//创建三个初始double数
+			double eMA = 0;
+			double fMA = 0;
+			double averageY = 0;
+			//y方向上的中心位置
+			for(int ii=0; ii<len; ii++  )
+			{
+			eMA = eMA + sumXY[1][ii];
+			fMA = fMA + (ii+1)*sumXY[1][ii];
+			}
+			averageY = (fMA / eMA) + (roiY-1); 
+			
 			double counter = sumXY[2][0];
-			position[i][0] = xPos;
-			position[i][1] = yPos;
+			position[i][0] = averageX;
+			position[i][1] = averageY;
 			position[i][2] = counter;
 		}
 		//deBackground
@@ -861,8 +892,8 @@ public class Kernel {
 			sumXY[0][i] = 0;
 			sumXY[1][i] = 0;
 		}
-		normalization(sumXY[0], sumX_);
-		normalization(sumXY[1], sumY_);
+		//normalization(sumXY[0], sumX_);
+		//normalization(sumXY[1], sumY_);
 		sumXY[2][0] = sumGrayValue;
 		return sumXY;
 	}
