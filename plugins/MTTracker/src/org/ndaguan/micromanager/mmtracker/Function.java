@@ -137,7 +137,7 @@ public class Function {
 			@Override
 			public void run() {
 				try {
-					TimeUnit.MICROSECONDS.sleep(3000);
+					TimeUnit.MILLISECONDS.sleep(30);
 					double currMP285zpos = core_.getPosition(MMT.magnetZStage_);
 					double z = MMT.VariablesNUPD.magnetStepSize.value();
 					double target =  currMP285zpos - z;
@@ -408,7 +408,7 @@ public class Function {
 	{
 		if(MMT.VariablesNUPD.needStageServer.value() == 1){
 			TCPClient.getInstance().setPosition(kernel_.xPosProfiles[z],kernel_.yPosProfiles[z],kernel_.zPosProfiles[z]);
-			TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+			TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 		}
 		else{
 			setStageZPosition(kernel_.zPosProfiles[z]);
@@ -424,7 +424,7 @@ public class Function {
 					for(int i = 0;i<3;i++){
 						stageReady = pos[i]-targetPosition[i]<allowError;
 						if(!stageReady){
-							TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+							TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 							break;
 						}
 					}
@@ -633,7 +633,7 @@ public class Function {
 		WHATISLOVE("TestingStart");
 		try {
 			setXYZCalPosition(kernel_.zPosProfiles.length-1);
-			TimeUnit.MICROSECONDS.sleep(500);
+			TimeUnit.MILLISECONDS.sleep(500);
 		} catch (Exception e) {
 			WHATISLOVE("TestingFalse");
 			MMT.logError("testing error1:Set Pi Stage error!\r\n"+e.toString());
@@ -648,7 +648,7 @@ public class Function {
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
-						TimeUnit.MICROSECONDS.sleep(10);
+						TimeUnit.MILLISECONDS.sleep(10);
 					}
 				} catch (Exception e) {
 					WHATISLOVE("TestingFalse");
@@ -701,7 +701,7 @@ public class Function {
 
 		try {
 			setXYZCalPosition(kernel_.zPosProfiles.length-1);
-			TimeUnit.MICROSECONDS.sleep(500);
+			TimeUnit.MILLISECONDS.sleep(500);
 		} catch (Exception e) {
 			WHATISLOVE("CalibrateFalse");
 			MMT.logError("Calbration error1:Set Pi Stage error!\r\n"+e.toString());
@@ -719,7 +719,7 @@ public class Function {
 					MMT.isAnalyzerBusy_ = true;
 					snapImage();
 					while(MMT.isAnalyzerBusy_){
-						TimeUnit.MICROSECONDS.sleep(10);
+						TimeUnit.MILLISECONDS.sleep(10);
 					}
 				} catch (Exception e) {
 					WHATISLOVE("CalibrateFalse");
@@ -773,7 +773,7 @@ public class Function {
 		if(gui_.isLiveModeOn()){
 			gui_.enableLiveMode(false);
 			try {
-				TimeUnit.MICROSECONDS.sleep(200);
+				TimeUnit.MILLISECONDS.sleep(200);
 			} catch (InterruptedException e) {
 			}
 			gui_.enableLiveMode(true);
@@ -886,7 +886,7 @@ public class Function {
 				setStageZPosition(target);
 				for (int j = 0; j <imageNum; j++){ 
 					gui_.snapSingleImage();
-					TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+					TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 					MMT.logMessage(String.format("currZPos:\t%f(%d/%d)\timageNum:\t%d/%d", target,i,len,j,imageNum));
 				}
 			}
@@ -924,7 +924,7 @@ public class Function {
 			}
 			else{
 				core_.setXYPosition(MMT.xyStage_,xpos, ypos);
-				TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+				TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 			}
 		}
 	}
@@ -935,7 +935,7 @@ public class Function {
 			}
 			else{
 				core_.setRelativeXYPosition(MMT.xyStage_,xpos, ypos);
-				TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+				TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 			}
 		}
 	}
@@ -964,7 +964,7 @@ public class Function {
 			else{
 				core_.setPosition(MMT.zStage_, zPos);
 			}
-			TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+			TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 		}
 	}
 	public void setStageRelativeZPosition(double zPos) throws Exception {
@@ -975,7 +975,7 @@ public class Function {
 			else{
 				core_.setRelativePosition(MMT.zStage_, zPos);
 			}
-			TimeUnit.MICROSECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+			TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 		}
 	}
 	public void liveCapture() {
@@ -1216,12 +1216,12 @@ public class Function {
 		for(double i = start;i<end;i+=MMT.VariablesNUPD.calStepSize.value())
 		{
 			core_.setPosition(lable, i);
-			TimeUnit.MICROSECONDS.sleep(sleepTime);
+			TimeUnit.MILLISECONDS.sleep(sleepTime);
 			double ret = 0;
 			IJ.log(String.format("SetPoint,GetPoint,Delta,start:%.1f,end:%.1f,takeTime:%d,sleepTime:%d",start,end,takeTime,sleepTime));
 			for(int j=0;j<takeTime;j++){
 				ret += core_.getPosition(lable);
-				TimeUnit.MICROSECONDS.sleep(sleepTime);
+				TimeUnit.MILLISECONDS.sleep(sleepTime);
 			}
 			ret = ret/takeTime;
 			IJ.log(String.format("%.3f,%.3f,%.3f", i,ret,i-ret));

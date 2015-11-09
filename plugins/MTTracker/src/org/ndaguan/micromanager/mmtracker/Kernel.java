@@ -554,7 +554,7 @@ public class Kernel {
 			}
 		}
 		//new
-		if(MMT.VariablesNUPD.pTerm_z.value()>2){
+		if(MMT.VariablesNUPD.GetZAlgorithm.value()==1){// use phrase to calculate z
 		
 		int start = index-1;
 		int end = index+1;

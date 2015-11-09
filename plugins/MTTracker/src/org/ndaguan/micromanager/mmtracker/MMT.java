@@ -151,7 +151,8 @@ public class MMT {
 		skipRadius("Pixel",12,0,0,"计算时忽略掉的中心环半径",VariablesClassify.Debug.name()),
 		AutoRange("",1,0,0,"是否自动重绘图表，1：是，0：否，",VariablesClassify.DataSheet.name()),
 		polarFactor("",1,0,0,"积分系数，越大越精细，但耗时，1：是，0：否，",VariablesClassify.Debug.name()),
-		AutoDeleteRoi("",1,0,0,"是否自动删除ROI，1：是，0：否，",VariablesClassify.Debug.name());
+		AutoDeleteRoi("",1,0,0,"是否自动删除ROI，1：是，0：否，",VariablesClassify.Debug.name()),
+		GetZAlgorithm("",0,0,0,"算Z使用的算法，1：相差，0：相关，",VariablesClassify.Debug.name());
 		private String unit;
 		private double value;
 		private double presicion;
