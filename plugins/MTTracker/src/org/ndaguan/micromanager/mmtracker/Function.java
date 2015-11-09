@@ -716,12 +716,13 @@ public class Function {
 				try {
 					Function.getInstance().setXYZCalPosition(kernel_.zPosProfiles.length-1-i);
 					MMT.calibrateIndex_ = kernel_.zPosProfiles.length-1-i;
+					kernel_.zPosProfiles[kernel_.zPosProfiles.length-1-i] = 0;
 					for (int j = 0; j < MMT.VariablesNUPD.CalibrateTimes.value(); j++) {	
 						MMT.calibrateSubIndex_ = j;
 						MMT.isAnalyzerBusy_ = true;
 						snapImage();
 						while(MMT.isAnalyzerBusy_){
-							TimeUnit.MILLISECONDS.sleep(5);
+							TimeUnit.MILLISECONDS.sleep(1);
 						}
 					}
 				} catch (Exception e) {

@@ -312,12 +312,12 @@ PIGCSControllerCom::PIGCSControllerCom(const std::string& label, PIGCSController
     : PIController(label)
     , deviceProxy_(proxy)
     , hasCST_   (false)
-    , hasSVO_   (true)
+    , hasSVO_   (false)
     , hasINI_   (false)
-    , hasJON_   (true)
-    , hasVEL_   (true)
-    , has_qTPC_ (true)
-    , hasONL_   (true)
+    , hasJON_   (false)
+    , hasVEL_   (false)
+    , has_qTPC_ (false)
+    , hasONL_   (false)
 {
 	PIController::logsink_  = logsink;
 	PIController::logdevice_= proxy;
