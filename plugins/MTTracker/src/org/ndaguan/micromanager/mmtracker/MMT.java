@@ -91,6 +91,7 @@ public class MMT {
 	public static double stageCurrentPosition = 0;
 	public static int maxN=0;
 	public static String AcqName = "Snap/Live Window";
+	public static int calibrateSubIndex_ = 0;
 	public static enum VariablesClassify{
 		General,
 		DataSheet,
@@ -152,7 +153,8 @@ public class MMT {
 		AutoRange("",1,0,0,"是否自动重绘图表，1：是，0：否，",VariablesClassify.DataSheet.name()),
 		polarFactor("",1,0,0,"积分系数，越大越精细，但耗时，1：是，0：否，",VariablesClassify.Debug.name()),
 		AutoDeleteRoi("",1,0,0,"是否自动删除ROI，1：是，0：否，",VariablesClassify.Debug.name()),
-		GetZAlgorithm("",0,0,0,"算Z使用的算法，1：相差，0：相关，",VariablesClassify.Debug.name());
+		GetZAlgorithm("",0,0,0,"算Z使用的算法，1：相差，0：相关，",VariablesClassify.Debug.name()),
+		CalibrateTimes("",10,0,0,"算Z每个位置重复拍摄次数",VariablesClassify.General.name());
 		private String unit;
 		private double value;
 		private double presicion;

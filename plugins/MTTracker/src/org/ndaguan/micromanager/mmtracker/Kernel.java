@@ -496,7 +496,7 @@ public class Kernel {
 		xPosProfiles = new double[ (int) (calRange/calStepSize)];
 		yPosProfiles = new double[ (int) (calRange/calStepSize)];
 		for (RoiItem it:roiList_)
-			it.InitializeCalProflie((int) (calRange/calStepSize),MMT.maxN/2);
+			it.InitializeCalProflie((int) (calRange/calStepSize), (int) ((MMT.VariablesNUPD.beanRadiuPixel.value()-MMT.VariablesNUPD.skipRadius.value())/MMT.VariablesNUPD.rInterStep.value()));
 	}
 
 	public  boolean calibration(Object image,int index,double currXPos,double currYPos,double currZPos) {
@@ -510,7 +510,7 @@ public class Kernel {
 		double[] xy = ret[0];
 		regrX.addData(xy[0],currXPos);
 		regrY.addData(xy[1],currYPos);
-		zPosProfiles [index] = currZPos;
+		zPosProfiles [index] += currZPos/MMT.VariablesNUPD.CalibrateTimes.value();
 		double beanRadiuPixel = MMT.VariablesNUPD.beanRadiuPixel.value();
 		for (int k = 0; k < roiList_.size(); k++) {
 			int roiX = (int) (ret[k][0] - beanRadiuPixel);
@@ -524,10 +524,12 @@ public class Kernel {
 			xy = roiList_.get(k).getXY();
 			double[] posPofile = polarIntegral(image,xy[0],xy[1]);
 			roiList_.get(k).updateCalProfile(index,posPofile);
-			Matrix A = new Matrix(new double[][]{posPofile});
-			SingularValueDecomposition s = A.svd();
-			double[] svd = s.getSingularValues();
-			roiList_.get(k).getCalProfileNorm()[index]=svd[0];
+			if(MMT.calibrateSubIndex_ == MMT.VariablesNUPD.CalibrateTimes.value()-1){
+				Matrix A = new Matrix(new double[][]{roiList_.get(k).getCalProfile()[index]});
+				SingularValueDecomposition s = A.svd();
+				double[] svd = s.getSingularValues();
+				roiList_.get(k).getCalProfileNorm()[index]=svd[0];
+			}
 		}
 		return true;
 	}

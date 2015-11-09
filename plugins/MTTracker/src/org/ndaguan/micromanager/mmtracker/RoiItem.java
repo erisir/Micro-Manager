@@ -386,7 +386,9 @@ public  class RoiItem {
 		return String.format("%d      %d",index_,index_);
 	}
 	public void updateCalProfile(int index, double[] posProfile) {
-		calProfile_[index] = posProfile;
+		for (int i = 0; i < posProfile.length; i++) {
+			calProfile_[index][i] += posProfile[i]/MMT.VariablesNUPD.CalibrateTimes.value();
+		}
 	}
 	public void InitializeCalProflie(int r,int c) {
 		calProfile_ = new double[r][c];
