@@ -245,11 +245,11 @@ public class Kernel {
 					frameNm++;
 					MMT.tik();
 					kl.getXYZPosition(img[(int) (frameNm%2)]);
-					//					try {
-					//						kl.saveRoiData("ACQ",frameNm,System.nanoTime()/10e6);
-					//					} catch (IOException e) {
-					//						MMT.logError("Save data error");
-					//					}
+										try {
+											kl.saveRoiData("ACQ",frameNm,System.nanoTime()/10e6);
+										} catch (IOException e) {
+											MMT.logError("Save data error");
+										}
 					MMT.tok("getXYZPosition");
 
 					Function.getInstance().updateChart(frameNm);

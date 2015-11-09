@@ -206,7 +206,7 @@ public  class RoiItem {
 			File dir = null;
 			dir = new File(new File(MMTFrame.getInstance().preferDailog.userDataDir_, "MTTracker"),
 					dateFormat.format(cal.getTime()));
-			if(!dir.mkdirs()){
+			if(!dir.isDirectory() && !dir.mkdirs()){
 				dir = new File(new File(System.getProperty("user.home"),"MTTracker"),dateFormat.format(cal.getTime()));
 				if(!dir.isFile())
 					dir.mkdirs();
