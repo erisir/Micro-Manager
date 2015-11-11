@@ -8,10 +8,12 @@ import ij.WindowManager;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
 import java.net.UnknownHostException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -903,6 +905,24 @@ public class Function {
 
 	public void showGui() {
 		//gui_.setVisible(!gui_.isVisible());
+		File file = new File("c:\\", "StagePosition.txt");
+		Writer dataFileWriter_;
+		long timeStart = System.nanoTime();
+		try {
+			dataFileWriter_ = new BufferedWriter(new FileWriter(file));
+			for(int i=0;i<MMT.VariablesNUPD.showDebugTime.value();i++){
+				dataFileWriter_.write(String.format("%f,%f\r\n",(System.nanoTime()-timeStart)/10e6,getStagePosition()[2]));
+				TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
+			}
+
+			dataFileWriter_.flush();
+			dataFileWriter_.close();
+		} catch ( Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+
 	}
 
 	public void showIJ() {
@@ -1208,7 +1228,7 @@ public class Function {
 		} catch (IOException e) {
 			MMT.logError("save user data err");
 		}
-		
+
 	}
 	@SuppressWarnings("unused")
 	private void xmtStageDebug() throws Exception {
