@@ -911,7 +911,7 @@ public class Function {
 		try {
 			dataFileWriter_ = new BufferedWriter(new FileWriter(file));
 			for(int i=0;i<MMT.VariablesNUPD.showDebugTime.value();i++){
-				dataFileWriter_.write(String.format("%f,%f\r\n",(System.nanoTime()-timeStart)/10e6,getStagePosition()[2]));
+				dataFileWriter_.write(String.format("%.3f,%.4f\r\n",(System.nanoTime()-timeStart)/10e8,getStagePosition()[2]));
 				TimeUnit.MILLISECONDS.sleep((long) MMT.VariablesNUPD.stageMoveSleepTime.value());
 			}
 
@@ -921,7 +921,7 @@ public class Function {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
+        IJ.log("OK");
 
 	}
 
