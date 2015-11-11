@@ -312,7 +312,7 @@ PIGCSControllerCom::PIGCSControllerCom(const std::string& label, PIGCSController
     : PIController(label)
     , deviceProxy_(proxy)
     , hasCST_   (false)
-    , hasSVO_   (false)
+    , hasSVO_   (true)
     , hasINI_   (false)
     , hasJON_   (false)
     , hasVEL_   (false)
