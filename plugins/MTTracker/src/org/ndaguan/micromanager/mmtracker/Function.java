@@ -453,7 +453,11 @@ public class Function {
 				pos[0] = xpos[0];
 				pos[1] = ypos[0];
 			}
-			pos[2] = core_.getPosition(MMT.zStage_);
+			pos[2] = 0;
+			int n = (int) MMT.VariablesNUPD.GetPosTimes.value();
+			for (int i = 0; i <n ; i++) {
+				pos[2] += core_.getPosition(MMT.zStage_)/n;
+			}
 		}
 		return pos;
 	}
