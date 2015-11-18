@@ -651,10 +651,13 @@ public class Function {
 				try {
 					MMT.testingIndex_ = kernel_.zTestingPosProfiles.length-1-i;
 					setStageZPosition(kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]);
-					MMT.isAnalyzerBusy_ = true;
-					snapImage();
-					while(MMT.isAnalyzerBusy_){
-						TimeUnit.MILLISECONDS.sleep(10);
+					for (int j = 0; j < MMT.VariablesNUPD.TestingTimes.value(); j++){
+						MMT.isAnalyzerBusy_ = true;
+						MMT.TestingSubIndex_ = j;
+						snapImage();
+						while(MMT.isAnalyzerBusy_){
+							TimeUnit.MILLISECONDS.sleep(1);
+						}
 					}
 				} catch (Exception e) {
 					WHATISLOVE("TestingFalse");
@@ -798,7 +801,7 @@ public class Function {
 			public void run() {
 				for(int i = 0;i<roiList_.size();i++)
 				{
-					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ() - currZpos,true);
+					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getTestZ() - currZpos,true);
 				}
 			}
 		});
@@ -925,7 +928,7 @@ public class Function {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-        IJ.log("OK");
+		IJ.log("OK");
 
 	}
 

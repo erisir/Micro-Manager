@@ -92,6 +92,8 @@ public class MMT {
 	public static int maxN=0;
 	public static String AcqName = "Snap/Live Window";
 	public static int calibrateSubIndex_ = 0;
+	public static int TestingSubIndex_ = 0;
+	public static double TestingCurrPosition = 0;
 	public static enum VariablesClassify{
 		General,
 		DataSheet,
@@ -155,7 +157,8 @@ public class MMT {
 		AutoDeleteRoi("",1,0,0,"�Ƿ��Զ�ɾ��ROI��1���ǣ�0����",VariablesClassify.Debug.name()),
 		GetZAlgorithm("",0,0,0,"��Zʹ�õ��㷨��1����0����أ�",VariablesClassify.Debug.name()),
 		CalibrateTimes("",10,0,0,"��Zÿ��λ���ظ��������",VariablesClassify.General.name()),
-		GetPosTimes("",20,0,0,"��Zÿ��λ���ظ��������",VariablesClassify.General.name());
+		TestingTimes("",5,0,0,"��Zÿ��λ���ظ��������",VariablesClassify.General.name()),
+		GetPosTimes("",2,0,0,"��Zÿ��λ���ظ��������",VariablesClassify.General.name());
 		private String unit;
 		private double value;
 		private double presicion;
