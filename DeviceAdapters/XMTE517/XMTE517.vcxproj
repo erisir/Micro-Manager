@@ -19,8 +19,8 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{93F038B4-1861-41E5-B774-3A280EF03982}</ProjectGuid>
-    <RootNamespace>MP285</RootNamespace>
+    <ProjectGuid>{636DD499-BE07-4839-9AFD-D3E869772BD4}</ProjectGuid>
+    <RootNamespace>MMC100</RootNamespace>
     <Keyword>ManagedCProj</Keyword>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -82,8 +82,6 @@
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
-    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Release|x64'">F:\Development\Micro-Manager\svn\3rdparty\AVTCamera\VimbaCPP\Lib\Win64;$(LibraryPath)</LibraryPath>
-    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">F:\Development\Micro-Manager\svn\3rdparty\AVTCamera\VimbaCPP\Lib\Win32;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -155,7 +153,6 @@
       <PrecompiledHeader>
       </PrecompiledHeader>
       <DisableSpecificWarnings>4290;%(DisableSpecificWarnings)</DisableSpecificWarnings>
-      <AdditionalIncludeDirectories>..\..\..\3rdparty\AVTCamera;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <Version>2.05.019</Version>
@@ -174,21 +171,19 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AVTCamera.cpp" />
-    <ClCompile Include="AVT_Guppy_F146BCamera.cpp" />
-    <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="FrameObserver.cpp" />
-    <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="XMTE517.cpp" />
+    <ClCompile Include="XMTE517Ctrl.cpp" />
+    <ClCompile Include="XMTE517Error.cpp" />
+    <ClCompile Include="XMTE517ZStage.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AVTCamera.h" />
-    <ClInclude Include="AVT_Guppy_F146BCamera.h" />
-    <ClInclude Include="FrameObserver.h" />
-    <ClInclude Include="stdafx.h" />
-    <ClInclude Include="targetver.h" />
+    <ClInclude Include="XMTE517.h" />
+    <ClInclude Include="XMTE517Ctrl.h" />
+    <ClInclude Include="XMTE517Error.h" />
+    <ClInclude Include="XMTE517ZStage.h" />
   </ItemGroup>
   <ItemGroup>
-    <Library Include="..\..\..\3rdparty\AVTCamera\VimbaCPP\Lib\Win32\VimbaCPP.lib" />
+    <None Include="..\AAAOTF\AAAOTF.vcxproj" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

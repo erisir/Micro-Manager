@@ -15,40 +15,37 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AVT_Guppy_F146BCamera.cpp">
+    <ClCompile Include="StepMotor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AVTCamera.cpp">
+    <ClCompile Include="StepMotorCtrl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dllmain.cpp">
+    <ClCompile Include="StepMotorError.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="FrameObserver.cpp">
+    <ClCompile Include="StepMotorXYStage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="stdafx.cpp">
+    <ClCompile Include="StepMotorZStage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AVT_Guppy_F146BCamera.h">
+    <ClInclude Include="StepMotor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="AVTCamera.h">
+    <ClInclude Include="StepMotorCtrl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FrameObserver.h">
+    <ClInclude Include="StepMotorError.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="stdafx.h">
+    <ClInclude Include="StepMotorXYStage.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="targetver.h">
+    <ClInclude Include="StepMotorZStage.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <Library Include="..\..\..\3rdparty\AVTCamera\VimbaCPP\Lib\Win32\VimbaCPP.lib" />
   </ItemGroup>
 </Project>

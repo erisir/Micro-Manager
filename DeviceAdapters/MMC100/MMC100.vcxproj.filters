@@ -15,40 +15,31 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AVT_Guppy_F146BCamera.cpp">
+    <ClCompile Include="MMC100.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AVTCamera.cpp">
+    <ClCompile Include="MMC100Ctrl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dllmain.cpp">
+    <ClCompile Include="MMC100Error.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="FrameObserver.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="stdafx.cpp">
+    <ClCompile Include="MMC100ZStage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AVT_Guppy_F146BCamera.h">
+    <ClInclude Include="MMC100.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="AVTCamera.h">
+    <ClInclude Include="MMC100Ctrl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FrameObserver.h">
+    <ClInclude Include="MMC100Error.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="stdafx.h">
+    <ClInclude Include="MMC100ZStage.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <Library Include="..\..\..\3rdparty\AVTCamera\VimbaCPP\Lib\Win32\VimbaCPP.lib" />
   </ItemGroup>
 </Project>

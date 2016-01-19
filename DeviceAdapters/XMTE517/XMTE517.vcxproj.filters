@@ -15,40 +15,34 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AVT_Guppy_F146BCamera.cpp">
+    <ClCompile Include="XMTE517.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AVTCamera.cpp">
+    <ClCompile Include="XMTE517Ctrl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dllmain.cpp">
+    <ClCompile Include="XMTE517Error.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="FrameObserver.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="stdafx.cpp">
+    <ClCompile Include="XMTE517ZStage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AVT_Guppy_F146BCamera.h">
+    <ClInclude Include="XMTE517.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="AVTCamera.h">
+    <ClInclude Include="XMTE517Ctrl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FrameObserver.h">
+    <ClInclude Include="XMTE517Error.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="stdafx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="targetver.h">
+    <ClInclude Include="XMTE517ZStage.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Library Include="..\..\..\3rdparty\AVTCamera\VimbaCPP\Lib\Win32\VimbaCPP.lib" />
+    <None Include="..\AAAOTF\AAAOTF.vcxproj" />
   </ItemGroup>
 </Project>

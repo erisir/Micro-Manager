@@ -160,15 +160,21 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="PI.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="PI.h" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\..\MMDevice\MMDevice-SharedRuntime.vcxproj">
       <Project>{b8c95f39-54bf-40a9-807b-598df2821d55}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="SigmaKoki.cpp" />
+    <ClCompile Include="SigmaKokiCtrl.cpp" />
+    <ClCompile Include="SigmaKokiError.cpp" />
+    <ClCompile Include="SigmaKokiZStage.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="SigmaKoki.h" />
+    <ClInclude Include="SigmaKokiCtrl.h" />
+    <ClInclude Include="SigmaKokiError.h" />
+    <ClInclude Include="SigmaKokiZStage.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
