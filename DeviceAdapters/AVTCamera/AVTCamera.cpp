@@ -109,7 +109,7 @@ AVTCamera::AVTCamera(const char * CameraId)
 
 	// Find cameras
 	binSize_ = 1;
-	depth_ = 8;
+	depth_ = 16;
 	initialized_ = false;
 	fullFrameX_ = 0;
 	fullFrameY_ = 0;
@@ -166,7 +166,7 @@ int AVTCamera::Initialize()
 	memset(fullFrameBuffer_,10,fullFrameBufferSize_);
 	ResizeImageBuffer();
 	CPropertyAction* pActOnSetPixelFormat = new CPropertyAction(this, &AVTCamera::OnSetPixelFormat);
-	CreateProperty(g_PixelFormat, "12", MM::Integer, false, pActOnSetPixelFormat);
+	CreateProperty(g_PixelFormat, "16", MM::Integer, false, pActOnSetPixelFormat);
 
 	CPropertyAction* pActOnBinning = new CPropertyAction(this, &AVTCamera::OnBinning);
 	char binning[20];

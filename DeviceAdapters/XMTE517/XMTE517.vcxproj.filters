@@ -42,7 +42,4 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="..\AAAOTF\AAAOTF.vcxproj" />
-  </ItemGroup>
 </Project>

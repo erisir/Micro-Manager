@@ -182,9 +182,6 @@
     <ClInclude Include="XMTE517Error.h" />
     <ClInclude Include="XMTE517ZStage.h" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="..\AAAOTF\AAAOTF.vcxproj" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

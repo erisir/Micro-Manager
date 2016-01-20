@@ -28,6 +28,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AVTCamera", "DeviceAdapters
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Andor", "DeviceAdapters\Andor\Andor.vcxproj", "{91CCB72B-852D-47D8-82FA-0E19A300A025}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AAAOTF", "DeviceAdapters\AAAOTF\AAAOTF.vcxproj", "{2B522528-9660-4B78-8E2A-000000AAA03F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -148,6 +150,14 @@ Global
 		{91CCB72B-852D-47D8-82FA-0E19A300A025}.Release|Win32.Build.0 = Release|Win32
 		{91CCB72B-852D-47D8-82FA-0E19A300A025}.Release|x64.ActiveCfg = Release|x64
 		{91CCB72B-852D-47D8-82FA-0E19A300A025}.Release|x64.Build.0 = Release|x64
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Debug|Win32.ActiveCfg = Debug|Win32
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Debug|Win32.Build.0 = Debug|Win32
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Debug|x64.ActiveCfg = Debug|x64
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Debug|x64.Build.0 = Debug|x64
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Release|Win32.ActiveCfg = Release|Win32
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Release|Win32.Build.0 = Release|Win32
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Release|x64.ActiveCfg = Release|x64
+		{2B522528-9660-4B78-8E2A-000000AAA03F}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
