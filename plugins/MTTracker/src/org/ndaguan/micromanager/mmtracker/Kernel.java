@@ -123,7 +123,9 @@ public class Kernel {
 				}
 				return false;
 			}
-			currProfiles = polarIntegral(image,xy[0],xy[1]);		
+//			MMT.tik();
+			currProfiles = polarIntegral(image,xy[0],xy[1]);	
+//			MMT.tok("polarIntegral");
 			//			currProfiles = polarIntegral2(image,roiX,roiY,beanRadiuPixel);		
 			double zpos = getZLocation(k,currProfiles);
 			roiList_.get(k).setZ(zpos);
@@ -180,7 +182,7 @@ public class Kernel {
 
 
 		MMT.VariablesNUPD.calRange.value(10);
-		MMT.VariablesNUPD.skipRadius.value(0);
+		MMT.VariablesNUPD.skipRadius.value(1);
 		MMT.VariablesNUPD.frameToRefreshChart.value(100);
 		MMT.VariablesNUPD.beanRadiuPixel.value(50);
 		MMT.VariablesNUPD.pixelToPhysX.value(1.0);
@@ -190,11 +192,12 @@ public class Kernel {
 		MMT.VariablesNUPD.showDebugTime.value(1);
 		MMT.VariablesNUPD.precision.value(0.0001);
 		MMT.VariablesNUPD.saveFile.value(1);
+		MMT.VariablesNUPD.CalibrateTimes.value(1);
 		double log2 = Math.log10(MMT.VariablesNUPD.beanRadiuPixel.value()*2 - 1)/Math.log10(2);
 		MMT.maxN = (int) Math.pow(2, Math.floor(log2)+1);
 		List<RoiItem> rt = Collections.synchronizedList(new ArrayList<RoiItem>());
 		rt.add(RoiItem.createInstance(new double[]{130,130,0}));
-		rt.add(RoiItem.createInstance(new double[]{100,100,0}));
+		//rt.add(RoiItem.createInstance(new double[]{100,100,0}));
 		Function.getInstance(null, rt);
 
 		Kernel kl = new Kernel(rt);
@@ -209,10 +212,10 @@ public class Kernel {
 		if(flag)
 			for (int i = 0; i < calRange ; i++) {
 				Object image = getImg(i+1,bitDepth);
-				//MMT.tik();
+				MMT.tik();
 				boolean ret = kl.getXYPosition(image);
 				if(!ret)continue;
-				//MMT.tok("getXYPosition");
+				MMT.tok("getXYPosition");
 				for (int k = 0; k < rt.size(); k++) {
 					double[] xy = rt.get(k).getXY();
 					double xpos = xy[0];
@@ -227,7 +230,7 @@ public class Kernel {
 
 		if(!flag){
 			for (int i = 0; i < rt.size(); i++) {
-				rt.get(i).setChartVisible(true);
+				//rt.get(i).setChartVisible(true);
 			}
 			kl.updateCalibrationProfile();
 			for (int i = 0; i < calRange; i++) {
@@ -236,7 +239,7 @@ public class Kernel {
 			}
 			kl.isCalibrated_ = true;
 			long frameNm = 0;
-			Object image = getImg(8.5,bitDepth);
+			Object image = getImg(2.5,bitDepth);
 			Object image1 = getImg(3.5,bitDepth);
 			Object[] img = new Object[]{image,image1};
 			for (int jj = 0; jj < 10000; jj++) {
@@ -245,12 +248,13 @@ public class Kernel {
 					frameNm++;
 					MMT.tik();
 					kl.getXYZPosition(img[(int) (frameNm%2)]);
-										try {
-											kl.saveRoiData("ACQ",frameNm,System.nanoTime()/10e6);
-										} catch (IOException e) {
-											MMT.logError("Save data error");
-										}
 					MMT.tok("getXYZPosition");
+					try {
+						kl.saveRoiData("ACQ",frameNm,System.nanoTime()/10e6);
+					} catch (IOException e) {
+						MMT.logError("Save data error");
+					}
+
 
 					Function.getInstance().updateChart(frameNm);
 
@@ -259,7 +263,7 @@ public class Kernel {
 						double xphy = xyPhy[0];
 						double yphy = xyPhy[1];
 						double zphy = rt.get(k).getZ();
-						System.out.print(String.format("\r\n\r\n[%d]\txphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\t",frameNm,xphy,yphy,zphy,frameNm%2==0?8.5:3.5,zphy+frameNm%2+2.5));
+						System.out.print(String.format("\r\n\r\n[%d]-ROI[%d]\txphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\t",frameNm,k,xphy,yphy,zphy,frameNm%2==0?8.5:3.5,(frameNm%2==0?8.5:3.5)-zphy));
 					}
 
 				}
@@ -427,10 +431,9 @@ public class Kernel {
 				double dTheta = polarFactor/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				nTheta = (nTheta==0)?1:nTheta;
+				
 				for(int j = 0;j<nTheta;j++)
 				{
-
-
 					double x = (xpos+xFactor*r*Math.cos(dTheta*j));
 					double y = (ypos+yFactor*r*Math.sin(dTheta*j));
 					int x0 = (int)x;
@@ -448,6 +451,7 @@ public class Kernel {
 					double Sxy = S00*(1-dx)*(1-dy)+S01*dy*(1-dx)+S10*dx*(1-dy) +S11*dx*dy;
 					sumr += Sxy;
 				}
+				
 				profile[i-skipStart] =sumr/nTheta;
 				statis_.addValue(profile[i-skipStart]);
 			}
@@ -507,6 +511,7 @@ public class Kernel {
 			regrX.clear();
 			regrX.clear();
 		}
+		MMT.debugMessage(String.format("%d",index));
 		double[] xy = ret[0];
 		regrX.addData(xy[0],currXPos);
 		regrY.addData(xy[1],currYPos);
@@ -557,53 +562,53 @@ public class Kernel {
 		}
 		//new
 		if(MMT.VariablesNUPD.GetZAlgorithm.value()==1){// use phrase to calculate z
-		
-		int start = index-1;
-		int end = index+1;
-		if (start<0)start=0;
-		if (end>calProfile.length-1)end=calProfile.length-1;
 
-		double normStart = roiList_.get(roiIndex).getCalProfileNorm()[start];
-		double normEnd = roiList_.get(roiIndex).getCalProfileNorm()[end];
-		double[] posProfileStart = roiList_.get(roiIndex).getCalProfile()[start];
-		double[] posProfileEnd = roiList_.get(roiIndex).getCalProfile()[end];
-	 	double dotAll = dot(posProfileStart,posProfileEnd);
-		double dot = dot(posProfileStart,currrProfiles);
+			int start = index-1;
+			int end = index+1;
+			if (start<0)start=0;
+			if (end>calProfile.length-1)end=calProfile.length-1;
 
-		Matrix A = new Matrix(new double[][]{currrProfiles});
-		SingularValueDecomposition s = A.svd();
-		double[] svd = s.getSingularValues();
-		double normNow = svd[0];
+			double normStart = roiList_.get(roiIndex).getCalProfileNorm()[start];
+			double normEnd = roiList_.get(roiIndex).getCalProfileNorm()[end];
+			double[] posProfileStart = roiList_.get(roiIndex).getCalProfile()[start];
+			double[] posProfileEnd = roiList_.get(roiIndex).getCalProfile()[end];
+			double dotAll = dot(posProfileStart,posProfileEnd);
+			double dot = dot(posProfileStart,currrProfiles);
 
-		double phaseShiftAll = Math.acos(dotAll/(normStart*normEnd));
-		double phaseShiftStart2Now = Math.acos(dot/(normStart*normNow));
-		double posStart = zPosProfiles[start];
-		double posEnd = zPosProfiles[end];
-		pos = posStart+(posEnd-posStart)*phaseShiftStart2Now/phaseShiftAll;
-		
+			Matrix A = new Matrix(new double[][]{currrProfiles});
+			SingularValueDecomposition s = A.svd();
+			double[] svd = s.getSingularValues();
+			double normNow = svd[0];
+
+			double phaseShiftAll = Math.acos(dotAll/(normStart*normEnd));
+			double phaseShiftStart2Now = Math.acos(dot/(normStart*normNow));
+			double posStart = zPosProfiles[start];
+			double posEnd = zPosProfiles[end];
+			pos = posStart+(posEnd-posStart)*phaseShiftStart2Now/phaseShiftAll;
+
 		}else{
-		
-		//old 
-				UnivariateFunction function = interpolator.interpolate(zPosProfiles, yArray);
-				pos = zPosProfiles[index];
-				double pos0 = zPosProfiles[0];
-				double posEnd = zPosProfiles[zPosProfiles.length-1];
-				max = 0;
-				double start,end;
-		
-				for(double inc = 0.1;inc>MMT.VariablesNUPD.precision.value();inc =inc/10){
-					start = pos-1;
-					end = pos+1;
-					if(start<pos0)start=pos0;
-					if(end>posEnd)end=posEnd;
-					for (double i = start; i < end; i+=inc) {
-						double value  = function.value(i);
-						if(value >max){
-							max = value;
-							pos = i;
-						}
+
+			//old 
+			UnivariateFunction function = interpolator.interpolate(zPosProfiles, yArray);
+			pos = zPosProfiles[index];
+			double pos0 = zPosProfiles[0];
+			double posEnd = zPosProfiles[zPosProfiles.length-1];
+			max = 0;
+			double start,end;
+
+			for(double inc = 0.1;inc>MMT.VariablesNUPD.precision.value();inc =inc/10){
+				start = pos-1;
+				end = pos+1;
+				if(start<pos0)start=pos0;
+				if(end>posEnd)end=posEnd;
+				for (double i = start; i < end; i+=inc) {
+					double value  = function.value(i);
+					if(value >max){
+						max = value;
+						pos = i;
 					}
 				}
+			}
 		}
 		Function.getInstance().updateCorrChart(roiIndex, yArray);
 		return pos;

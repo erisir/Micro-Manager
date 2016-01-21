@@ -31,7 +31,7 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 		try {
 			double[] pos = Function.getInstance().getStagePosition();//new double[]{kernel_.xPosProfiles[MMT.calibrateIndex_],kernel_.yPosProfiles[MMT.calibrateIndex_],kernel_.zPosProfiles[MMT.calibrateIndex_]};
 			boolean ret = kernel_.getXYZPosition(taggedImage.pix);
-
+			
 			Function.getInstance().reDraw( WindowManager.getCurrentImage(),MMT.testingIndex_, true,true);
 			if(!ret){
 				MMT.logError("Testting Error");
@@ -39,14 +39,8 @@ public class TestAnalyzer extends TaggedImageAnalyzer {
 				MMT.isAnalyzerBusy_ = false;
 				return;
 			}
-			int testTimes = (int) MMT.VariablesNUPD.TestingTimes.value();
-			if(MMT.TestingSubIndex_<testTimes){
-				MMT.TestingCurrPosition += pos[2]/testTimes;
-			}else{
-				Function.getInstance().updateTestingChart( MMT.TestingCurrPosition);//kernel_.zTestingPosProfiles[MMT.testingIndex_]);
-				MMT.TestingCurrPosition = 0;
-				MMT.logMessage(String.format("Testing:\t\t%d/%d",MMT.testingIndex_,kernel_.zTestingPosProfiles.length));
-			}
+			Function.getInstance().updateTestingChart( pos[2]);//kernel_.zTestingPosProfiles[MMT.testingIndex_]);
+			MMT.logMessage(String.format("Testing:\t\t%d/%d",MMT.testingIndex_,kernel_.zTestingPosProfiles.length));
 		} catch (Exception e) {
 			MMT.isTestingRunning_  = false;
 			MMT.lastError_ = e.toString();

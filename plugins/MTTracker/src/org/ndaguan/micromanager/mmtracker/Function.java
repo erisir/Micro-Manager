@@ -453,11 +453,7 @@ public class Function {
 				pos[0] = xpos[0];
 				pos[1] = ypos[0];
 			}
-			pos[2] = 0;
-			int n = (int) MMT.VariablesNUPD.GetPosTimes.value();
-			for (int i = 0; i <n ; i++) {
-				pos[2] += core_.getPosition(MMT.zStage_)/n;
-			}
+			pos[2] = core_.getPosition(MMT.zStage_);
 		}
 		return pos;
 	}
@@ -651,13 +647,10 @@ public class Function {
 				try {
 					MMT.testingIndex_ = kernel_.zTestingPosProfiles.length-1-i;
 					setStageZPosition(kernel_.zTestingPosProfiles[kernel_.zTestingPosProfiles.length-1-i]);
-					for (int j = 0; j < MMT.VariablesNUPD.TestingTimes.value(); j++){
-						MMT.isAnalyzerBusy_ = true;
-						MMT.TestingSubIndex_ = j;
-						snapImage();
-						while(MMT.isAnalyzerBusy_){
-							TimeUnit.MILLISECONDS.sleep(1);
-						}
+					MMT.isAnalyzerBusy_ = true;
+					snapImage();
+					while(MMT.isAnalyzerBusy_){
+						TimeUnit.MILLISECONDS.sleep(10);
 					}
 				} catch (Exception e) {
 					WHATISLOVE("TestingFalse");
@@ -801,7 +794,7 @@ public class Function {
 			public void run() {
 				for(int i = 0;i<roiList_.size();i++)
 				{
-					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getTestZ() - currZpos,true);
+					roiList_.get(i).addChartData("Chart-Testing",currZpos,roiList_.get(i).getZ() - currZpos,true);
 				}
 			}
 		});
@@ -928,7 +921,7 @@ public class Function {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		IJ.log("OK");
+        IJ.log("OK");
 
 	}
 

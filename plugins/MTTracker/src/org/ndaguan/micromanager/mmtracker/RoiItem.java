@@ -204,7 +204,13 @@ public  class RoiItem {
 			Calendar cal = new GregorianCalendar();
 			DateFormat dateFormat = new SimpleDateFormat("yyyyMMdd");
 			File dir = null;
-			dir = new File(new File(MMTFrame.getInstance().preferDailog.userDataDir_, "MTTracker"),
+			String path;
+			if(MMTFrame.getInstance() != null){
+				path = MMTFrame.getInstance().preferDailog.userDataDir_;
+			}else{
+				path=System.getProperty("user.home");
+			}
+			dir = new File(new File(path, "MTTracker"),
 					dateFormat.format(cal.getTime()));
 			if(!dir.isDirectory() && !dir.mkdirs()){
 				dir = new File(new File(System.getProperty("user.home"),"MTTracker"),dateFormat.format(cal.getTime()));
