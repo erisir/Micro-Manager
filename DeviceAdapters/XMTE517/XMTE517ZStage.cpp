@@ -128,6 +128,7 @@ int ZStage::Initialize()
 	if (ret != DEVICE_OK)  return ret;
 
 	XMTE517::Instance()->SetMotionMode(1);//Fast
+	SetMotionMode(1);
 	CPropertyAction* pActOnMotionMode = new CPropertyAction(this, &ZStage::OnMotionMode);
 	ret = CreateProperty(XMTE517::Instance()->GetXMTStr(XMTE517::XMTSTR_MotionMode).c_str(), "Undefined", MM::Integer, false, pActOnMotionMode);  // Absolute  vs Relative
 	ret = UpdateStatus();
@@ -222,7 +223,7 @@ int ZStage::GetPositionUm(double& dZPosUm)
 
 
 	memset(sResponse, 0, 64);
-	Sleep(100);
+	CDeviceUtils::SleepMs(200);
 	ret = ReadMessage(sResponse, 7);
 	ostringstream osMessage;
 	osMessage.str("");
@@ -299,7 +300,7 @@ int ZStage::SetPositionUm(double dZPosUm)
 	if (ret != DEVICE_OK)  return ret;
 
 	XMTE517::Instance()->SetPositionZ(dZPosUm);
-
+	CDeviceUtils::SleepMs(200);
 	return ret;
 }
 
@@ -363,7 +364,7 @@ int ZStage::WriteCommand(unsigned char* sCommand, int nLength)
 	for (int nBytes = 0; nBytes < nLength && ret == DEVICE_OK; nBytes++)
 	{
 		ret = WriteToComPort(XMTE517::Instance()->GetSerialPort().c_str(), (const unsigned char*)&sCommand[nBytes], 1);
-		CDeviceUtils::SleepMs(1);
+		CDeviceUtils::SleepMs(5);
 	}
 	if (XMTE517::Instance()->GetDebugLogFlag() > 1)
 	{
