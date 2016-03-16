@@ -47,33 +47,6 @@
 
 using namespace std;
 
-//error code
-
-#define C51_DEVICE_OK 0x00
-#define C51_DEVICE_BUSY 0x02 +'J'-2
-#define C51_OUT_OF_LOW_LIMIT 0x03 +'K'-3
-#define C51_OUT_OF_HIGH_LIMIT 0x04 +'L'-4
-#define C51_CHECK_SUM_ERROR 0x05  +'M'-5
-#define C51_BAD_COMMAND	    0x06 +'N'-6
-
-//command string
-#define _SetZeroPosition 0x07 +'Z'-7
-#define _MoveUp	        0x08 +'U'-8
-#define _MoveDown	    0x09 +'D'-9
-#define _SetRunningDelay 0x0A +'R'-10
-#define _SetStartDelay 	0x0B +'S'-11
-#define _FindLimit		0x0C +'L'-12
-#define _ReleasePower	0x0D +'P'-13
-#define _QueryPosition   0x0E +'Q'-14
-#define _QueryStage   	0x0F +'E'-15
-#define _SetPosition	    0x10 + 'T' - 16
-#define _SetUM2Step	    0x11 + 'M'-17
-#define _SetDivMode		0x12 + 'V'-18
-
-#define _QueryAngel	    0x13 + 'W'-19
-#define _SetZeroAngel    0x00 +'X'
-#define _SetAngel        0x00 +'Y'
-
 ///////////////////////////////////////////////////////////////////////////////
 // XYStage methods required by the API
 ///////////////////////////////////////////////////////////////////////////////
@@ -303,9 +276,8 @@ int XYStage::GetPositionUm(double& dXPosUm, double& dYPosUm)
 
 	if (ret != DEVICE_OK) return ret;
 	dXPosUm  =  StepMotor::Instance()->RawToLong((byte *)sResponse,2);
-	dYPosUm = 0;
 	StepMotor::Instance()->SetPositionX(dXPosUm);
-	StepMotor::Instance()->SetPositionY(dYPosUm);
+	StepMotor::Instance()->SetPositionY(0);
 	return DEVICE_OK;
 }
 
@@ -323,7 +295,7 @@ int XYStage::SetRelativePositionUm(double dXPosUm, double dYPosUm)
 		float target = (float)(dXPosUm + currPosX);
 
 		// send move command to controller
-		ret = SetPositionUm(target,dYPosUm);
+		ret = SetPositionUm(target,0);
 
 		if (ret != DEVICE_OK) return ret;
 		ret = UpdateStatus();
@@ -360,13 +332,14 @@ int XYStage::SetPositionUm(double dXPosUm, double dYPosUm)
 			yCommError = (ret != DEVICE_OK);
 		}
 
-		StepMotor::Instance()->SetPositionX(dXPosUm);
 
 		double dPosX = 0;
 		double dPosY = 0;
 
 		ret = GetPositionUm(dPosX,dPosY);
 		if (ret != DEVICE_OK) return ret;
+		StepMotor::Instance()->SetPositionX(dXPosUm);
+		StepMotor::Instance()->SetPositionY(dYPosUm);
 
 		return ret;
 }

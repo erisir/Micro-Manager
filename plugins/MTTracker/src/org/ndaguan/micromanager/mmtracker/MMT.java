@@ -98,7 +98,7 @@ public class MMT {
 		Advance,
 		Feedback,
 		Debug;
-	}
+	} 
 	public static enum VariablesNUPD {
 		//constructor format:	unit,	default value,	precision,	importance,	toolTip,	classify
 		beanRadiuPixel("/pixel ",55,0,1,"选中的框大小，此范围外的图像数据无效，太小则精度不好，太大了可能会导致定位不准和计算耗时",VariablesClassify.General.name()),

@@ -155,19 +155,19 @@ StepMotor::StepMotor()
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_TimeoutTrys]       = "Timeout Trys";                  // StepMotor Timeout Trys
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ZDevNameLabel]     = "Z Stage ";						// StepMotor Z stage device name label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ZDevDescLabel]     = "Z Stage ";						// StepMotor Z stage device description label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetPositionZ]      = "Set Position Z (um)";			// StepMotor set POSITION Z label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_GetPositionZ]      = "Get Position Z (um)";		// StepMotor get POSITION Z label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetPositionZ]      = "SetPositionZ";			// StepMotor set POSITION Z label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_GetPositionZ]      = "GetPositionZ";		// StepMotor get POSITION Z label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_Reset]             = "M.26 Reset ";               // property RESET label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_Status]            = "M.27 Status";             // property STATUS label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_ReleasePower]      = "ReleasePower";			// StepMotor set POSITION Z label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetRunDelay]       = "SetRunDelay";		// StepMotor get POSITION Z label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStartDelay]      = "SetStartDelay";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStartDelay]     = "SetStartDelay";               // property RESET label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_GetPositionX]      = "GetPositionX";               // property RESET label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_GetPositionY]      = "GetPositionY";               // property RESET label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetPositionX]      = "SetPositionX";               // property RESET label
 	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetPositionY]      = "SetPositionY";               // property RESET label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStartDelay]      = "SetStartDelay";               // property RESET label
-	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStartDelay]      = "SetStartDelay";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStep2Um]        = "SetStep2Um";               // property RESET label
+	StepMotor::m_sXMTStr[StepMotor::XMTSTR_SetStep2Angel]     = "SetStep2Angel";               // property RESET label
 
 
 

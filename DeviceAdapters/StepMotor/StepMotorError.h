@@ -28,6 +28,43 @@
 #include <string>
 #include <map>
 
+#define C51DEVICE_OK 0x00
+#define C51DEVICE_BUSY 0x00 +'A'
+#define C51OUT_OF_LOW_LIMIT 0x00 +'B'
+#define C51OUT_OF_HIGH_LIMIT 0x00 +'C'
+#define C51CHECK_SUM_ERROR 0x00  +'D'
+#define C51BAD_COMMAND	    0x00 +'E'
+
+/*协议格式
+
+@ 起始
+U 命令 ,moveUP等
+X
+X
+X
+X 以上四位为命令参数，需要转码
+X 校验位，使用异或校验
+*/
+//command string		以下
+#define _SetZeroPosition 0x00 +'F'
+#define _MoveUp	        0x00 +'G'
+#define _MoveDown	    0x00 +'H'
+#define _SetRunningDelay 0x00 +'I'
+#define _SetStartDelay 	0x00 +'J'
+#define _FindLimit		0x00 +'K'
+#define _ReleasePower	0x00 +'L'
+#define _QueryPosition   0x00 +'M'
+#define _QueryStage   	0x00 +'N'
+#define _SetPosition	    0x00 + 'O'
+#define _SetUM2Step	    0x00 + 'P'
+#define _GetUM2Step	    0x00 + 'Q'
+#define _SetAngel2Step   0x00 + 'R'
+#define _GetAngel2Step   0x00 + 'S'
+#define _SetDivMode		0x00 + 'T'
+
+#define _QueryAngel	    0x00 + 'U'
+#define _SetZeroAngel    0x00 +'V'
+#define _SetAngel        0x00 +'W'
 class MPError
 {
 public:

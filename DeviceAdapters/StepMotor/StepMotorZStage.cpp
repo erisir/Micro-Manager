@@ -47,34 +47,6 @@
 
 using namespace std;
 
-
-//error code
-
-#define C51_DEVICE_OK 0x00
-#define C51_DEVICE_BUSY 0x02 +'J'-2
-#define C51_OUT_OF_LOW_LIMIT 0x03 +'K'-3
-#define C51_OUT_OF_HIGH_LIMIT 0x04 +'L'-4
-#define C51_CHECK_SUM_ERROR 0x05  +'M'-5
-#define C51_BAD_COMMAND	    0x06 +'N'-6
-
-//command string
-#define _SetZeroPosition 0x07 +'Z'-7
-#define _MoveUp	        0x08 +'U'-8
-#define _MoveDown	    0x09 +'D'-9
-#define _SetRunningDelay 0x0A +'R'-10
-#define _SetStartDelay 	0x0B +'S'-11
-#define _FindLimit		0x0C +'L'-12
-#define _ReleasePower	0x0D +'P'-13
-#define _QueryPosition   0x0E +'Q'-14
-#define _QueryStage   	0x0F +'E'-15
-#define _SetPosition	    0x10 + 'T' - 16
-#define _SetUM2Step	    0x11 + 'M'-17
-#define _SetDivMode		0x12 + 'V'-18
-
-#define _QueryAngel	    0x13 + 'W'-19
-#define _SetZeroAngel    0x00 +'X'
-#define _SetAngel        0x00 +'Y'
-
 ///////////////////////////////////////////////////////////////////////////////
 // Z - Stage
 ///////////////////////////////////////////////////////////////////////////////
@@ -163,8 +135,16 @@ int ZStage::Initialize()
 	if (ret != DEVICE_OK)  return ret;
 
 	CPropertyAction* pActOnSetStartDelay = new CPropertyAction(this, &ZStage::OnSetStartDelay);
-	ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetStartDelay).c_str(), "Undefined", MM::Integer, false, pActOnSetStartDelay);  // get position Z
-	if (ret != DEVICE_OK)  return ret;
+		ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetStartDelay).c_str(), "Undefined", MM::Integer, false, pActOnSetStartDelay);  // get position Z
+		if (ret != DEVICE_OK)  return ret;
+
+	CPropertyAction* pActOnSetStep2Um = new CPropertyAction(this, &ZStage::OnSetStep2Um);
+		ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetStep2Um).c_str(), "Undefined", MM::Integer, false, pActOnSetStep2Um);  // get position Z
+		if (ret != DEVICE_OK)  return ret;
+
+	CPropertyAction* pActOnSetStep2Angel = new CPropertyAction(this, &ZStage::OnSetStep2Angel);
+		ret = CreateProperty(StepMotor::Instance()->GetXMTStr(StepMotor::XMTSTR_SetStep2Angel).c_str(), "Undefined", MM::Integer, false, pActOnSetStep2Angel);  // get position Z
+		if (ret != DEVICE_OK)  return ret;
 
 	ret = UpdateStatus();
 	if (ret != DEVICE_OK) return ret;
@@ -263,6 +243,46 @@ int ZStage::SetRunDelay(int lMotionMode)//1 high else low
 	unsigned char buf[9];
 	StepMotor::Instance()->LongToRaw(lMotionMode,RawData);
 	StepMotor::Instance()->PackageCommand(_SetRunningDelay,RawData,buf);
+
+	ret = WriteCommand(buf, 7);
+	if (ret != DEVICE_OK) return ret;
+
+	return DEVICE_OK;
+}
+int ZStage::SetStep2Um(int lMotionMode)//1 high else low
+{
+
+	std::ostringstream osMessage;
+
+	unsigned char sResponse[64];
+	int ret = DEVICE_OK;
+
+	char sCommStat[30];
+	bool yCommError = false;
+	byte RawData[4];
+	unsigned char buf[9];
+	StepMotor::Instance()->LongToRaw(lMotionMode,RawData);
+	StepMotor::Instance()->PackageCommand(_SetUM2Step,RawData,buf);
+
+	ret = WriteCommand(buf, 7);
+	if (ret != DEVICE_OK) return ret;
+
+	return DEVICE_OK;
+}
+int ZStage::SetStep2Angel(int lMotionMode)//1 high else low
+{
+
+	std::ostringstream osMessage;
+
+	unsigned char sResponse[64];
+	int ret = DEVICE_OK;
+
+	char sCommStat[30];
+	bool yCommError = false;
+	byte RawData[4];
+	unsigned char buf[9];
+	StepMotor::Instance()->LongToRaw(lMotionMode,RawData);
+	StepMotor::Instance()->PackageCommand(_SetAngel2Step,RawData,buf);
 
 	ret = WriteCommand(buf, 7);
 	if (ret != DEVICE_OK) return ret;
@@ -504,6 +524,50 @@ int ZStage::OnSetStartDelay(MM::PropertyBase* pProp, MM::ActionType eAct)
 	{
 		pProp->Get(startDelay);
 		ret = SetStartDelay(startDelay);
+	}
+	if (ret != DEVICE_OK) return ret;
+
+	return DEVICE_OK;
+}
+
+int ZStage::OnSetStep2Um(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	std::ostringstream osMessage;
+	int ret = DEVICE_OK;
+	double step2um = 0;
+
+	osMessage.str("");
+
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(step2um);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		pProp->Get(step2um);
+		ret = SetStep2Um(step2um);
+	}
+	if (ret != DEVICE_OK) return ret;
+
+	return DEVICE_OK;
+}
+
+int ZStage::OnSetStep2Angel(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	std::ostringstream osMessage;
+	int ret = DEVICE_OK;
+	double Step2Angel = 0;
+
+	osMessage.str("");
+
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(Step2Angel);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		pProp->Get(Step2Angel);
+		ret = SetStep2Angel(Step2Angel);
 	}
 	if (ret != DEVICE_OK) return ret;
 

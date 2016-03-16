@@ -4,7 +4,11 @@ import mmcorej.TaggedImage;
 
 import org.micromanager.acquisition.TaggedImageQueue;
 import org.micromanager.api.TaggedImageAnalyzer;
-
+/**
+ * @author ndg
+ *CalibrateAnalyzer.java
+ *Acting as a image analyzer to do calibration 
+ */
 public class CalibrateAnalyzer extends TaggedImageAnalyzer {
 
 	private static CalibrateAnalyzer instance_;

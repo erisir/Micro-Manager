@@ -85,7 +85,9 @@ public:
 		XMTSTR_ReleasePower      = 32,           // property RESET label
 		XMTSTR_SetRunDelay       = 33,           // property RESET label
 		XMTSTR_SetStartDelay     = 34,           // property RESET label
-		XMTSTR_Status            = 35            // property STATUS label
+		XMTSTR_SetStep2Um        = 35,           // property RESET label
+		XMTSTR_SetStep2Angel     = 36,           // property RESET label
+		XMTSTR_Status            = 37            // property STATUS label
 	};
 
 
@@ -153,6 +155,8 @@ private:
 	static int                  m_nUStep2Nm;                // unit to convert uStep to nm
 	static int                  m_nTimeoutInterval;         // timeout interval
 	static int                  m_nTimeoutTrys;             // timeout trys
+	static int 		            m_nStep2Um;          // property RESET label
+	static int 		            m_nStep2Angel;
 	//static int                m_nNumberOfAxes;            // number of StepMotor axes
 	static int                  m_nMotionMode;              // motor motion mode
 	static double               m_dPositionX;               // position X

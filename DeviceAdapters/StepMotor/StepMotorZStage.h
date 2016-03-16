@@ -29,6 +29,7 @@
 #include "../../MMDevice/DeviceBase.h"
 #include "StepMotor.h"
 
+
 //
 // define Z stage class that is atached to the StepMotor controller
 //
@@ -88,9 +89,13 @@ public:
     int OnReleasePower(MM::PropertyBase* pProp, MM::ActionType eAct);
     int SetReleasePower(int ReleasePower);
     int SetRunDelay(int RunDelay);
+    int SetStep2Um(int RunDelay);
+    int SetStep2Angel(int RunDelay);
     int SetStartDelay(int StartDelay);
     int OnSetRunDelay(MM::PropertyBase* pProp, MM::ActionType eAct);
     int OnSetStartDelay(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int OnSetStep2Um(MM::PropertyBase* pProp, MM::ActionType eAct);
+    int OnSetStep2Angel(MM::PropertyBase* pProp, MM::ActionType eAct);
     // Sequence functions
     int IsStageSequenceable(bool& isSequenceable) const { isSequenceable = false; return DEVICE_OK;}
     int GetStageSequenceMaxLength(long& /*nrEvents*/) const  {return DEVICE_OK;}
