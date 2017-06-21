@@ -251,6 +251,7 @@ public class Function {
 	}
 
 	public void addRoi(Rectangle rectangle) {
+
 		int xCenter = rectangle.x+rectangle.width/2;
 		int yCenter = rectangle.y+rectangle.height/2;
 		if(kernel_.isCalibrated_)
@@ -264,6 +265,8 @@ public class Function {
 			}
 			synchronized(MMT.Acqlock){
 				roiList_.add(RoiItem.createInstance(new double[]{xCenter,yCenter,0,0,0,}));
+				MMT.FRETStartListenerRun = true;
+				FRETStartDetector.getInstance().listenStart();
 			}
 		}
 	}
@@ -290,6 +293,10 @@ public class Function {
 		}
 	}
 	public void deleteRoi() {
+
+		synchronized(MMT.Acqlock){
+			MMT.FRETStartListenerRun = false;
+		}
 		int index = getFocusRoiIndex();
 		if( index != -1){
 			synchronized(MMT.Acqlock){
@@ -298,8 +305,9 @@ public class Function {
 			if(kernel_.isCalibrated_ && roiList_.size() == 0){
 				kernel_.setIsCalibrated(false);
 			}
-			MMT.logMessage("ROI added :OK");
+			MMT.logMessage("deleteRoi :OK");
 		}	
+
 	}
 
 	public void selectRoiAsReference() {
@@ -921,7 +929,7 @@ public class Function {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-        IJ.log("OK");
+		IJ.log("OK");
 
 	}
 

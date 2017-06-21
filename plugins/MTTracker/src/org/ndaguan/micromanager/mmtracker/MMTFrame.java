@@ -26,7 +26,7 @@ public class MMTFrame extends JFrame {
 
 
 	private static final long serialVersionUID = 1L;
-	final String[] PARALIST  = new String[]{"BallRadius","DNALength","ZCalScale_","ZCalStep","RinterStep","HalfCorrWin","MagnetStep","Frame2Acq","FrameCalcF","ITEM0","ITEM1","ITEM2"};
+	final String[] PARALIST1  = new String[]{"BallRadius","DNALength","ZCalScale_","ZCalStep","RinterStep","HalfCorrWin","MagnetStep","Frame2Acq","FrameCalcF","ITEM0","ITEM1","ITEM2"};
 
 	private final int DEFAULT_WIDTH = 720;
 	private final int DEFAULT_HEIGHT =150;

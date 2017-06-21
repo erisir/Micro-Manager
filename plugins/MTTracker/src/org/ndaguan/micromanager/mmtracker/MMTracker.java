@@ -28,6 +28,7 @@ public class MMTracker implements MMPlugin{
 	private TCPServer tcpServer_;
 	private TCPClient tcpClient_;
 	private Function function_;
+	private FRETStartDetector fretListener;
 	private static MMTracker instance_;
 
 	/**
@@ -69,6 +70,8 @@ public class MMTracker implements MMPlugin{
 			e.printStackTrace();
 			MMT.logError(e.toString());
 		}
+		fretListener = new FRETStartDetector();
+		fretListener.listenStart();
 		roiList_ = Collections.synchronizedList(new ArrayList<RoiItem>());
 		//operation
 		render_ = OverlayRender.getInstance();
@@ -83,7 +86,7 @@ public class MMTracker implements MMPlugin{
 		function_.installAnalyzer("XYACQ");
 		frame_.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);	
 		frame_.setVisible(true);
-		
+	
 		if ((!app_.getAcquisitionEngine().isAcquisitionRunning())
 				&& (!app_.isLiveModeOn())) {
 			app_.enableLiveMode(true);

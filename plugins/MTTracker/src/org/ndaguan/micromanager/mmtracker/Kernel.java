@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.math3.analysis.UnivariateFunction;
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
@@ -84,7 +85,12 @@ public class Kernel {
 			if(MMT.VariablesNUPD.iTerm_x.value() != 123){
 				roiList_.get(i).setXY(ret[i]);
 			}
-			roiList_.get(i).setZ(ret[i][2]);
+			double zpos = ret[i][2];
+			if(MMT.isFRETStart==true){
+				zpos = 998789;
+				MMT.isFRETStart = false;
+			}
+			roiList_.get(i).setZ(zpos);
 			//force = calcForces(roiList_.get(i).getStats());
 			roiList_.get(i).setForce(force);
 		}
@@ -123,11 +129,15 @@ public class Kernel {
 				}
 				return false;
 			}
-//			MMT.tik();
+			//			MMT.tik();
 			currProfiles = polarIntegral(image,xy[0],xy[1]);	
-//			MMT.tok("polarIntegral");
+			//			MMT.tok("polarIntegral");
 			//			currProfiles = polarIntegral2(image,roiX,roiY,beanRadiuPixel);		
 			double zpos = getZLocation(k,currProfiles);
+			if(MMT.isFRETStart==true){
+				zpos = 998789;
+				MMT.isFRETStart = false;
+			}
 			roiList_.get(k).setZ(zpos);
 			//roiList_.get(k).setL();
 			Function.getInstance().updatePosProfileChart(k,currProfiles);
@@ -183,7 +193,7 @@ public class Kernel {
 
 		MMT.VariablesNUPD.calRange.value(10);
 		MMT.VariablesNUPD.skipRadius.value(1);
-		MMT.VariablesNUPD.frameToRefreshChart.value(100);
+		MMT.VariablesNUPD.frameToRefreshChart.value(1);
 		MMT.VariablesNUPD.beanRadiuPixel.value(50);
 		MMT.VariablesNUPD.pixelToPhysX.value(1.0);
 		MMT.VariablesNUPD.pixelToPhysY.value(1.0);
@@ -197,88 +207,96 @@ public class Kernel {
 		MMT.maxN = (int) Math.pow(2, Math.floor(log2)+1);
 		List<RoiItem> rt = Collections.synchronizedList(new ArrayList<RoiItem>());
 		rt.add(RoiItem.createInstance(new double[]{130,130,0}));
-		//rt.add(RoiItem.createInstance(new double[]{100,100,0}));
 		Function.getInstance(null, rt);
-
+		FRETStartDetector fsd = new FRETStartDetector();
+		fsd.listenStart();
 		Kernel kl = new Kernel(rt);
 
 		kl.imageWidth = 300;
 		kl.imageHeight = 300;
+		rt.get(0).setChartVisible(true);
 
 		int bitDepth = 16;
-		boolean flag = false;
 		int calRange = 10;
+		
+		//getXYPositionTest(calRange, rt, bitDepth, kl);
+		getXYZPositionTest(calRange, rt, bitDepth, kl);
+	}
 
-		if(flag)
-			for (int i = 0; i < calRange ; i++) {
-				Object image = getImg(i+1,bitDepth);
+	private static void getXYZPositionTest(int calRange, List<RoiItem> rt, int bitDepth, Kernel kl) {
+		// TODO Auto-generated method stub
+
+		for (int i = 0; i < rt.size(); i++) {
+			rt.get(i).setChartVisible(true);
+		}
+		kl.updateCalibrationProfile();
+		for (int i = 0; i < calRange; i++) {
+			Object image = getImg(i+1,bitDepth);
+			kl.calibration(image,i,150,150,i+1);
+		}
+		kl.isCalibrated_ = true;
+		long frameNm = 0;
+		Object image = getImg(16.5,bitDepth);
+		Object image1 = getImg(15,bitDepth);
+		Object[] img = new Object[]{image,image1};
+		for (int jj = 0; jj < 10000; jj++) {
+
+			for (int i = 0; i < calRange; i++) {
+				frameNm++;
 				MMT.tik();
-				boolean ret = kl.getXYPosition(image);
-				if(!ret)continue;
-				MMT.tok("getXYPosition");
+				kl.getXYZPosition(img[(int) (frameNm%2)]);
+				MMT.tok("getXYZPosition");
+				try {
+					TimeUnit.MILLISECONDS.sleep(50);
+					kl.saveRoiData("ACQ",frameNm,System.nanoTime()/10e6);
+				} catch (IOException e) {
+					MMT.logError("Save data error");
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+
+				Function.getInstance().updateChart(frameNm);
+
 				for (int k = 0; k < rt.size(); k++) {
-					double[] xy = rt.get(k).getXY();
-					double xpos = xy[0];
-					double ypos = xy[1];
 					double[] xyPhy = rt.get(k).getXYZPhy();
 					double xphy = xyPhy[0];
 					double yphy = xyPhy[1];
-					System.out.print(String.format("\r\nx:\t%f\ty:%f xphy:\t%f\typhy:\t%f", xpos,ypos,xphy,yphy));
-
-				}
-			}
-
-		if(!flag){
-			for (int i = 0; i < rt.size(); i++) {
-				//rt.get(i).setChartVisible(true);
-			}
-			kl.updateCalibrationProfile();
-			for (int i = 0; i < calRange; i++) {
-				Object image = getImg(i+1,bitDepth);
-				kl.calibration(image,i,150,150,i+1);
-			}
-			kl.isCalibrated_ = true;
-			long frameNm = 0;
-			Object image = getImg(2.5,bitDepth);
-			Object image1 = getImg(3.5,bitDepth);
-			Object[] img = new Object[]{image,image1};
-			for (int jj = 0; jj < 10000; jj++) {
-
-				for (int i = 0; i < calRange; i++) {
-					frameNm++;
-					MMT.tik();
-					kl.getXYZPosition(img[(int) (frameNm%2)]);
-					MMT.tok("getXYZPosition");
-					try {
-						kl.saveRoiData("ACQ",frameNm,System.nanoTime()/10e6);
-					} catch (IOException e) {
-						MMT.logError("Save data error");
-					}
-
-
-					Function.getInstance().updateChart(frameNm);
-
-					for (int k = 0; k < rt.size(); k++) {
-						double[] xyPhy = rt.get(k).getXYZPhy();
-						double xphy = xyPhy[0];
-						double yphy = xyPhy[1];
-						double zphy = rt.get(k).getZ();
-						System.out.print(String.format("\r\n\r\n[%d]-ROI[%d]\txphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\t",frameNm,k,xphy,yphy,zphy,frameNm%2==0?8.5:3.5,(frameNm%2==0?8.5:3.5)-zphy));
-					}
-
+					double zphy = rt.get(k).getZ();
+					//System.out.print(String.format("\r\n\r\n[%d]-ROI[%d]\txphy:\t%.3f\typhy:\t%.3f\tzphy:\t%.3f\tzset:\t%.3f\tdelta:\t%f\t",frameNm,k,xphy,yphy,zphy,frameNm%2==0?8.5:3.5,(frameNm%2==0?8.5:3.5)-zphy));
 				}
 
 			}
-			try {
-				kl.dataCleanUp();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+
 		}
-
-
+		try {
+			kl.dataCleanUp();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
+	private static void getXYPositionTest(int calRange,List<RoiItem> rt,int bitDepth,Kernel kl) {
+		// TODO Auto-generated method stub
+		for (int i = 0; i < calRange ; i++) {
+			Object image = getImg(i+1,bitDepth);
+			MMT.tik();
+			boolean ret = kl.getXYPosition(image);
+			if(!ret)continue;
+			MMT.tok("getXYPosition");
+			for (int k = 0; k < rt.size(); k++) {
+				double[] xy = rt.get(k).getXY();
+				double xpos = xy[0];
+				double ypos = xy[1];
+				double[] xyPhy = rt.get(k).getXYZPhy();
+				double xphy = xyPhy[0];
+				double yphy = xyPhy[1];
+				System.out.print(String.format("\r\nx:\t%f\ty:%f xphy:\t%f\typhy:\t%f", xpos,ypos,xphy,yphy));
+
+			}
+		}
+	}
 
 	private boolean dataCleanUp() throws IOException {
 		for (int i = 0; i < roiList_.size(); i++) {
@@ -431,7 +449,7 @@ public class Kernel {
 				double dTheta = polarFactor/r;
 				int nTheta =(int) (2*3.141592653579/dTheta);
 				nTheta = (nTheta==0)?1:nTheta;
-				
+
 				for(int j = 0;j<nTheta;j++)
 				{
 					double x = (xpos+xFactor*r*Math.cos(dTheta*j));
@@ -451,7 +469,7 @@ public class Kernel {
 					double Sxy = S00*(1-dx)*(1-dy)+S01*dy*(1-dx)+S10*dx*(1-dy) +S11*dx*dy;
 					sumr += Sxy;
 				}
-				
+
 				profile[i-skipStart] =sumr/nTheta;
 				statis_.addValue(profile[i-skipStart]);
 			}
@@ -916,7 +934,7 @@ public class Kernel {
 	}
 
 	private static String[] getimgString(Object nameext)  {
-		File imgFile = new File("F:/Development/SandBox/CalImages/img"+nameext+".txt");
+		File imgFile = new File("G:/Development/SandBox/CalImages/img"+nameext+".txt");
 		if(!imgFile.exists())
 			return null;		
 		try {
